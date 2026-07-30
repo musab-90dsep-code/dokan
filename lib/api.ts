@@ -3,8 +3,8 @@
  * Changing API_BASE_URL or configuration here instantly updates API routing across the entire web application.
  */
 
-const rawUrl = process.env.NEXT_PUBLIC_API_URL || 'https://arafat-dokan-backend-production.up.railway.app/api';
-export const API_BASE_URL = rawUrl.endsWith('/api') ? rawUrl : (rawUrl.endsWith('/') ? `${rawUrl}api` : `${rawUrl}/api`);
+const rawUrl = process.env.NEXT_PUBLIC_API_URL || '';
+export const API_BASE_URL = rawUrl ? (rawUrl.endsWith('/api') ? rawUrl : (rawUrl.endsWith('/') ? `${rawUrl}api` : `${rawUrl}/api`)) : '';
 
 export interface ShopSettingsData {
   id?: number;
@@ -123,6 +123,12 @@ export interface BankData {
   created_at?: string;
 }
 
+export interface WeeklyStatItem {
+  name: string;
+  বিক্রয়: number;
+  ক্রয়: number;
+}
+
 export interface DashboardStats {
   totalSales: number;
   monthlySales: number;
@@ -135,6 +141,7 @@ export interface DashboardStats {
   totalBank: number;
   lowStockCount: number;
   totalProductsCount: number;
+  weeklyData?: WeeklyStatItem[];
   recentTransactions: TransactionData[];
 }
 
@@ -210,14 +217,34 @@ export const api = {
         if (params?.search) query.append('search', params.search);
         const queryStr = query.toString() ? `?${query.toString()}` : '';
         const res: any = await request<PartyData[]>(`/parties/${queryStr}`);
-        return Array.isArray(res) ? res : (res?.results || []);
+        const arr = Array.isArray(res) ? res : (res?.results || []);
+        return arr.map((p: any) => ({
+          ...p,
+          opening_balance: Number(p.opening_balance || 0),
+          credit_limit: Number(p.credit_limit || 0),
+          credit_days: Number(p.credit_days || 30),
+          discount_percent: Number(p.discount_percent || 0),
+          total_due: Number(p.total_due || 0),
+          total_purchases: Number(p.total_purchases || 0),
+          total_sales: Number(p.total_sales || 0),
+        }));
       } catch (e) {
         console.error('parties.list error:', e);
         return [];
       }
     },
     get: async (id: string | number): Promise<PartyData> => {
-      return request<PartyData>(`/parties/${id}/`);
+      const p: any = await request<PartyData>(`/parties/${id}/`);
+      return {
+        ...p,
+        opening_balance: Number(p.opening_balance || 0),
+        credit_limit: Number(p.credit_limit || 0),
+        credit_days: Number(p.credit_days || 30),
+        discount_percent: Number(p.discount_percent || 0),
+        total_due: Number(p.total_due || 0),
+        total_purchases: Number(p.total_purchases || 0),
+        total_sales: Number(p.total_sales || 0),
+      };
     },
     create: async (data: PartyData): Promise<PartyData> => {
       return request<PartyData>('/parties/', {
@@ -306,14 +333,44 @@ export const api = {
         if (params?.search) query.append('search', params.search);
         const queryStr = query.toString() ? `?${query.toString()}` : '';
         const res: any = await request<TransactionData[]>(`/transactions/${queryStr}`);
-        return Array.isArray(res) ? res : (res?.results || []);
+        const arr = Array.isArray(res) ? res : (res?.results || []);
+        return arr.map((t: any) => ({
+          ...t,
+          subtotal: Number(t.subtotal || 0),
+          discount: Number(t.discount || 0),
+          tax: Number(t.tax || 0),
+          total_amount: Number(t.total_amount || 0),
+          paid_amount: Number(t.paid_amount || 0),
+          due_amount: Number(t.due_amount || 0),
+          items: (t.items || []).map((i: any) => ({
+            ...i,
+            quantity: Number(i.quantity || 0),
+            price: Number(i.price || 0),
+            total: Number(i.total || 0),
+          }))
+        }));
       } catch (e) {
         console.error('transactions.list error:', e);
         return [];
       }
     },
     get: async (id: string | number): Promise<TransactionData> => {
-      return request<TransactionData>(`/transactions/${id}/`);
+      const t: any = await request<TransactionData>(`/transactions/${id}/`);
+      return {
+        ...t,
+        subtotal: Number(t.subtotal || 0),
+        discount: Number(t.discount || 0),
+        tax: Number(t.tax || 0),
+        total_amount: Number(t.total_amount || 0),
+        paid_amount: Number(t.paid_amount || 0),
+        due_amount: Number(t.due_amount || 0),
+        items: (t.items || []).map((i: any) => ({
+          ...i,
+          quantity: Number(i.quantity || 0),
+          price: Number(i.price || 0),
+          total: Number(i.total || 0),
+        }))
+      };
     },
     create: async (data: TransactionData): Promise<TransactionData> => {
       return request<TransactionData>('/transactions/', {

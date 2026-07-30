@@ -22,6 +22,11 @@ import { bn } from 'date-fns/locale';
 import Link from 'next/link';
 import { toast } from 'sonner';
 
+export const toBnDigits = (val: string | number | undefined | null): string => {
+  if (val === undefined || val === null || val === '') return '';
+  return String(val).replace(/[0-9]/g, (d) => '০১২৩৪৫৬৭৮৯'[parseInt(d, 10)]);
+};
+
 export interface PartyProfile {
   id: string; 
   name: string; 
@@ -126,9 +131,9 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           id: String(t.id || t.invoice_no),
           customerName: t.party_name || p.name,
           customerId: String(p.id),
-          totalAmount: t.total_amount,
-          paidAmount: t.paid_amount,
-          dueAmount: t.due_amount,
+          totalAmount: Number(t.total_amount || 0),
+          paidAmount: Number(t.paid_amount || 0),
+          dueAmount: Number(t.due_amount || 0),
           items: t.items || [],
           paymentMethod: t.payment_method || 'cash',
           chequeNo: t.cheque_number,
@@ -145,9 +150,9 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
     if (id) loadData();
   }, [id]);
 
-  const totalBill = transactions.reduce((a, o) => a + (o.totalAmount || 0), 0);
-  const totalPaid = transactions.reduce((a, o) => a + (o.paidAmount || 0), 0);
-  const totalDue = transactions.reduce((a, o) => a + (o.dueAmount || 0), 0);
+  const totalBill = transactions.reduce((a, o) => a + Number(o.totalAmount || 0), 0);
+  const totalPaid = transactions.reduce((a, o) => a + Number(o.paidAmount || 0), 0);
+  const totalDue = Math.max(0, totalBill - totalPaid);
 
   // Aging Analysis Calculation
   const now = new Date();
@@ -157,13 +162,14 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
   let age90plus = 0;
 
   transactions.forEach(o => {
-    if ((o.dueAmount || 0) > 0) {
+    const due = Number(o.dueAmount || 0);
+    if (due > 0) {
       const oDate = new Date(o.createdAt || 0);
       const days = Math.abs(differenceInDays(now, oDate));
-      if (days <= 30) age0to30 += o.dueAmount;
-      else if (days <= 60) age31to60 += o.dueAmount;
-      else if (days <= 90) age61to90 += o.dueAmount;
-      else age90plus += o.dueAmount;
+      if (days <= 30) age0to30 += due;
+      else if (days <= 60) age31to60 += due;
+      else if (days <= 90) age61to90 += due;
+      else age90plus += due;
     }
   });
 
@@ -187,7 +193,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
         ? tx.items.map((it: any) => `${it.name} (${it.quantity} ${it.unit || ''})`).join(', ')
         : (isCustomer ? 'পণ্য বিক্রয়' : 'পণ্য ক্রয়');
 
-      const debitVal = tx.totalAmount || 0;
+      const debitVal = Number(tx.totalAmount || 0);
       cumulativeBalance += debitVal;
 
       entries.push({
@@ -202,10 +208,10 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
         runningBalance: cumulativeBalance,
         paymentMethod: '—',
         orderId: tx.id,
-        dueAmount: tx.dueAmount
+        dueAmount: Number(tx.dueAmount || 0)
       });
 
-      const creditVal = tx.paidAmount || 0;
+      const creditVal = Number(tx.paidAmount || 0);
       if (creditVal > 0) {
         cumulativeBalance -= creditVal;
         const rcvPrefix = isCustomer ? 'RCV-2026-' : 'PAY-2026-';
@@ -222,7 +228,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           runningBalance: cumulativeBalance,
           paymentMethod: 'নগদ',
           orderId: tx.id,
-          dueAmount: tx.dueAmount
+          dueAmount: Number(tx.dueAmount || 0)
         });
       }
     });
@@ -270,7 +276,20 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
   const totalPages = Math.max(1, Math.ceil(filteredLedgerEntries.length / itemsPerPage));
   const paginatedEntries = filteredLedgerEntries.slice((validCurrentPage - 1) * itemsPerPage, validCurrentPage * itemsPerPage);
 
-  const formatDate = (date: Date) => format(date, 'dd মিই yyyy, hh:mm a', { locale: bn });
+  const formatBnDate = (dateVal: Date | string | undefined | null, pattern: string = 'dd MMMM yyyy, hh:mm a') => {
+    if (!dateVal) return '—';
+    try {
+      const d = typeof dateVal === 'string' ? new Date(dateVal) : dateVal;
+      if (isNaN(d.getTime())) return String(dateVal);
+      const raw = format(d, pattern, { locale: bn });
+      const withPeriod = raw.replace(/AM/gi, 'পূর্বাহ্ন').replace(/PM/gi, 'অপরাহ্ন');
+      return toBnDigits(withPeriod);
+    } catch {
+      return '—';
+    }
+  };
+
+  const formatDate = (date: Date) => formatBnDate(date, 'dd MMMM yyyy, hh:mm a');
 
   const handlePrintLedger = () => window.print();
 
@@ -331,9 +350,9 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
         id: String(t.id || t.invoice_no),
         customerName: t.party_name || party?.name,
         customerId: String(id),
-        totalAmount: t.total_amount,
-        paidAmount: t.paid_amount,
-        dueAmount: t.due_amount,
+        totalAmount: Number(t.total_amount || 0),
+        paidAmount: Number(t.paid_amount || 0),
+        dueAmount: Number(t.due_amount || 0),
         items: t.items || [],
         paymentMethod: t.payment_method || 'cash',
         chequeNo: t.cheque_number,
@@ -370,7 +389,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           <h2 className="text-base font-bold text-slate-800 uppercase tracking-widest">
             {isCustomer ? 'গ্রাহক লেজার' : 'কোম্পানি লেজার'}: {party?.businessName || party?.name}
           </h2>
-          <p className="text-xs text-slate-500">তারিখ: {format(new Date(), 'dd MMMM yyyy', { locale: bn })}</p>
+          <p className="text-xs text-slate-500">তারিখ: {formatBnDate(new Date(), 'dd MMMM yyyy')}</p>
         </div>
       </div>
 
@@ -447,7 +466,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                       {party.phone && (
                         <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 text-[11px] font-bold px-2.5 py-1 rounded-lg">
-                          <Phone className="w-3 h-3 text-slate-400" />{party.phone}
+                          <Phone className="w-3 h-3 text-slate-400" />{toBnDigits(party.phone)}
                         </span>
                       )}
                       {party.email && (
@@ -459,9 +478,9 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
 
                     <div className="flex items-center gap-2 text-xs pt-1">
                       <span className="text-slate-500 font-semibold">
-                        {isCustomer ? 'গ্রাহক কোড:' : 'কোম্পানি কোড:'} <strong className="text-slate-800">{party.customerCode || party.supplierCode || (isCustomer ? 'CUS-0001' : 'SUP-0001')}</strong>
+                        {isCustomer ? 'গ্রাহক কোড:' : 'কোম্পানি কোড:'} <strong className="text-slate-800">{toBnDigits(party.customerCode || party.supplierCode || (isCustomer ? 'CUS-0001' : 'SUP-0001'))}</strong>
                       </span>
-                      <span className="bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-md text-[10px]">সক্রিয়া</span>
+                      <span className="bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-md text-[10px]">সক্রিয়</span>
                     </div>
                   </div>
                 </div>
@@ -473,17 +492,17 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                       <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">ক্রেডিট লিমিট</span>
                       <button className="text-[11px] font-bold text-slate-500 hover:text-orange-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">সীমা পরিবর্তন</button>
                     </div>
-                    <p className="text-xl font-black text-slate-900 mt-0.5">৳ {(party.creditLimit || 50000).toLocaleString()}</p>
+                    <p className="text-xl font-black text-slate-900 mt-0.5">৳ {(party.creditLimit || 50000).toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-xs pt-1">
                     <div>
                       <span className="text-slate-400 font-semibold block">ক্রেডিট সময়</span>
-                      <span className="font-bold text-slate-800">{party.creditDays || 30} দিন</span>
+                      <span className="font-bold text-slate-800">{toBnDigits(party.creditDays || 30)} দিন</span>
                     </div>
                     <div>
                       <span className="text-slate-400 font-semibold block">যোগদানের তারিখ</span>
-                      <span className="font-bold text-slate-800">{party.joinedDate || '—'}</span>
+                      <span className="font-bold text-slate-800">{party.joinedDate ? formatBnDate(party.joinedDate, 'dd MMMM yyyy') : '—'}</span>
                     </div>
                   </div>
                 </div>
@@ -526,7 +545,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                 <CardContent className="p-5 flex items-center justify-between">
                   <div>
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{isCustomer ? 'মোট চালান' : 'মোট ক্রয় ইনভয়েস'}</p>
-                    <p className="text-2xl font-black text-slate-900 mt-0.5">{transactions.length}</p>
+                    <p className="text-2xl font-black text-slate-900 mt-0.5">{toBnDigits(transactions.length)}</p>
                   </div>
                   <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
                     <Receipt className="w-6 h-6" />
@@ -563,7 +582,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   <div>
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">সর্বশেষ লেনদেন</p>
                     <p className="text-lg font-black text-slate-800 mt-0.5">
-                      {ledgerEntries.length > 0 ? format(ledgerEntries[ledgerEntries.length - 1].date, 'dd মিই yyyy', { locale: bn }) : '—'}
+                      {ledgerEntries.length > 0 ? formatBnDate(ledgerEntries[ledgerEntries.length - 1].date, 'dd MMMM yyyy') : '—'}
                     </p>
                   </div>
                   <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
@@ -576,9 +595,9 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
             {/* 4. TRANSACTION PILL TABS */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1 print:hidden">
               {[
-                { id: 'all', label: `সব লেনদেন (${ledgerEntries.length})` },
-                { id: 'sale', label: `চালান (${countBill})` },
-                { id: 'receive', label: `রশিদ / পরিশোধ (${countPayment})` },
+                { id: 'all', label: `সব লেনদেন (${toBnDigits(ledgerEntries.length)})` },
+                { id: 'sale', label: `চালান (${toBnDigits(countBill)})` },
+                { id: 'receive', label: `রশিদ / পরিশোধ (${toBnDigits(countPayment)})` },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -604,7 +623,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   <div className="flex items-center gap-1.5 w-full bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
                     <input
                       type="text"
-                      placeholder="01/06/2026"
+                      placeholder="০১/০৬/২০২৬"
                       value={startDate}
                       onChange={e => setStartDate(e.target.value)}
                       className="w-full bg-transparent text-xs font-bold text-slate-800 focus:outline-none"
@@ -613,7 +632,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                     <span className="text-slate-400">-</span>
                     <input
                       type="text"
-                      placeholder="25/06/2026"
+                      placeholder="২৫/০৬/২০২৬"
                       value={endDate}
                       onChange={e => setEndDate(e.target.value)}
                       className="w-full bg-transparent text-xs font-bold text-slate-800 focus:outline-none"
@@ -697,7 +716,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                         </TableCell>
 
                         <TableCell className="font-bold text-slate-800 whitespace-nowrap">
-                          {entry.refNo}
+                          {toBnDigits(entry.refNo)}
                         </TableCell>
 
                         <TableCell className="whitespace-nowrap">
@@ -717,7 +736,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                         </TableCell>
 
                         <TableCell className="font-semibold text-slate-600 whitespace-nowrap">
-                          {entry.invoiceNo || '—'}
+                          {entry.invoiceNo ? toBnDigits(entry.invoiceNo) : '—'}
                         </TableCell>
 
                         <TableCell className="text-right font-black text-rose-600 whitespace-nowrap">
@@ -733,7 +752,17 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                         </TableCell>
 
                         <TableCell className="font-semibold text-slate-600 whitespace-nowrap">
-                          {entry.paymentMethod || '—'}
+                          {entry.paymentMethod === 'CASH'
+                            ? 'নগদ'
+                            : entry.paymentMethod === 'BANK'
+                            ? 'ব্যাংক'
+                            : entry.paymentMethod === 'BKASH' || entry.paymentMethod === 'MOBILE_BANKING'
+                            ? 'মোবাইল ব্যাংকিং'
+                            : entry.paymentMethod === 'CHEQUE'
+                            ? 'চেক'
+                            : entry.paymentMethod
+                            ? toBnDigits(entry.paymentMethod)
+                            : '—'}
                         </TableCell>
 
                         <TableCell className="text-center print:hidden">
@@ -750,7 +779,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
               {/* PAGINATION FOOTER */}
               <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs print:hidden">
                 <div className="font-bold text-slate-600">
-                  মোট <span className="text-slate-900 font-black">{filteredLedgerEntries.length}</span> টি লেনদেন
+                  মোট <span className="text-slate-900 font-black">{toBnDigits(filteredLedgerEntries.length)}</span> টি লেনদেন
                 </div>
 
                 <div className="flex items-center gap-1.5">
@@ -781,7 +810,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                           : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
                       )}
                     >
-                      {page}
+                      {toBnDigits(page)}
                     </button>
                   ))}
 
@@ -809,9 +838,9 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                     onChange={e => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
                     className="h-8 rounded-lg border border-slate-200 text-xs font-bold px-2 bg-white text-slate-800"
                   >
-                    <option value={10}>10</option>
-                    <option value={20}>20</option>
-                    <option value={50}>50</option>
+                    <option value={10}>১০</option>
+                    <option value={20}>২০</option>
+                    <option value={50}>৫০</option>
                   </select>
                 </div>
               </div>
@@ -832,7 +861,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                 <div className="flex flex-col items-center justify-center py-2 relative">
                   <div className="w-32 h-32 rounded-full border-8 border-rose-500 border-t-emerald-500 border-r-amber-500 border-b-blue-500 flex flex-col items-center justify-center text-center p-2 bg-slate-50/50">
                     <span className="text-[10px] text-slate-400 font-bold uppercase">মোট বকেয়া</span>
-                    <span className="text-sm font-black text-slate-900 mt-0.5">৳ {totalDue > 0 ? totalDue.toLocaleString() : '0'}</span>
+                    <span className="text-sm font-black text-slate-900 mt-0.5">৳ {totalDue > 0 ? totalDue.toLocaleString('bn-BD', { minimumFractionDigits: 2 }) : '০.০০'}</span>
                   </div>
                 </div>
 
@@ -840,33 +869,33 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-1.5 text-slate-700">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
-                      0 - 30 দিন
+                      ০ - ৩০ দিন
                     </span>
-                    <span className="text-slate-900">৳ {age0to30 > 0 ? age0to30.toLocaleString('bn-BD', { minimumFractionDigits: 2 }) : '0.00'}</span>
+                    <span className="text-slate-900">৳ {age0to30 > 0 ? age0to30.toLocaleString('bn-BD', { minimumFractionDigits: 2 }) : '০.০০'}</span>
                   </div>
 
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-1.5 text-slate-700">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-700 inline-block"></span>
-                      31 - 60 দিন
+                      ৩১ - ৬০ দিন
                     </span>
-                    <span className="text-slate-900">৳ {age31to60 > 0 ? age31to60.toLocaleString('bn-BD', { minimumFractionDigits: 2 }) : '0.00'}</span>
+                    <span className="text-slate-900">৳ {age31to60 > 0 ? age31to60.toLocaleString('bn-BD', { minimumFractionDigits: 2 }) : '০.০০'}</span>
                   </div>
 
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-1.5 text-slate-700">
                       <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>
-                      61 - 90 দিন
+                      ৬১ - ৯০ দিন
                     </span>
-                    <span className="text-slate-900">৳ {age61to90 > 0 ? age61to90.toLocaleString('bn-BD', { minimumFractionDigits: 2 }) : '0.00'}</span>
+                    <span className="text-slate-900">৳ {age61to90 > 0 ? age61to90.toLocaleString('bn-BD', { minimumFractionDigits: 2 }) : '০.০০'}</span>
                   </div>
 
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-1.5 text-slate-700">
                       <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span>
-                      90+ দিন
+                      ৯০+ দিন
                     </span>
-                    <span className="text-slate-900">৳ {age90plus > 0 ? age90plus.toLocaleString('bn-BD', { minimumFractionDigits: 2 }) : '0.00'}</span>
+                    <span className="text-slate-900">৳ {age90plus > 0 ? age90plus.toLocaleString('bn-BD', { minimumFractionDigits: 2 }) : '০.০০'}</span>
                   </div>
                 </div>
               </CardContent>
@@ -927,7 +956,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
               </div>
               <div>
                 <DialogTitle className="font-bengali text-xl font-black text-slate-900">
-                  {isCustomer ? 'টাকা জমা নিন (Payment Receive)' : 'পেমেন্ট পরিশোধ (Supplier Payment)'}
+                  {isCustomer ? 'টাকা জমা নিন (পেমেন্ট গ্রহণ)' : 'পেমেন্ট পরিশোধ'}
                 </DialogTitle>
                 <p className="text-xs text-slate-500 font-semibold mt-0.5">
                   {isCustomer ? 'গ্রাহকের কাছ থেকে বকেয়া টাকা গ্রহণের বিস্তারিত' : 'সরবরাহকারীকে পাওনা টাকা পরিশোধের বিস্তারিত'}
@@ -941,7 +970,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
               <p className="text-rose-600 font-bengali text-xs font-bold uppercase tracking-wider">
                 {isCustomer ? 'গ্রাহকের বর্তমান মোট বকেয়া' : 'কোম্পানির বর্তমান মোট পাওনা'}
               </p>
-              <p className="text-3xl font-black text-rose-700 font-bengali">৳ {totalDue.toLocaleString()}</p>
+              <p className="text-3xl font-black text-rose-700 font-bengali">৳ {totalDue.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</p>
             </div>
 
             {transactions.filter(o => (o.dueAmount || 0) > 0).length > 0 && (
@@ -963,7 +992,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   <SelectContent className="max-h-56 font-bengali">
                     {transactions.filter(o => (o.dueAmount || 0) > 0).map(o => (
                       <SelectItem key={o.id} value={o.id} className="text-xs font-bold">
-                        #{o.id.slice(0, 8).toUpperCase()} - বকেয়া ৳{o.dueAmount?.toLocaleString()}
+                        #{toBnDigits(o.id.slice(0, 8).toUpperCase())} - বকেয়া ৳{o.dueAmount?.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
                       </SelectItem>
                     ))}
                   </SelectContent>

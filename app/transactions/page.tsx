@@ -9,7 +9,7 @@ import {
   TrendingUp, TrendingDown, RefreshCcw, Landmark, CreditCard, ArrowLeftRight,
   Receipt, Calendar, DollarSign, AlertCircle, CheckCircle2, Printer, UploadCloud, X,
   Building2, User, Phone, ShieldCheck, FileText, Check, ArrowLeft, Eye, Edit2,
-  FileSpreadsheet, FileDown, Clock, PieChart, ChevronLeft, ChevronRight, Lightbulb
+  FileSpreadsheet, FileDown, Clock, PieChart, ChevronLeft, ChevronRight, Lightbulb, PlusCircle
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -109,6 +109,7 @@ function TransactionsContent() {
   const [searchQuery, setSearchQuery] = useState<string>(partyParam || '');
 
   // Modals
+  const [isAddMoneyOpen, setIsAddMoneyOpen] = useState(false);
   const [isAddTxnOpen, setIsAddTxnOpen] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isPrintMemoOpen, setIsPrintMemoOpen] = useState(false);
@@ -116,6 +117,14 @@ function TransactionsContent() {
   const [isMakePaymentOpen, setIsMakePaymentOpen] = useState(false);
   const [isAddBankOpen, setIsAddBankOpen] = useState(false);
   const [selectedTxnForView, setSelectedTxnForView] = useState<Transaction | null>(null);
+
+  // Add Money (টাকা যোগ) State
+  const [addMoneyCategory, setAddMoneyCategory] = useState('ক্যাশে জমা (Add Cash)');
+  const [addMoneyAmount, setAddMoneyAmount] = useState<number>(0);
+  const [addMoneyMethod, setAddMoneyMethod] = useState<'Cash' | 'Bank'>('Cash');
+  const [addMoneyBankId, setAddMoneyBankId] = useState<string>('');
+  const [addMoneyNote, setAddMoneyNote] = useState<string>('');
+  const [addMoneyDate, setAddMoneyDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
 
   // Form States for Direct Add
   const [txnType, setTxnType] = useState<'income' | 'expense' | 'contra'>('income');
@@ -212,6 +221,33 @@ function TransactionsContent() {
     setIsAddOpen(true);
   };
 
+  const handleCreateAddMoneySubmit = async () => {
+    if (addMoneyAmount <= 0) {
+      toast.error('টাকার পরিমাণ প্রদান করুন');
+      return;
+    }
+
+    try {
+      await api.transactions.create({
+        transaction_type: 'payment_in',
+        total_amount: addMoneyAmount,
+        paid_amount: addMoneyAmount,
+        due_amount: 0,
+        payment_method: addMoneyMethod.toLowerCase(),
+        cheque_bank: addMoneyMethod === 'Bank' ? banks.find(b => b.id === addMoneyBankId)?.name : '',
+        notes: `[টাকা যোগ - ${addMoneyCategory}] ${addMoneyNote}`
+      });
+
+      toast.success('টাকা সফলভাবে যোগ করা হয়েছে!');
+      setIsAddMoneyOpen(false);
+      setAddMoneyAmount(0);
+      setAddMoneyNote('');
+      loadAllTransactionsData();
+    } catch (err: any) {
+      toast.error('টাকা যোগ করতে সমস্যা হয়েছে');
+    }
+  };
+
   useEffect(() => {
     let ignore = false;
     async function init() {
@@ -220,9 +256,13 @@ function TransactionsContent() {
       if (typeParam === 'income' || typeParam === 'expense' || typeParam === 'contra') {
         setActiveTab(typeParam);
       }
-      if (actionParam === 'create') {
-        const mode = typeParam === 'expense' ? 'expense' : 'income';
-        handleOpenAddForm(mode);
+      if (typeParam === 'contra' || actionParam === 'create') {
+        if (typeParam === 'contra') {
+          setIsAddMoneyOpen(true);
+        } else {
+          const mode = typeParam === 'expense' ? 'expense' : 'income';
+          handleOpenAddForm(mode);
+        }
       }
     }
     init();
@@ -409,6 +449,13 @@ function TransactionsContent() {
 
             {/* TOP ACTION BUTTONS */}
             <div className="flex flex-wrap items-center gap-2.5">
+              <Button 
+                onClick={() => setIsAddMoneyOpen(true)} 
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all text-xs"
+              >
+                <PlusCircle className="w-4 h-4 mr-1.5" /> + টাকা যোগ (Add Money)
+              </Button>
+
               <Button 
                 onClick={() => handleOpenAddForm('income')} 
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all text-xs"
@@ -1407,6 +1454,129 @@ function TransactionsContent() {
             </DialogContent>
           </Dialog>
         )}
+
+        {/* ADD MONEY (টাকা যোগ) MODAL DIALOG */}
+        <Dialog open={isAddMoneyOpen} onOpenChange={setIsAddMoneyOpen}>
+          <DialogContent className="max-w-md w-full bg-white rounded-3xl p-6 shadow-2xl font-bengali">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2">
+                <PlusCircle className="w-6 h-6 text-blue-600" /> টাকা যোগ করুন (Add Money)
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 pt-2">
+              {/* Category / Source */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-600">টাকা যোগের খাত / ধরন *</Label>
+                <Select value={addMoneyCategory} onValueChange={(val: string | null) => val && setAddMoneyCategory(val)}>
+                  <SelectTrigger className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="font-bengali text-xs font-bold">
+                    <SelectItem value="ক্যাশে জমা (Add Cash)">ক্যাশে জমা (Add Cash)</SelectItem>
+                    <SelectItem value="ব্যাংক ডিপোজিট (Bank Deposit)">ব্যাংক ডিপোজিট (Bank Deposit)</SelectItem>
+                    <SelectItem value="মালিকের মূলধন যোগ (Owner Capital)">মালিকের মূলধন যোগ (Owner Capital)</SelectItem>
+                    <SelectItem value="অন্যান্য আয় (Other Income)">অন্যান্য আয় (Other Income)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Amount */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-600">টাকার পরিমাণ (৳) *</Label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">৳</span>
+                  <Input 
+                    type="number"
+                    placeholder="0.00"
+                    value={addMoneyAmount || ''}
+                    onChange={e => setAddMoneyAmount(parseFloat(e.target.value) || 0)}
+                    className="rounded-xl h-11 pl-9 bg-slate-50/50 border-slate-200 text-base font-black text-blue-600 text-right"
+                  />
+                </div>
+              </div>
+
+              {/* Payment Method */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-600">পেমেন্ট মাধ্যম *</Label>
+                <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setAddMoneyMethod('Cash')}
+                    className={cn(
+                      "h-10 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all",
+                      addMoneyMethod === 'Cash' 
+                        ? "bg-white text-blue-700 border-2 border-blue-500 shadow-xs" 
+                        : "text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    💵 নগদ (Cash)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddMoneyMethod('Bank')}
+                    className={cn(
+                      "h-10 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all",
+                      addMoneyMethod === 'Bank' 
+                        ? "bg-white text-blue-700 border-2 border-blue-500 shadow-xs" 
+                        : "text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    🏦 ব্যাংক (Bank)
+                  </button>
+                </div>
+              </div>
+
+              {/* Select Bank if Bank is selected */}
+              {addMoneyMethod === 'Bank' && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-600">ব্যাংক অ্যাকাউন্ট নির্বাচন করুন *</Label>
+                  <Select value={addMoneyBankId} onValueChange={(val: string | null) => val && setAddMoneyBankId(val)}>
+                    <SelectTrigger className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold">
+                      <SelectValue placeholder="ব্যাংক পছন্দ করুন..." />
+                    </SelectTrigger>
+                    <SelectContent className="font-bengali text-xs font-bold max-h-48">
+                      {banks.map(b => (
+                        <SelectItem key={b.id} value={b.id}>{b.name} ({b.accNo}) — ৳{b.balance.toLocaleString()}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Date */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-600">তারিখ *</Label>
+                <Input 
+                  type="date"
+                  value={addMoneyDate}
+                  onChange={e => setAddMoneyDate(e.target.value)}
+                  className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                />
+              </div>
+
+              {/* Note */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-600">নোট / বিবরণী (ঐচ্ছিক)</Label>
+                <Input 
+                  placeholder="যেমন: ক্যাশ বক্সে টাকা জমা..."
+                  value={addMoneyNote}
+                  onChange={e => setAddMoneyNote(e.target.value)}
+                  className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="mt-6 flex items-center justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsAddMoneyOpen(false)} className="rounded-xl font-bold h-11 text-xs">
+                বাতিল
+              </Button>
+              <Button onClick={handleCreateAddMoneySubmit} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold h-11 px-6 shadow-md shadow-blue-600/20 text-xs">
+                <Check className="w-4 h-4 mr-1.5" /> টাকা যোগ করুন
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
       </>
     </Shell>

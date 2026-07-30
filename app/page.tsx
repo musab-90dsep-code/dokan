@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Shell } from '@/components/Shell';
-import { cn, fixMiliName } from '@/lib/utils';
+import { cn, fixMiliName, toBnNum, formatBnCurrency } from '@/lib/utils';
 import { 
   TrendingUp, 
   Users, 
@@ -106,14 +106,14 @@ interface Transaction {
 }
 
 const quickActions = [
-  { label: 'বিক্রয় চালান', sub: 'নতুন ইনভয়েস', href: '/invoices', icon: Receipt, bg: 'bg-orange-50 hover:bg-orange-500', text: 'text-orange-600 group-hover:text-white', border: 'border-orange-200/80 hover:border-orange-500', iconBg: 'bg-orange-500 text-white' },
+  { label: 'বিক্রয় অর্ডার', sub: 'নতুন অর্ডার তৈরি', href: '/orders?action=create', icon: ShoppingCart, bg: 'bg-orange-50 hover:bg-orange-500', text: 'text-orange-600 group-hover:text-white', border: 'border-orange-200/80 hover:border-orange-500', iconBg: 'bg-orange-500 text-white' },
+  { label: 'বিক্রয় চালান', sub: 'নতুন ইনভয়েস', href: '/invoices', icon: Receipt, bg: 'bg-amber-50 hover:bg-amber-500', text: 'text-amber-600 group-hover:text-white', border: 'border-amber-200/80 hover:border-amber-500', iconBg: 'bg-amber-500 text-white' },
   { label: 'নতুন ক্রয়', sub: 'স্টক কিনুন', href: '/purchases', icon: Truck, bg: 'bg-indigo-50 hover:bg-indigo-600', text: 'text-indigo-600 group-hover:text-white', border: 'border-indigo-200/80 hover:border-indigo-600', iconBg: 'bg-indigo-600 text-white' },
   { label: 'নতুন পণ্য', sub: 'প্রোডাক্ট যুক্ত', href: '/inventory', icon: Package, bg: 'bg-emerald-50 hover:bg-emerald-600', text: 'text-emerald-600 group-hover:text-white', border: 'border-emerald-200/80 hover:border-emerald-600', iconBg: 'bg-emerald-600 text-white' },
   { label: 'কাস্টমার', sub: 'ক্রেতার খাতা', href: '/customers', icon: UserPlus, bg: 'bg-blue-50 hover:bg-blue-600', text: 'text-blue-600 group-hover:text-white', border: 'border-blue-200/80 hover:border-blue-600', iconBg: 'bg-blue-600 text-white' },
   { label: 'আয়-ব্যয়', sub: 'ক্যাশ/ব্যাংক', href: '/transactions', icon: Wallet, bg: 'bg-teal-50 hover:bg-teal-600', text: 'text-teal-600 group-hover:text-white', border: 'border-teal-200/80 hover:border-teal-600', iconBg: 'bg-teal-600 text-white' },
   { label: 'রিপোর্টস', sub: 'লাভ-ক্ষতি', href: '/reports', icon: BarChart3, bg: 'bg-purple-50 hover:bg-purple-600', text: 'text-purple-600 group-hover:text-white', border: 'border-purple-200/80 hover:border-purple-600', iconBg: 'bg-purple-600 text-white' },
   { label: 'লেজার খাতা', sub: 'বকেয়া তালিকা', href: '/reports?tab=due_customers', icon: BookOpen, bg: 'bg-rose-50 hover:bg-rose-600', text: 'text-rose-600 group-hover:text-white', border: 'border-rose-200/80 hover:border-rose-600', iconBg: 'bg-rose-600 text-white' },
-  { label: 'কম স্টক', sub: 'সতর্কতা পণ্য', href: '/inventory/low-stock', icon: AlertCircle, bg: 'bg-amber-50 hover:bg-amber-500', text: 'text-amber-600 group-hover:text-white', border: 'border-amber-200/80 hover:border-amber-500', iconBg: 'bg-amber-500 text-white' },
 ];
 
 const getDate = (val: any): Date => {
@@ -163,26 +163,31 @@ export default function Dashboard() {
     });
   }, []);
 
-  const totalCashBalance = stats?.totalCash || 285400;
-  const totalBankBalance = stats?.totalBank || 350000;
-  const totalDuesAmount = stats?.totalDues || 872300;
-  const totalMonthlySalesVal = stats?.monthlySales || 4872500;
-  const totalMonthlyPurchasesVal = stats?.monthlyPurchases || 2450000;
-  const lowStockCount = stats?.lowStockCount || 0;
+  const totalCashBalance = stats?.totalCash ?? 0;
+  const totalBankBalance = stats?.totalBank ?? 0;
+  const totalDuesAmount = stats?.totalDues ?? 0;
+  const totalMonthlySalesVal = stats?.monthlySales ?? 0;
+  const totalMonthlyPurchasesVal = stats?.monthlyPurchases ?? 0;
+  const lowStockCount = stats?.lowStockCount ?? 0;
   const recentTransactions = stats?.recentTransactions || [];
 
   const netProfitVal = Math.max(0, totalMonthlySalesVal - totalMonthlyPurchasesVal);
-  const profitMarginPercent = totalMonthlySalesVal > 0 ? Math.min(100, Math.round((netProfitVal / totalMonthlySalesVal) * 100)) : 34;
+  const profitMarginPercent = totalMonthlySalesVal > 0 ? Math.min(100, Math.round((netProfitVal / totalMonthlySalesVal) * 100)) : 0;
 
-  const weeklyData = [
-    { name: 'শনি', বিক্রয়: 85000, ক্রয়: 60000 },
-    { name: 'রবি', বিক্রয়: 120000, ক্রয়: 80000 },
-    { name: 'সোম', বিক্রয়: 95000, ক্রয়: 70000 },
-    { name: 'মঙ্গল', বিক্রয়: 140000, ক্রয়: 90000 },
-    { name: 'বুধ', বিক্রয়: 110000, ক্রয়: 75000 },
-    { name: 'বৃহস্পতি', বিক্রয়: 160000, ক্রয়: 100000 },
-    { name: 'শুক্র', বিক্রয়: 130000, ক্রয়: 85000 },
-  ];
+  const weeklyData = useMemo(() => {
+    if (stats?.weeklyData && stats.weeklyData.length > 0) {
+      return stats.weeklyData;
+    }
+    return [
+      { name: 'সোম', বিক্রয়: 0, ক্রয়: 0 },
+      { name: 'মঙ্গল', বিক্রয়: 0, ক্রয়: 0 },
+      { name: 'বুধ', বিক্রয়: 0, ক্রয়: 0 },
+      { name: 'বৃহস্পতি', বিক্রয়: 0, ক্রয়: 0 },
+      { name: 'শুক্র', বিক্রয়: 0, ক্রয়: 0 },
+      { name: 'শনি', বিক্রয়: 0, ক্রয়: 0 },
+      { name: 'রবি', বিক্রয়: 0, ক্রয়: 0 },
+    ];
+  }, [stats]);
 
   // Real Financial Pie Data
   const financialPieData = useMemo(() => {
@@ -196,14 +201,7 @@ export default function Dashboard() {
   // Real Inventory Breakdown List
   const stockBreakdown = useMemo(() => {
     if (products.length === 0) {
-      return [
-        { name: '৮মিলি রড', stock: '৪.৫ টন (৪,৫০ কেজি)', percent: 65, color: 'bg-orange-500', badge: 'bg-orange-50 text-orange-700 border-orange-200' },
-        { name: '১০মিলি রড', stock: '১২.২ টন (১২,২০০ কেজি)', percent: 85, color: 'bg-indigo-600', badge: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-        { name: '১২মিলি রড', stock: '৮.০ টন (৮,০০০ কেজি)', percent: 55, color: 'bg-blue-600', badge: 'bg-blue-50 text-blue-700 border-blue-200' },
-        { name: '১৬মিলি রড', stock: '৫.৫ টন (৫,৫০ কেজি)', percent: 45, color: 'bg-violet-600', badge: 'bg-violet-50 text-violet-700 border-violet-200' },
-        { name: 'শাহ সিমেন্ট', stock: '৪৫০ বস্তা', percent: 90, color: 'bg-emerald-600', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-        { name: 'বসুন্ধরা সিমেন্ট', stock: '৩২০ বস্তা', percent: 75, color: 'bg-amber-500', badge: 'bg-amber-50 text-amber-700 border-amber-200' },
-      ];
+      return [];
     }
 
     const maxStock = Math.max(...products.map(p => p.stock || 1), 100);
@@ -236,11 +234,7 @@ export default function Dashboard() {
   const lowStockAlertList = useMemo(() => {
     const filtered = products.filter(p => (p.stock || 0) <= (p.minStock || 10));
     if (filtered.length === 0) {
-      return [
-        { name: '৮মিলি রড', stock: '২ টন বাকি' },
-        { name: '২০মিলি রড', stock: '১.৫ টন বাকি' },
-        { name: 'ক্রাউন সিমেন্ট', stock: '১৫ বস্তা বাকি' },
-      ];
+      return [];
     }
     return filtered.slice(0, 4).map(p => ({
       name: fixMiliName(p.name),
@@ -251,23 +245,17 @@ export default function Dashboard() {
   // Real Recent Sales List
   const recentSalesList = useMemo(() => {
     if (orders.length === 0) {
-      return [
-        { customer: 'মো: রফিকুল ইসলাম', amount: '৳ ৪৫,৫০০', item: '১০মিলি রড — ২.৫ টন', time: '১৫ মি আগে', status: 'পরিশোধিত' },
-        { customer: 'আল-আমিন কনস্ট্রাকশন', amount: '৳ ১,২৩,০০০', item: 'শাহ সিমেন্ট — ৫০ বস্তা', time: '৩৫ মি আগে', status: 'আংশিক' },
-        { customer: 'হাসান বিল্ডার্স', amount: '৳ ৮৮,২০০', item: '১২মিলি রড — ৩ টন', time: '১ ঘ আগে', status: 'বাকি' },
-        { customer: 'মো: করিম', amount: '৳ ১৮,৭৫০', item: 'বসুন্ধরা সিমেন্ট — ২৫ বস্তা', time: '২ ঘ আগে', status: 'পরিশোধিত' },
-        { customer: 'নিউ সিটি ডেভেলপার', amount: '৳ ২,৮৫,০০০', item: 'মিশ্র পণ্য — বড় অর্ডার', time: '৩ ঘ আগে', status: 'আংশিক' },
-      ];
+      return [];
     }
 
     return orders.slice(0, 5).map(o => {
       const firstItemName = o.items && o.items.length > 0 ? fixMiliName(o.items[0].name) : 'পণ্য';
-      const extraItems = o.items && o.items.length > 1 ? ` (+${o.items.length - 1}টি)` : '';
+      const extraItems = o.items && o.items.length > 1 ? ` (+${toBnNum(o.items.length - 1)}টি)` : '';
       const itemDesc = `${firstItemName}${extraItems}`;
       
       const d = getDate(o.createdAt);
       const diffMins = Math.max(1, Math.round((new Date().getTime() - d.getTime()) / (1000 * 60)));
-      const timeStr = diffMins < 60 ? `${diffMins} মি আগে` : diffMins < 1440 ? `${Math.round(diffMins / 60)} ঘ আগে` : d.toLocaleDateString('bn-BD');
+      const timeStr = diffMins < 60 ? `${toBnNum(diffMins)} মি আগে` : diffMins < 1440 ? `${toBnNum(Math.round(diffMins / 60))} ঘ আগে` : d.toLocaleDateString('bn-BD');
 
       const due = o.dueAmount ?? ((o.totalAmount || 0) - (o.paidAmount || 0));
       const paid = o.paidAmount || 0;
@@ -275,7 +263,7 @@ export default function Dashboard() {
 
       return {
         customer: o.customerName || 'সম্মানিত কাস্টমার',
-        amount: `৳ ${(o.totalAmount || 0).toLocaleString()}`,
+        amount: formatBnCurrency(o.totalAmount || 0),
         item: itemDesc,
         time: timeStr,
         status
@@ -292,9 +280,9 @@ export default function Dashboard() {
           {/* CARD 1: CASH BALANCE (Smooth Curved Area Chart) */}
           <StatCard 
             title="নগদ ক্যাশ ব্যালেন্স" 
-            value={`৳ ${totalCashBalance.toLocaleString()}`} 
+            value={formatBnCurrency(totalCashBalance)} 
             icon={Wallet} 
-            trend="+১০% ক্যাশ" 
+            trend="ক্যাশ" 
             trendUp={true} 
             description="গাল্লা ক্যাশ ব্যালেন্স"
             bg="bg-gradient-to-br from-emerald-500 to-teal-500"
@@ -303,13 +291,13 @@ export default function Dashboard() {
             graphType="area"
             strokeColor="#10b981"
             gradId="cashGrad"
-            graphData={[{ v: 140 }, { v: 180 }, { v: 160 }, { v: 220 }, { v: 240 }, { v: 285 }]}
+            graphData={weeklyData.map(d => ({ v: d.বিক্রয় }))}
           />
 
           {/* CARD 2: BANK BALANCE (Stepped Line Chart) */}
           <StatCard 
             title="ব্যাংক ব্যালেন্স" 
-            value={`৳ ${totalBankBalance.toLocaleString()}`} 
+            value={formatBnCurrency(totalBankBalance)} 
             icon={Landmark} 
             trend="ব্যাংক জমা" 
             trendUp={true} 
@@ -319,13 +307,13 @@ export default function Dashboard() {
             badgeBg="bg-blue-100 text-blue-700"
             graphType="step"
             strokeColor="#3b82f6"
-            graphData={[{ v: 180 }, { v: 240 }, { v: 220 }, { v: 310 }, { v: 290 }, { v: 350 }]}
+            graphData={weeklyData.map(d => ({ v: d.ক্রয় }))}
           />
 
           {/* CARD 3: TOTAL DUES (Pillar Bar Histogram Chart) */}
           <StatCard 
             title="মোট বকেয়া পাওনা" 
-            value={`৳ ${totalDuesAmount.toLocaleString()}`} 
+            value={formatBnCurrency(totalDuesAmount)} 
             icon={Banknote} 
             trend="কাস্টমার পাওনা" 
             trendUp={false} 
@@ -335,15 +323,15 @@ export default function Dashboard() {
             badgeBg="bg-rose-100 text-rose-700"
             graphType="bar"
             strokeColor="#f43f5e"
-            graphData={[{ v: 45 }, { v: 75 }, { v: 50 }, { v: 90 }, { v: 60 }, { v: 85 }, { v: 70 }]}
+            graphData={weeklyData.map(d => ({ v: Math.max(0, d.বিক্রয় - d.ক্রয়) }))}
           />
 
           {/* CARD 4: MONTHLY SALES (Double Spline & Target Line Chart) */}
           <StatCard 
             title="চলতি মাসের বিক্রি" 
-            value={`৳ ${totalMonthlySalesVal.toLocaleString()}`} 
+            value={formatBnCurrency(totalMonthlySalesVal)} 
             icon={TrendingUp} 
-            trend="+২৩% বিক্রি" 
+            trend="বিক্রি" 
             trendUp={true} 
             description="চলতি মাসের সেলস"
             bg="bg-gradient-to-br from-orange-500 to-amber-500"
@@ -351,22 +339,22 @@ export default function Dashboard() {
             badgeBg="bg-orange-100 text-orange-700"
             graphType="double-line"
             strokeColor="#f97316"
-            graphData={[{ v: 30, t: 25 }, { v: 45, t: 35 }, { v: 40, t: 40 }, { v: 65, t: 50 }, { v: 60, t: 55 }, { v: 85, t: 70 }]}
+            graphData={weeklyData.map(d => ({ v: d.বিক্রয়, t: d.ক্রয় }))}
           />
 
           {/* CARD 5: STOCK ALERT (Segmented Pulse Warning Bar Chart) */}
           <StatCard 
             title="স্টক সতর্কতা" 
-            value={`${String(lowStockCount).padStart(2, '0')} পণ্য`} 
+            value={`${toBnNum(lowStockCount)}টি পণ্য`} 
             icon={AlertCircle} 
-            trend="জরুরি রিফিল" 
+            trend="রিফিল" 
             trendUp={false} 
             description="পুনরায় অর্ডার প্রয়োজন"
             bg="bg-gradient-to-br from-amber-400 to-orange-500"
             iconBg="bg-amber-100 text-amber-600"
             badgeBg="bg-amber-100 text-amber-700"
             graphType="segmented-bars"
-            graphData={[{ v: 10 }, { v: 8 }, { v: 5 }, { v: 12 }, { v: 4 }, { v: 9 }, { v: 6 }]}
+            graphData={products.length > 0 ? products.slice(0, 7).map(p => ({ v: p.stock })) : [{ v: 0 }]}
           />
         </div>
 
@@ -451,7 +439,7 @@ export default function Dashboard() {
                   </defs>
                   <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} className="font-bold" dy={10} />
-                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `৳${(v / 1000).toFixed(0)}k`} dx={-8} />
+                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `৳${toBnNum((v / 1000).toFixed(0))}কে`} dx={-8} />
                   <Tooltip contentStyle={{ borderRadius: '14px', border: 'none', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.15)', fontSize: '12px', fontWeight: 700, padding: '10px 16px' }} itemStyle={{ color: '#1e293b' }} />
                   <Area type="monotone" dataKey="বিক্রয়" stroke="#f97316" strokeWidth={3} fillOpacity={1} fill="url(#gSales)" dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff', fill: '#f97316' }} />
                   <Area type="monotone" dataKey="ক্রয়" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#gPurchase)" dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff', fill: '#6366f1' }} />
@@ -477,22 +465,28 @@ export default function Dashboard() {
               </Link>
             </div>
             <div className="p-5 flex-1 space-y-3.5 overflow-y-auto max-h-[320px]">
-              {stockBreakdown.map((item, i) => (
-                <div key={i} className="space-y-1.5">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-bold text-slate-700">{item.name}</span>
-                    <span className={cn('font-black text-[11px] px-2 py-0.5 rounded-md border', item.badge)}>
-                      {item.stock}
-                    </span>
+              {stockBreakdown.length > 0 ? (
+                stockBreakdown.map((item, i) => (
+                  <div key={i} className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-700">{item.name}</span>
+                      <span className={cn('font-black text-[11px] px-2 py-0.5 rounded-md border', item.badge)}>
+                        {item.stock}
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div 
+                        className={cn('h-full rounded-full transition-all duration-500', item.color)} 
+                        style={{ width: `${item.percent}%` }} 
+                      />
+                    </div>
                   </div>
-                  <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div 
-                      className={cn('h-full rounded-full transition-all duration-500', item.color)} 
-                      style={{ width: `${item.percent}%` }} 
-                    />
-                  </div>
+                ))
+              ) : (
+                <div className="py-8 text-center text-xs text-slate-400 font-medium">
+                  কোন পণ্য যুক্ত করা হয়নি। ইনভেন্টরি পেজ থেকে পণ্য যুক্ত করুন।
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>
@@ -513,33 +507,39 @@ export default function Dashboard() {
               </Link>
             </div>
             <div className="divide-y divide-slate-100">
-              {recentSalesList.map((sale, i) => (
-                <div key={i} className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50/80 transition-colors group font-bengali">
-                  <div className={cn(
-                    "w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 text-white shadow-md transition-transform group-hover:scale-105",
-                    i === 0 ? 'bg-orange-500 shadow-orange-200' :
-                    i === 1 ? 'bg-indigo-600 shadow-indigo-200' :
-                    i === 2 ? 'bg-rose-500 shadow-rose-200' :
-                    i === 3 ? 'bg-emerald-500 shadow-emerald-200' :
-                    'bg-blue-600 shadow-blue-200'
-                  )}>
-                    <User className="w-4 h-4" />
+              {recentSalesList.length > 0 ? (
+                recentSalesList.map((sale, i) => (
+                  <div key={i} className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50/80 transition-colors group font-bengali">
+                    <div className={cn(
+                      "w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 text-white shadow-md transition-transform group-hover:scale-105",
+                      i === 0 ? 'bg-orange-500 shadow-orange-200' :
+                      i === 1 ? 'bg-indigo-600 shadow-indigo-200' :
+                      i === 2 ? 'bg-rose-500 shadow-rose-200' :
+                      i === 3 ? 'bg-emerald-500 shadow-emerald-200' :
+                      'bg-blue-600 shadow-blue-200'
+                    )}>
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-800 truncate">{sale.customer}</p>
+                      <p className="text-[11px] text-slate-500 font-semibold truncate mt-0.5">{sale.item} · {sale.time}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-base font-black text-slate-800">{sale.amount}</p>
+                      <span className={cn(
+                        "inline-flex text-[10px] font-black px-2.5 py-0.5 rounded-full mt-1",
+                        sale.status === 'পরিশোধিত' ? 'bg-emerald-100 text-emerald-700' :
+                        sale.status === 'আংশিক' ? 'bg-amber-100 text-amber-700' :
+                        'bg-rose-100 text-rose-700'
+                      )}>{sale.status}</span>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-800 truncate">{sale.customer}</p>
-                    <p className="text-[11px] text-slate-500 font-semibold truncate mt-0.5">{sale.item} · {sale.time}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-base font-black text-slate-800">{sale.amount}</p>
-                    <span className={cn(
-                      "inline-flex text-[10px] font-black px-2.5 py-0.5 rounded-full mt-1",
-                      sale.status === 'পরিশোধিত' ? 'bg-emerald-100 text-emerald-700' :
-                      sale.status === 'আংশিক' ? 'bg-amber-100 text-amber-700' :
-                      'bg-rose-100 text-rose-700'
-                    )}>{sale.status}</span>
-                  </div>
+                ))
+              ) : (
+                <div className="py-12 text-center text-xs text-slate-400 font-medium">
+                  কোন সাম্প্রতিক বিক্রয় ট্রানজ্যাকশন নেই।
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
@@ -558,7 +558,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <ArrowUpRight className="w-3 h-3" /> +{profitMarginPercent}%
+                  <ArrowUpRight className="w-3 h-3" /> +{toBnNum(profitMarginPercent)}%
                 </span>
               </div>
 
@@ -585,9 +585,9 @@ export default function Dashboard() {
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
                     <span className="text-[10px] font-bold text-slate-400">নিট লাভ</span>
-                    <span className="text-sm font-black text-slate-800 mt-0.5">৳{netProfitVal.toLocaleString()}</span>
+                    <span className="text-sm font-black text-slate-800 mt-0.5">{formatBnCurrency(netProfitVal)}</span>
                     <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md mt-0.5 border border-emerald-100">
-                      {profitMarginPercent}% মার্জিন
+                      {toBnNum(profitMarginPercent)}% মার্জিন
                     </span>
                   </div>
                 </div>
@@ -599,7 +599,7 @@ export default function Dashboard() {
                       <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
                       <span className="text-xs font-bold text-slate-700">মোট বিক্রয়</span>
                     </div>
-                    <span className="text-xs font-black text-orange-700">৳ {totalMonthlySalesVal.toLocaleString()}</span>
+                    <span className="text-xs font-black text-orange-700">{formatBnCurrency(totalMonthlySalesVal)}</span>
                   </div>
 
                   <div className="flex items-center justify-between p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-100">
@@ -607,7 +607,7 @@ export default function Dashboard() {
                       <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
                       <span className="text-xs font-bold text-slate-700">মোট ক্রয়</span>
                     </div>
-                    <span className="text-xs font-black text-indigo-700">৳ {totalMonthlyPurchasesVal.toLocaleString()}</span>
+                    <span className="text-xs font-black text-indigo-700">{formatBnCurrency(totalMonthlyPurchasesVal)}</span>
                   </div>
 
                   <div className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100">
@@ -615,7 +615,7 @@ export default function Dashboard() {
                       <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                       <span className="text-xs font-bold text-slate-700">নিট লাভ</span>
                     </div>
-                    <span className="text-xs font-black text-emerald-700">৳ {netProfitVal.toLocaleString()}</span>
+                    <span className="text-xs font-black text-emerald-700">{formatBnCurrency(netProfitVal)}</span>
                   </div>
                 </div>
               </div>
@@ -633,15 +633,21 @@ export default function Dashboard() {
                 <span className="text-[10px] font-black text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-full">জরুরি</span>
               </div>
               <div className="p-4 space-y-2">
-                {lowStockAlertList.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-rose-50/60 hover:bg-rose-50 transition-colors rounded-xl border border-rose-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-rose-500" />
-                      <p className="text-sm font-bold text-slate-800">{item.name}</p>
+                {lowStockAlertList.length > 0 ? (
+                  lowStockAlertList.map((item, i) => (
+                    <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-rose-50/60 hover:bg-rose-50 transition-colors rounded-xl border border-rose-100">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-rose-500" />
+                        <p className="text-sm font-bold text-slate-800">{item.name}</p>
+                      </div>
+                      <span className="text-[11px] text-rose-600 font-black bg-white px-2.5 py-1 rounded-lg shadow-xs border border-rose-200">{item.stock}</span>
                     </div>
-                    <span className="text-[11px] text-rose-600 font-black bg-white px-2.5 py-1 rounded-lg shadow-xs border border-rose-200">{item.stock}</span>
+                  ))
+                ) : (
+                  <div className="py-4 text-center text-xs text-emerald-600 font-bold bg-emerald-50/60 rounded-xl border border-emerald-100">
+                    ✓ কোনো কম স্টক পণ্য নেই! সব পর্যাপ্ত।
                   </div>
-                ))}
+                )}
                 <Link href="/inventory" className="flex items-center justify-center gap-1 text-xs text-indigo-600 font-black hover:text-indigo-800 pt-1.5 transition-colors">
                   সব পণ্য দেখুন <ArrowRight className="w-3 h-3" />
                 </Link>

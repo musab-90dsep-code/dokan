@@ -2,6 +2,7 @@
 
 import { ReactNode, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { api, TransactionData } from '@/lib/api';
 import { Button } from './ui/button';
@@ -12,6 +13,23 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { bn } from 'date-fns/locale';
+
+export const toBnDigits = (val: string | number | undefined | null): string => {
+  if (val === undefined || val === null || val === '') return '';
+  return String(val).replace(/[0-9]/g, (d) => '০১২৩৪৫৬৭৮৯'[parseInt(d, 10)]);
+};
+
+export const formatBnDate = (dateVal: any, pattern: string = 'dd MMMM yyyy') => {
+  if (!dateVal) return '—';
+  try {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return String(dateVal);
+    const raw = format(d, pattern, { locale: bn });
+    return toBnDigits(raw);
+  } catch {
+    return '—';
+  }
+};
 
 export interface ChequeItem {
   id: string;
@@ -42,6 +60,7 @@ export interface PendingOrderItem {
 }
 
 export function Shell({ children }: { children: ReactNode }) {
+  const router = useRouter();
   // Admin user context
   const [user, setUser] = useState<{ displayName: string; email: string; photoURL?: string } | null>({
     displayName: 'এডমিন ইউজার',
@@ -61,16 +80,23 @@ export function Shell({ children }: { children: ReactNode }) {
       const txs = await api.transactions.list();
       const safeTxs = Array.isArray(txs) ? txs : [];
       const chequeItems: ChequeItem[] = safeTxs
-        .filter(t => t.payment_method === 'cheque' || t.cheque_number)
+        .filter(t => 
+          t.payment_method === 'cheque' || 
+          t.payment_method === 'check' || 
+          t.payment_method === 'split' || 
+          !!t.cheque_number || 
+          !!t.cheque_bank
+        )
+        .filter(t => t.cheque_status !== 'cleared' && t.cheque_status !== 'bounced')
         .map(t => ({
           id: String(t.id || t.invoice_no),
           invoiceId: t.invoice_no,
           customerName: t.party_name || 'অজ্ঞাত গ্রাহক',
           customerPhone: t.party_phone || '',
           bankName: t.cheque_bank || 'ব্যাংক',
-          chequeNo: t.cheque_number || '-',
-          chequeDate: t.cheque_due_date || '',
-          amount: t.total_amount || 0,
+          chequeNo: t.cheque_number || `CHQ-${t.id}`,
+          chequeDate: t.cheque_due_date || (t.created_at ? format(new Date(t.created_at), 'dd/MM/yyyy') : ''),
+          amount: t.paid_amount || t.total_amount || 0,
           status: t.cheque_status || 'pending',
           createdAt: t.created_at
         }));
@@ -78,7 +104,6 @@ export function Shell({ children }: { children: ReactNode }) {
 
       const orderItems: PendingOrderItem[] = safeTxs
         .filter(t => t.transaction_type === 'sale')
-        .slice(0, 10)
         .map(t => ({
           id: String(t.id || t.invoice_no),
           customerName: t.party_name || 'গ্রাহক',
@@ -86,8 +111,8 @@ export function Shell({ children }: { children: ReactNode }) {
           totalAmount: t.total_amount,
           items: t.items || [],
           createdAt: t.created_at,
-          invoiced: t.status === 'completed',
-          stage: t.status
+          invoiced: t.status === 'completed' || t.status === 'invoiced',
+          stage: t.status || 'pending'
         }));
       setOrders(orderItems);
     } catch (e) {
@@ -96,54 +121,32 @@ export function Shell({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    let ignore = false;
-    async function init() {
-      try {
-        const txs = await api.transactions.list();
-        if (ignore) return;
-        const safeTxs = Array.isArray(txs) ? txs : [];
-        const chequeItems: ChequeItem[] = safeTxs
-          .filter(t => t.payment_method === 'cheque' || t.cheque_number)
-          .map(t => ({
-            id: String(t.id || t.invoice_no),
-            invoiceId: t.invoice_no,
-            customerName: t.party_name || 'অজ্ঞাত গ্রাহক',
-            customerPhone: t.party_phone || '',
-            bankName: t.cheque_bank || 'ব্যাংক',
-            chequeNo: t.cheque_number || '-',
-            chequeDate: t.cheque_due_date || '',
-            amount: t.total_amount || 0,
-            status: t.cheque_status || 'pending',
-            createdAt: t.created_at
-          }));
-        setCheques(chequeItems);
+    loadChequesAndOrders();
 
-        const orderItems: PendingOrderItem[] = safeTxs
-          .filter(t => t.transaction_type === 'sale')
-          .slice(0, 10)
-          .map(t => ({
-            id: String(t.id || t.invoice_no),
-            customerName: t.party_name || 'গ্রাহক',
-            customerPhone: t.party_phone || '',
-            totalAmount: t.total_amount,
-            items: t.items || [],
-            createdAt: t.created_at,
-            invoiced: t.status === 'completed',
-            stage: t.status
-          }));
-        setOrders(orderItems);
-      } catch (e) {
-        console.error('Error loading Shell data:', e);
-      }
+    const handleReload = () => {
+      loadChequesAndOrders();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('orderUpdated', handleReload);
+      window.addEventListener('focus', handleReload);
     }
-    init();
-    return () => { ignore = true; };
+
+    const interval = setInterval(loadChequesAndOrders, 5000);
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('orderUpdated', handleReload);
+        window.removeEventListener('focus', handleReload);
+      }
+      clearInterval(interval);
+    };
   }, []);
 
   const pendingCheques = cheques.filter(c => c.status === 'pending');
   const pendingTotalAmount = pendingCheques.reduce((sum, c) => sum + (c.amount || 0), 0);
 
-  const pendingOrders = orders.filter(o => !o.invoiced && o.stage !== 'approved');
+  const pendingOrders = orders.filter(o => !o.invoiced && o.stage !== 'completed' && o.stage !== 'invoiced');
   const pendingOrdersTotal = pendingOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
 
   const handleClearCheque = async (cheque: ChequeItem) => {
@@ -192,6 +195,20 @@ export function Shell({ children }: { children: ReactNode }) {
 
           {/* Right: Quick Triggers & User Profile */}
           <div className="flex items-center gap-2 md:gap-3">
+            {/* Pending Orders Drawer Trigger */}
+            <button
+              onClick={() => setShowOrdersDrawer(!showOrdersDrawer)}
+              className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all flex items-center gap-1.5"
+              title="চালান অপেক্ষমাণ অর্ডারসমূহ"
+            >
+              <ShoppingCart className="h-5 w-5 text-orange-600" />
+              {pendingOrders.length > 0 && (
+                <span className="flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-orange-600 text-white rounded-full min-w-[18px] shadow-xs">
+                  {toBnDigits(pendingOrders.length)}
+                </span>
+              )}
+            </button>
+
             {/* Cheque Drawer Trigger */}
             <button
               onClick={() => setShowChequeDrawer(!showChequeDrawer)}
@@ -201,7 +218,7 @@ export function Shell({ children }: { children: ReactNode }) {
               <Landmark className="h-5 w-5 text-indigo-600" />
               {pendingCheques.length > 0 && (
                 <span className="flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-indigo-600 text-white rounded-full min-w-[18px]">
-                  {pendingCheques.length}
+                  {toBnDigits(pendingCheques.length)}
                 </span>
               )}
             </button>
@@ -281,6 +298,102 @@ export function Shell({ children }: { children: ReactNode }) {
                         >
                           <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> ক্যাশ করুন
                         </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Pending Orders Management Drawer */}
+      <AnimatePresence>
+        {showOrdersDrawer && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowOrdersDrawer(false)}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs"
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-slate-900 border-l border-slate-800 p-6 overflow-y-auto shadow-2xl flex flex-col font-bengali"
+            >
+              <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <ShoppingCart className="h-5 w-5 text-orange-500" />
+                  <h3 className="text-lg font-bold text-white">চালান অপেক্ষমাণ অর্ডারসমূহ</h3>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setShowOrdersDrawer(false)} className="text-slate-400 hover:text-white">
+                  বন্ধ করুন
+                </Button>
+              </div>
+
+              <div className="mt-4 p-3.5 bg-orange-950/40 border border-orange-800/40 rounded-2xl flex justify-between items-center">
+                <div>
+                  <p className="text-xs text-orange-300 font-semibold">অপেক্ষমাণ অর্ডারের সংখ্যা</p>
+                  <p className="text-xl font-black text-orange-400 mt-0.5">{toBnDigits(pendingOrders.length)} টি অর্ডার</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-orange-300 font-semibold">মোট বকেয়া বিল</p>
+                  <p className="text-xl font-black text-orange-400 mt-0.5">৳ {pendingOrdersTotal.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex-1 space-y-3">
+                {pendingOrders.length === 0 ? (
+                  <div className="text-center text-slate-500 py-16 space-y-2">
+                    <CheckCircle2 className="w-12 h-12 text-emerald-500/40 mx-auto" />
+                    <p className="font-bold text-slate-400 text-base">সব অর্ডারের চালান সম্পন্ন হয়েছে!</p>
+                    <p className="text-xs text-slate-600">বর্তমানে কোনো অপেক্ষমাণ অর্ডার নেই</p>
+                  </div>
+                ) : (
+                  pendingOrders.map(order => (
+                    <div
+                      key={order.id}
+                      onClick={() => {
+                        setShowOrdersDrawer(false);
+                        router.push(`/orders?id=${order.id}`);
+                      }}
+                      className="p-4 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/70 hover:border-orange-500/50 rounded-2xl space-y-2.5 transition-all cursor-pointer group"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20">
+                              #{toBnDigits(order.id.slice(0, 8).toUpperCase())}
+                            </span>
+                            <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                              চালান বাকি
+                            </span>
+                          </div>
+                          <p className="font-bold text-slate-100 text-base mt-1 group-hover:text-orange-400 transition-colors">
+                            {order.customerName}
+                          </p>
+                          {order.customerPhone && (
+                            <p className="text-xs text-slate-400 font-semibold">{toBnDigits(order.customerPhone)}</p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <span className="text-base font-black text-emerald-400 block">
+                            ৳ {order.totalAmount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
+                          </span>
+                          <span className="text-[11px] text-slate-400 mt-1 block">
+                            {formatBnDate(order.createdAt)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-700/50 text-xs text-orange-400 font-bold group-hover:translate-x-0.5 transition-transform">
+                        <span>বিবরণী ও চালান তৈরি করুন</span>
+                        <ArrowRight className="w-4 h-4" />
                       </div>
                     </div>
                   ))

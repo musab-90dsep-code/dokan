@@ -50,8 +50,8 @@ const menuStructure: MenuItem[] = [
     icon: Truck,
     href: '/purchases',
     children: [
-      { name: 'কোম্পানি', href: '/suppliers', icon: Building2 },
-      { name: 'ক্রয় অর্ডার', href: '/purchases', icon: Truck },
+      { name: 'সাপ্লায়ার', href: '/suppliers', icon: Building2 },
+      { name: 'ক্রয় ইনভয়েস', href: '/purchases', icon: Truck },
     ],
   },
   {

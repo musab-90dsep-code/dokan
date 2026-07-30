@@ -21,6 +21,11 @@ interface Order {
   paymentStatus: string; createdAt: any;
 }
 
+const toBnDigits = (val: string | number | undefined | null): string => {
+  if (val === undefined || val === null || val === '') return '';
+  return String(val).replace(/[0-9]/g, (d) => '০১২৩৪৫৬৭৮৯'[parseInt(d, 10)]);
+};
+
 export default function CustomerDuesPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -47,9 +52,9 @@ export default function CustomerDuesPage() {
           id: String(t.id || t.invoice_no),
           customerName: t.party_name || 'গ্রাহক',
           customerId: String(t.party || ''),
-          totalAmount: t.total_amount,
-          paidAmount: t.paid_amount,
-          dueAmount: t.due_amount,
+          totalAmount: Number(t.total_amount || 0),
+          paidAmount: Number(t.paid_amount || 0),
+          dueAmount: Number(t.due_amount || 0),
           paymentStatus: t.status || 'completed',
           createdAt: t.created_at
         })));
@@ -115,17 +120,17 @@ export default function CustomerDuesPage() {
                       <h3 className="font-bold text-slate-900 text-lg font-bengali">{c.name}</h3>
                       {c.businessName && <p className="text-xs text-slate-500 font-bengali">{c.businessName}</p>}
                       <p className="text-xs text-slate-400 font-bengali flex items-center gap-1 mt-1">
-                        <Phone className="w-3.5 h-3.5" /> {c.phone}
+                        <Phone className="w-3.5 h-3.5" /> {toBnDigits(c.phone)}
                       </p>
                     </div>
                     <div className="text-right">
                       <span className="text-xs text-rose-600 font-bengali font-bold block">বকেয়া</span>
-                      <span className="text-xl font-black text-rose-600 font-bengali">৳ {c.totalDue.toLocaleString('bn-BD')}</span>
+                      <span className="text-xl font-black text-rose-600 font-bengali">৳ {c.totalDue.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
                     </div>
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                    <span className="text-xs text-slate-500 font-bengali">{c.invoiceCount} টি বিক্রি ইনভয়েস</span>
+                    <span className="text-xs text-slate-500 font-bengali">{toBnDigits(c.invoiceCount)} টি বিক্রি ইনভয়েস</span>
                     <Link href={`/customers/${c.id}`} className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 font-bengali">
                       লেজার দেখুন <ChevronRight className="w-3.5 h-3.5" />
                     </Link>

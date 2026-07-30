@@ -34,6 +34,11 @@ import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+export const toBnDigits = (val: string | number | undefined | null): string => {
+  if (val === undefined || val === null || val === '') return '';
+  return String(val).replace(/[0-9]/g, (d) => '০১২৩৪৫৬৭৮৯'[parseInt(d, 10)]);
+};
+
 export interface Party {
   id: string;
   name: string;
@@ -290,9 +295,12 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const finalName = formData.name.trim() || formData.businessName.trim();
-    if (!finalName) {
+    if (!formData.name.trim()) {
       toast.error(isCustomer ? 'গ্রাহকের নাম পূরণ করুন' : 'কোম্পানি বা প্রতিনিধির নাম পূরণ করুন');
+      return;
+    }
+    if (!formData.businessName.trim()) {
+      toast.error('ব্যবসা / প্রতিষ্ঠানের নাম পূরণ করুন');
       return;
     }
     if (!formData.phone.trim()) {
@@ -302,8 +310,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
     const payload: PartyData = {
       party_type: type,
-      name: finalName,
-      business_name: formData.businessName,
+      name: formData.name.trim(),
+      business_name: formData.businessName.trim(),
       customer_type: formData.customerType,
       supply_type: formData.customerType,
       phone: formData.phone,
@@ -434,7 +442,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                 <p className="text-[11px] uppercase tracking-widest font-black text-slate-500 opacity-80">
                   {isCustomer ? 'মোট নিবন্ধিত গ্রাহক' : 'মোট সরবরাহকারী'}
                 </p>
-                <p className="text-2xl font-black text-indigo-700 mt-0.5">{parties.length} জন</p>
+                <p className="text-2xl font-black text-indigo-700 mt-0.5">{toBnDigits(parties.length)} জন</p>
               </div>
             </CardContent>
           </Card>
@@ -449,7 +457,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                   {isCustomer ? 'পাইকারি গ্রাহক' : 'রড সরবরাহকারী'}
                 </p>
                 <p className="text-2xl font-black text-amber-700 mt-0.5">
-                  {parties.filter((p) => (isCustomer ? p.customerType === 'পাইকারি গ্রাহক' : p.customerType === 'রড')).length} জন
+                  {toBnDigits(parties.filter((p) => (isCustomer ? p.customerType === 'পাইকারি গ্রাহক' : p.customerType === 'রড')).length)} জন
                 </p>
               </div>
             </CardContent>
@@ -464,7 +472,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                 <p className="text-[11px] uppercase tracking-widest font-black text-slate-500 opacity-80">
                   {isCustomer ? 'মোট গ্রাহক বকেয়া' : 'কোম্পানির মোট বকেয়া'}
                 </p>
-                <p className="text-2xl font-black text-rose-700 mt-0.5">৳ {totalDue.toLocaleString()}</p>
+                <p className="text-2xl font-black text-rose-700 mt-0.5">৳ {totalDue.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</p>
               </div>
             </CardContent>
           </Card>
@@ -601,7 +609,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         <TableCell>
                           <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 bg-slate-100 w-fit px-2.5 py-1 rounded-md">
                             <Phone className="w-3.5 h-3.5 text-slate-400" />
-                            {p.phone}
+                            {toBnDigits(p.phone)}
                           </span>
                         </TableCell>
                         <TableCell className="text-center">
@@ -631,7 +639,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                               (p.totalDue || 0) > 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'
                             )}
                           >
-                            ৳{(p.totalDue || 0).toLocaleString()}
+                            ৳{(p.totalDue || 0).toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
                           </span>
                         </TableCell>
                         <TableCell className="text-right py-4 px-6">
@@ -762,7 +770,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-bold text-slate-700">
                       <div className="space-y-1">
                         <Label className="text-xs font-bold text-slate-700">
-                          {isCustomer ? 'গ্রাহকের নাম' : 'কোম্পানি / ব্র্যান্ডের নাম'} <span className="text-rose-500">*</span>
+                          {isCustomer ? 'গ্রাহকের নাম' : 'কোম্পানি / প্রতিনিধির নাম'} <span className="text-rose-500">*</span>
                         </Label>
                         <Input
                           required
@@ -774,8 +782,11 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">ব্যবসা / প্রতিষ্ঠানের নাম</Label>
+                        <Label className="text-xs font-bold text-slate-700">
+                          ব্যবসা / প্রতিষ্ঠানের নাম <span className="text-rose-500">*</span>
+                        </Label>
                         <Input
+                          required
                           value={formData.businessName}
                           onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
                           placeholder="যেমন: আমিন বিল্ডার্স"
@@ -785,7 +796,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
                       <div className="space-y-1">
                         <Label className="text-xs font-bold text-slate-700">
-                          {isCustomer ? 'গ্রাহকের ধরন' : 'সরবরাহের ধরন / বিভাগ'} <span className="text-rose-500">*</span>
+                          {isCustomer ? 'গ্রাহকের ধরন (ঐচ্ছিক)' : 'সরবরাহের ধরন / বিভাগ (ঐচ্ছিক)'}
                         </Label>
                         <Select
                           value={formData.customerType}
@@ -845,7 +856,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">ইমেইল ঠিকানা</Label>
+                        <Label className="text-xs font-bold text-slate-700">ইমেইল ঠিকানা (ঐচ্ছিক)</Label>
                         <div className="relative">
                           <Mail className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
                           <Input
@@ -867,14 +878,14 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         ২
                       </span>
                       <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider">
-                        ঠিকানা তথ্য (Address Information)
+                        ঠিকানা তথ্য (Address Information - ঐচ্ছিক)
                       </h2>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-bold text-slate-700">
                       <div className="space-y-1">
                         <Label className="text-xs font-bold text-slate-700">
-                          দেশ <span className="text-rose-500">*</span>
+                          দেশ (ঐচ্ছিক)
                         </Label>
                         <Select
                           value={formData.country}
@@ -894,7 +905,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
                       <div className="space-y-1">
                         <Label className="text-xs font-bold text-slate-700">
-                          বিভাগ <span className="text-rose-500">*</span>
+                          বিভাগ (ঐচ্ছিক)
                         </Label>
                         <Select
                           value={formData.division}
@@ -920,7 +931,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
                       <div className="space-y-1">
                         <Label className="text-xs font-bold text-slate-700">
-                          জেলা <span className="text-rose-500">*</span>
+                          জেলা (ঐচ্ছিক)
                         </Label>
                         <Select
                           value={formData.district}
@@ -945,7 +956,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-bold text-slate-700 pt-1">
                       <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">থানা / এলাকা</Label>
+                        <Label className="text-xs font-bold text-slate-700">থানা / এলাকা (ঐচ্ছিক)</Label>
                         <Input
                           value={formData.thana}
                           onChange={(e) => setFormData({ ...formData, thana: e.target.value })}
@@ -956,10 +967,9 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
                       <div className="space-y-1">
                         <Label className="text-xs font-bold text-slate-700">
-                          প্রধান ঠিকানা <span className="text-rose-500">*</span>
+                          প্রধান ঠিকানা (ঐচ্ছিক)
                         </Label>
                         <Input
-                          required
                           value={formData.address}
                           onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                           placeholder="যেমন: ৩১৮ দক্ষিণ যাত্রাবাড়ী, ঢাকা"

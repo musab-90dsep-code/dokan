@@ -466,6 +466,14 @@ function InvoicesContent() {
         : 0;
 
       const effectivePaymentMethod = (cashPaidAmount > 0 && chequePaidAmount > 0) ? 'split' : invoicePaymentMethod.toLowerCase();
+      const hasCheque = effectivePaymentMethod === 'cheque' || effectivePaymentMethod === 'check' || effectivePaymentMethod === 'split' || chequePaidAmount > 0 || !!chequeNo;
+
+      const chequePayload = hasCheque ? {
+        cheque_number: chequeNo || `CHQ-${Math.floor(100000 + Math.random() * 900000)}`,
+        cheque_bank: bankName || senderBankName || 'ব্যাংক',
+        cheque_due_date: chequeDate || undefined,
+        cheque_status: 'pending' as const
+      } : {};
 
       if (editingInvoiceId) {
         await api.transactions.update(editingInvoiceId, {
@@ -474,6 +482,7 @@ function InvoicesContent() {
           paid_amount: finalPaidAmount,
           due_amount: cartDueAmount,
           payment_method: effectivePaymentMethod,
+          ...chequePayload,
           items: cart.map(i => ({
             product_name: i.name,
             quantity: i.quantity,
@@ -492,6 +501,7 @@ function InvoicesContent() {
           paid_amount: finalPaidAmount,
           due_amount: cartDueAmount,
           payment_method: effectivePaymentMethod,
+          ...chequePayload,
           items: cart.map(i => ({
             product_name: i.name,
             quantity: i.quantity,
@@ -502,6 +512,10 @@ function InvoicesContent() {
           notes: invoiceNote
         });
         toast.success(convertedOrderId ? 'বিক্রয় অর্ডার চালানে রূপান্তর করা হয়েছে!' : 'বিক্রয় চালান সফলভাবে সম্পন্ন হয়েছে!');
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('orderUpdated'));
       }
 
       resetCreateForm();

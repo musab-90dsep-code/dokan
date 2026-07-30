@@ -5,11 +5,24 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function toBnNum(val: number | string | undefined | null): string {
+  if (val === undefined || val === null || val === '') return '০';
+  if (typeof val === 'number') {
+    return val.toLocaleString('bn-BD');
+  }
+  return String(val).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[parseInt(d, 10)]);
+}
+
+export function formatBnCurrency(amount: number | string): string {
+  const num = Number(amount) || 0;
+  return `৳ ${num.toLocaleString('bn-BD')}`;
+}
+
 export function formatDualStock(stock: number, unit: string, category?: string) {
   const isWeightBased = category === 'রড' || unit === 'কেজি' || unit === 'টন';
 
   if (!isWeightBased) {
-    return { main: `${stock} ${unit}`, sub: null };
+    return { main: `${toBnNum(stock)} ${unit}`, sub: null };
   }
 
   let totalKg = 0;
@@ -26,8 +39,8 @@ export function formatDualStock(stock: number, unit: string, category?: string) 
   const tonsFormatted = Number.isInteger(totalTons) ? totalTons.toString() : totalTons.toFixed(3).replace(/\.?0+$/, '');
 
   return {
-    main: `${tonsFormatted} টন`,
-    sub: `(${totalKg.toLocaleString()} কেজি)`,
+    main: `${toBnNum(tonsFormatted)} টন`,
+    sub: `(${toBnNum(totalKg)} কেজি)`,
     totalKg,
     totalTons
   };

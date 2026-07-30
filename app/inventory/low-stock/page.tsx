@@ -5,7 +5,7 @@ import { AlertTriangle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api, ProductData } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import { cn, toBnNum } from '@/lib/utils';
 import Link from 'next/link';
 
 interface Product { id: string; name: string; category: string; stock: number; unit: string; alertThreshold: number; sellPrice: number; }
@@ -64,7 +64,7 @@ export default function LowStockPage() {
                   </span>
                 </div>
                 <div className="text-right">
-                  <p className="text-3xl font-black text-rose-600 font-bengali">{p.stock}</p>
+                  <p className="text-3xl font-black text-rose-600 font-bengali">{toBnNum(p.stock)}</p>
                   <p className="text-xs text-slate-500 font-bengali">একক: {p.unit}</p>
                 </div>
               </div>

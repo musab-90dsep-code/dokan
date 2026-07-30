@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
-import { cn, formatDualStock } from '@/lib/utils';
+import { cn, formatDualStock, toBnNum, formatBnCurrency } from '@/lib/utils';
 
 interface Product {
   id: string;
@@ -373,10 +373,10 @@ export default function InventoryPage() {
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'মোট পণ্য', value: `${products.length} ধরন`, color: 'text-slate-800' },
-            { label: 'স্টক সতর্কতা', value: `${alertItems.length} পণ্য`, color: 'text-rose-600' },
-            { label: 'স্টক মূল্য', value: `৳ ${(totalStockValue / 1000).toFixed(0)}K`, color: 'text-orange-600' },
-            { label: 'আজ আপডেট', value: `${products.length} পণ্য`, color: 'text-green-600' },
+            { label: 'মোট পণ্য', value: `${toBnNum(products.length)} ধরনের`, color: 'text-slate-800' },
+            { label: 'স্টক সতর্কতা', value: `${toBnNum(alertItems.length)}টি পণ্য`, color: 'text-rose-600' },
+            { label: 'স্টক মূল্য', value: formatBnCurrency(totalStockValue), color: 'text-orange-600' },
+            { label: 'আজ আপডেট', value: `${toBnNum(products.length)}টি পণ্য`, color: 'text-green-600' },
           ].map((s, i) => (
             <Card key={i} className="bg-white border-slate-200 shadow-sm rounded-lg">
               <CardContent className="p-4">
@@ -436,8 +436,8 @@ export default function InventoryPage() {
                           {product.category}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right font-bengali text-slate-500 text-sm">৳{product.buyPrice.toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-bengali font-bold text-slate-800 text-sm">৳{product.sellPrice.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-bengali text-slate-500 text-sm">{formatBnCurrency(product.buyPrice)}</TableCell>
+                      <TableCell className="text-right font-bengali font-bold text-slate-800 text-sm">{formatBnCurrency(product.sellPrice)}</TableCell>
                       <TableCell className="text-center font-bengali">
                         {(() => {
                           const stockInfo = formatDualStock(product.stock, product.unit, product.category);

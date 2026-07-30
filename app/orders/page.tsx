@@ -173,7 +173,8 @@ export default function OrdersPage() {
         totalAmount: s.total_amount,
         paidAmount: s.paid_amount,
         dueAmount: s.due_amount,
-        stage: 'approved',
+        stage: s.status === 'completed' ? 'approved' : 'pending',
+        invoiced: s.status === 'completed',
         paymentStatus: s.due_amount <= 0 ? 'paid' : 'unpaid',
         items: (s.items || []).map(i => ({
           id: String(i.id || Math.random()),
@@ -218,9 +219,31 @@ export default function OrdersPage() {
     }
   };
 
+  const toBnDigits = (val: string | number | undefined | null): string => {
+    if (val === undefined || val === null || val === '') return '';
+    return String(val).replace(/[0-9]/g, (d) => '০১২৩৪৫৬৭৮৯'[parseInt(d, 10)]);
+  };
+
   useEffect(() => {
     loadOrdersData();
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const action = params.get('action');
+      if (action === 'create') {
+        setIsCreateOrderOpen(true);
+      }
+      const targetId = params.get('id') || params.get('view');
+      if (targetId && orders.length > 0) {
+        const match = orders.find(o => String(o.id) === String(targetId) || o.orderId === targetId);
+        if (match) {
+          setSelectedOrder(match);
+        }
+      }
+    }
+  }, [orders]);
 
   const toggleMenu = (e: React.MouseEvent<HTMLButtonElement>, orderId: string) => {
     e.stopPropagation();
@@ -399,6 +422,7 @@ export default function OrdersPage() {
       await api.transactions.create({
         party: finalCustId ? Number(finalCustId) : null,
         transaction_type: 'sale',
+        status: 'pending',
         total_amount: cartGrandTotal,
         paid_amount: advancePaid,
         due_amount: cartDueAmount,
@@ -412,6 +436,10 @@ export default function OrdersPage() {
         })),
         notes: orderNote
       });
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('orderUpdated'));
+      }
 
       toast.success('নতুন রড ও সিমেন্ট বিক্রয় অর্ডার সফলভাবে সংরক্ষিত হয়েছে!');
       resetCreateForm();
@@ -430,10 +458,15 @@ export default function OrdersPage() {
 
     try {
       await api.transactions.update(orderToInvoice.id, {
+        status: 'completed',
         paid_amount: invoicePaid,
         due_amount: Math.max(0, orderToInvoice.totalAmount - invoicePaid),
         payment_method: invoiceMethod.toLowerCase()
       });
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('orderUpdated'));
+      }
 
       toast.success('চালান সফলভাবে সম্পন্ন হয়েছে! স্টক ও হিসাব আপডেট করা হয়েছে।');
       setIsInvoiceModalOpen(false);
