@@ -1,0 +1,1422 @@
+'use client';
+
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Shell } from '@/components/Shell';
+import { api } from '@/lib/api';
+import {
+  Plus, Search, Filter, Trash2, ArrowUpRight, ArrowDownRight, Wallet,
+  TrendingUp, TrendingDown, RefreshCcw, Landmark, CreditCard, ArrowLeftRight,
+  Receipt, Calendar, DollarSign, AlertCircle, CheckCircle2, Printer, UploadCloud, X,
+  Building2, User, Phone, ShieldCheck, FileText, Check, ArrowLeft, Eye, Edit2,
+  FileSpreadsheet, FileDown, Clock, PieChart, ChevronLeft, ChevronRight, Lightbulb
+} from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { toast } from 'sonner';
+import { format, isToday, isSameMonth } from 'date-fns';
+import { bn } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
+
+interface Transaction {
+  id: string;
+  type: 'income' | 'expense' | 'contra';
+  amount: number;
+  category: string;
+  description: string;
+  accountType?: 'cash' | 'bank';
+  bankId?: string;
+  paymentId?: string;
+  partyName?: string;
+  partyPhone?: string;
+  invoiceNo?: string;
+  referenceNo?: string;
+  paymentMethod?: 'Cash' | 'Bank' | 'Check';
+  bankAccountName?: string;
+  transactionType?: string;
+  transactionRef?: string;
+  discountAmount?: number;
+  receiverName?: string;
+  status?: 'Completed' | 'Pending' | 'Bounced' | 'Recorded';
+  createdAt: any;
+}
+
+interface Bank {
+  id: string;
+  name: string;
+  accNo: string;
+  balance: number;
+}
+
+interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  businessName?: string;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+  phone: string;
+  businessName?: string;
+}
+
+interface OrderInvoice {
+  id: string;
+  orderId?: string;
+  purchaseId?: string;
+  customerName?: string;
+  supplierName?: string;
+  customerPhone?: string;
+  supplierPhone?: string;
+  totalAmount?: number;
+  totalPrice?: number;
+  paidAmount?: number;
+  dueAmount?: number;
+  paymentStatus?: string;
+  createdAt: any;
+}
+
+function TransactionsContent() {
+  const searchParams = useSearchParams();
+  const partyParam = searchParams ? searchParams.get('party') : null;
+  const filterParam = searchParams ? searchParams.get('filter') : null;
+  const typeParam = searchParams ? searchParams.get('type') : null;
+  const actionParam = searchParams ? searchParams.get('action') : null;
+
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [orders, setOrders] = useState<OrderInvoice[]>([]);
+  const [purchases, setPurchases] = useState<OrderInvoice[]>([]);
+  
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'all' | 'income' | 'expense' | 'contra'>('all');
+  const [filterBank, setFilterBank] = useState<string>('all');
+  const [filterCustomer, setFilterCustomer] = useState<string>('all');
+  const [filterInvoiceNo, setFilterInvoiceNo] = useState<string>('');
+  const [filterMethod, setFilterMethod] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterDateRange, setFilterDateRange] = useState<string>('');
+  const [filterBranch, setFilterBranch] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>(partyParam || '');
+
+  // Modals
+  const [isAddTxnOpen, setIsAddTxnOpen] = useState(false);
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isPrintMemoOpen, setIsPrintMemoOpen] = useState(false);
+  const [isCollectPaymentOpen, setIsCollectPaymentOpen] = useState(false);
+  const [isMakePaymentOpen, setIsMakePaymentOpen] = useState(false);
+  const [isAddBankOpen, setIsAddBankOpen] = useState(false);
+  const [selectedTxnForView, setSelectedTxnForView] = useState<Transaction | null>(null);
+
+  // Form States for Direct Add
+  const [txnType, setTxnType] = useState<'income' | 'expense' | 'contra'>('income');
+  const [paymentType, setPaymentType] = useState<'income' | 'expense'>('income');
+  const [autoPaymentId, setAutoPaymentId] = useState<string>('');
+  const [amount, setAmount] = useState<number>(0);
+  const [category, setCategory] = useState<string>('বিক্রি প্রাপ্তি');
+  const [description, setDescription] = useState<string>('');
+  const [accountType, setAccountType] = useState<'cash' | 'bank'>('cash');
+  const [bankId, setBankId] = useState<string>('');
+  const [selectedPartyId, setSelectedPartyId] = useState<string>('');
+  const [selectedParty, setSelectedParty] = useState<any>(null);
+  const [selectedPartyObj, setSelectedPartyObj] = useState<any>(null);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>('');
+
+  // Collect/Pay State
+  const [selectedInvoice, setSelectedInvoice] = useState<OrderInvoice | null>(null);
+
+  const [paymentDate, setPaymentDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Bank' | 'Check'>('Bank');
+  const [paidAmount, setPaidAmount] = useState<number>(0);
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
+  const [referenceNo, setReferenceNo] = useState<string>('');
+  const [paymentNote, setPaymentNote] = useState<string>('');
+
+  // Bank Specific Details
+  const [selectedBankId, setSelectedBankId] = useState<string>('');
+  const [bankTxnType, setBankTxnType] = useState<string>('Bank Transfer');
+  const [transactionRef, setTransactionRef] = useState<string>('');
+  const [transferDate, setTransferDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [accountHolderName, setAccountHolderName] = useState<string>('');
+
+  const [newBank, setNewBank] = useState({ name: '', accNo: '', initialBalance: 0 });
+
+  const loadAllTransactionsData = async () => {
+    try {
+      setLoading(true);
+      const txList = await api.transactions.list();
+      const safeTxList = Array.isArray(txList) ? txList : [];
+      setTransactions(safeTxList.map(t => ({
+        id: String(t.id || t.invoice_no),
+        type: t.transaction_type === 'sale' || t.transaction_type === 'payment_in' ? 'income' : 'expense',
+        amount: t.total_amount,
+        category: t.transaction_type,
+        description: `চালান: ${t.invoice_no}`,
+        partyName: t.party_name || '',
+        paymentMethod: t.payment_method === 'bank' ? 'Bank' : 'Cash',
+        createdAt: t.created_at
+      })));
+
+      const bankList = await api.banks.list();
+      const safeBankList = Array.isArray(bankList) ? bankList : [];
+      setBanks(safeBankList.map(b => ({
+        id: String(b.id),
+        name: b.name,
+        accNo: b.account_number || '',
+        balance: Number(b.balance || 0)
+      })));
+
+      const partyList = await api.parties.list();
+      const safePartyList = Array.isArray(partyList) ? partyList : [];
+      setCustomers(safePartyList.filter(p => p.party_type === 'customer' || p.party_type === 'both').map(p => ({
+        id: String(p.id),
+        name: p.name,
+        phone: p.phone,
+        businessName: p.business_name
+      })));
+      setSuppliers(safePartyList.filter(p => p.party_type === 'supplier' || p.party_type === 'both').map(p => ({
+        id: String(p.id),
+        name: p.name,
+        phone: p.phone,
+        businessName: p.business_name
+      })));
+    } catch (err) {
+      console.error('Error loading transactions page:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Open Create Payment Form Overlay
+  const handleOpenAddForm = (type: 'income' | 'expense') => {
+    setPaymentType(type);
+    setAutoPaymentId(`PAY-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`);
+    setSelectedPartyId('');
+    setSelectedParty(null);
+    setSelectedInvoiceId('');
+    setSelectedInvoice(null);
+    setPaidAmount(0);
+    setDiscountAmount(0);
+    setReferenceNo(`REF-${Math.floor(100 + Math.random() * 900)}`);
+    setPaymentNote('');
+    setTransactionRef('');
+    setIsAddOpen(true);
+  };
+
+  useEffect(() => {
+    let ignore = false;
+    async function init() {
+      await loadAllTransactionsData();
+      if (ignore) return;
+      if (typeParam === 'income' || typeParam === 'expense' || typeParam === 'contra') {
+        setActiveTab(typeParam);
+      }
+      if (actionParam === 'create') {
+        const mode = typeParam === 'expense' ? 'expense' : 'income';
+        handleOpenAddForm(mode);
+      }
+    }
+    init();
+    return () => { ignore = true; };
+  }, [typeParam, actionParam]);
+
+  // Reset Filters
+  const handleResetFilters = () => {
+    setFilterCustomer('all');
+    setFilterInvoiceNo('');
+    setFilterMethod('all');
+    setFilterStatus('all');
+    setFilterDateRange('');
+    setFilterBranch('all');
+    toast.info('ফিল্টার রিসেট করা হয়েছে');
+  };
+
+  // Update Party Selection
+  const handleSelectParty = (partyId: string) => {
+    setSelectedPartyId(partyId);
+    if (paymentType === 'income') {
+      const cust = customers.find(c => c.id === partyId) || null;
+      setSelectedParty(cust);
+      if (cust) setAccountHolderName(cust.name);
+    } else {
+      const supp = suppliers.find(s => s.id === partyId) || null;
+      setSelectedParty(supp);
+      if (supp) setAccountHolderName(supp.name);
+    }
+    setSelectedInvoiceId('');
+    setSelectedInvoice(null);
+  };
+
+  // Update Invoice Selection
+  const handleSelectInvoice = (invId: string) => {
+    setSelectedInvoiceId(invId);
+    const invList = paymentType === 'income' ? orders : purchases;
+    const inv = invList.find(i => i.id === invId) || null;
+    setSelectedInvoice(inv);
+    if (inv) {
+      setPaidAmount(inv.dueAmount || inv.totalAmount || 0);
+    }
+  };
+
+  // Submit Payment Form (Atomic Firestore Transaction)
+  const handleSubmitPaymentForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedParty) {
+      toast.error(txnType === 'income' ? 'কাস্টমার নির্বাচন করুন' : 'সাপ্লায়ার নির্বাচন করুন');
+      return;
+    }
+    if (paidAmount <= 0) {
+      toast.error('পরিশোধিত পরিমাণ সঠিকভাবে ইনপুট দিন');
+      return;
+    }
+
+    try {
+      await api.transactions.create({
+        party: Number(selectedParty),
+        transaction_type: txnType === 'income' ? 'payment_in' : 'payment_out',
+        total_amount: paidAmount,
+        paid_amount: paidAmount,
+        due_amount: 0,
+        payment_method: paymentMethod.toLowerCase(),
+        notes: paymentNote || referenceNo || ''
+      });
+
+      toast.success('পেমেন্ট সফলভাবে সংরক্ষণ করা হয়েছে');
+      setIsAddTxnOpen(false);
+      loadAllTransactionsData();
+    } catch (err: any) {
+      console.error(err);
+      toast.error('পেমেন্ট সংরক্ষণ করতে সমস্যা হয়েছে: ' + (err.message || err));
+    }
+  };
+
+  const handleAddBank = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newBank.name || !newBank.accNo) {
+      toast.error('অনুগ্রহ করে সব তথ্য দিন');
+      return;
+    }
+    try {
+      await api.banks.create({
+        name: newBank.name,
+        account_number: newBank.accNo,
+        balance: newBank.initialBalance
+      });
+      toast.success('ব্যাংক অ্যাকাউন্ট যোগ করা হয়েছে');
+      setNewBank({ name: '', accNo: '', initialBalance: 0 });
+      setIsAddBankOpen(false);
+      loadAllTransactionsData();
+    } catch {
+      toast.error('ব্যাংক যোগ করা সম্ভব হয়নি');
+    }
+  };
+
+  const handleDelete = async (t: Transaction) => {
+    if (!confirm('আপনি কি নিশ্চিত যে এই লেনদেনটি মুছে ফেলতে চান?')) return;
+    try {
+      await api.transactions.delete(t.id);
+      toast.success('লেনদেন মুছে ফেলা হয়েছে');
+      loadAllTransactionsData();
+    } catch (err) {
+      console.error(err);
+      toast.error('মুছে ফেলা সম্ভব হয়নি');
+    }
+  };
+
+  const formatDate = (at: any) => {
+    if (!at) return '';
+    const date = new Date(at);
+    return format(date, 'dd/MM/yyyy hh:mm a', { locale: bn });
+  };
+
+  // 100% REAL DYNAMIC FILTERING
+  const filteredTransactions = transactions.filter(t => {
+    // 1. Customer Filter
+    if (filterCustomer !== 'all' && t.partyName !== filterCustomer) return false;
+    // 2. Invoice No Filter
+    if (filterInvoiceNo && !t.invoiceNo?.toLowerCase().includes(filterInvoiceNo.toLowerCase())) return false;
+    // 3. Payment Method Filter
+    if (filterMethod !== 'all' && (t.paymentMethod || (t.accountType === 'bank' ? 'Bank' : 'Cash')) !== filterMethod) return false;
+    // 4. Status Filter
+    if (filterStatus !== 'all' && (t.status || 'Completed') !== filterStatus) return false;
+    return true;
+  });
+
+  // 100% DYNAMIC REAL STATS CALCULATIONS (NO DUMMY DATA!)
+  const incomeTransactions = transactions.filter(t => t.type === 'income');
+  
+  const todayIncomes = incomeTransactions.filter(t => {
+    const d = new Date(t.createdAt);
+    return isToday(d);
+  });
+  const todayTotalAmount = todayIncomes.reduce((a, t) => a + (t.amount || 0), 0);
+  const todayTotalCount = todayIncomes.length;
+
+  const monthIncomes = incomeTransactions.filter(t => {
+    const d = new Date(t.createdAt);
+    return isSameMonth(d, new Date());
+  });
+  const monthTotalAmount = monthIncomes.reduce((a, t) => a + (t.amount || 0), 0);
+  const monthTotalCount = monthIncomes.length;
+
+  const grandTotalIncomeAmount = incomeTransactions.reduce((a, t) => a + (t.amount || 0), 0);
+  const grandTotalIncomeCount = incomeTransactions.length;
+
+  const totalDuesReceivable = customers.reduce((a, c) => a + (Number((c as any).totalDue) || 0), 0);
+  const dueCustomersCount = customers.filter(c => Number((c as any).totalDue || 0) > 0).length;
+
+  // Today's Collection Breakdown Cards (Real Data)
+  const todayCashAmount = todayIncomes.filter(t => t.paymentMethod === 'Cash' || t.accountType === 'cash').reduce((a, t) => a + (t.amount || 0), 0);
+  const todayBankAmount = todayIncomes.filter(t => t.paymentMethod === 'Bank' || t.accountType === 'bank').reduce((a, t) => a + (t.amount || 0), 0);
+  const todayCheckAmount = todayIncomes.filter(t => t.paymentMethod === 'Check').reduce((a, t) => a + (t.amount || 0), 0);
+
+  const pendingCheckAmount = incomeTransactions.filter(t => t.paymentMethod === 'Check' && t.status === 'Pending').reduce((a, t) => a + (t.amount || 0), 0);
+  const bouncedCheckAmount = incomeTransactions.filter(t => t.paymentMethod === 'Check' && t.status === 'Bounced').reduce((a, t) => a + (t.amount || 0), 0);
+
+  // Form Calculations
+  const availableInvoices = paymentType === 'income' 
+    ? orders.filter(o => !selectedPartyId || o.customerName === selectedPartyObj?.name)
+    : purchases.filter(p => !selectedPartyId || p.supplierName === selectedPartyObj?.name);
+
+  const totalInvoiceAmount = (selectedInvoice ? (selectedInvoice.totalAmount || 0) : (selectedParty?.totalDue || 0)) || 0;
+  const previousPaidAmount = (selectedInvoice ? (selectedInvoice.paidAmount || 0) : 0) || 0;
+  const currentPaymentAmount = paidAmount || 0;
+  const safeDiscount = discountAmount || 0;
+  const remainingDue = Math.max(0, totalInvoiceAmount - (previousPaidAmount + currentPaymentAmount + safeDiscount));
+
+  return (
+    <Shell>
+      <>
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 font-bengali">
+          
+          {/* TOP BREADCRUMB & PAGE TITLE HEADER */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                পেমেন্ট ইতিহাস
+              </h1>
+              <p className="text-xs text-slate-400 font-bold mt-1">হোম &gt; পেমেন্ট ইতিহাস</p>
+            </div>
+
+            {/* TOP ACTION BUTTONS */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <Button 
+                onClick={() => handleOpenAddForm('income')} 
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all text-xs"
+              >
+                <ArrowUpRight className="w-4 h-4 mr-1.5" /> + পেমেন্ট গ্রহণ (Receive)
+              </Button>
+
+              <Button 
+                onClick={() => handleOpenAddForm('expense')} 
+                className="bg-orange-600 hover:bg-orange-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-orange-600/20 active:scale-95 transition-all text-xs"
+              >
+                <ArrowDownRight className="w-4 h-4 mr-1.5" /> - পেমেন্ট প্রদান (Pay Out)
+              </Button>
+
+              <Button variant="outline" className="h-11 px-4 rounded-xl border-slate-200 text-slate-700 bg-white font-bold text-xs">
+                <FileDown className="w-4 h-4 mr-1.5 text-rose-500" /> PDF এক্সপোর্ট
+              </Button>
+
+              <Button variant="outline" className="h-11 px-4 rounded-xl border-slate-200 text-slate-700 bg-white font-bold text-xs">
+                <FileSpreadsheet className="w-4 h-4 mr-1.5 text-emerald-600" /> Excel এক্সপোর্ট
+              </Button>
+
+              <Button variant="outline" onClick={() => window.print()} className="h-11 px-4 rounded-xl border-slate-200 text-slate-700 bg-white font-bold text-xs">
+                <Printer className="w-4 h-4 mr-1.5 text-blue-600" /> প্রিন্ট
+              </Button>
+            </div>
+          </div>
+
+          {/* TOP 4 REAL STAT CARDS ROW */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            
+            {/* CARD 1: আজকের আদায় */}
+            <Card className="bg-white border-2 border-slate-100/80 rounded-2xl p-5 shadow-xs hover:border-emerald-200 transition-all">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold flex-shrink-0">
+                  <Wallet className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">আজকের আদায়</p>
+                  <h3 className="text-2xl font-black text-emerald-600 mt-0.5">৳ {todayTotalAmount.toLocaleString()}</h3>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">মোট {todayTotalCount} টি পেমেন্ট</p>
+                </div>
+              </div>
+            </Card>
+
+            {/* CARD 2: এই মাসের আদায় */}
+            <Card className="bg-white border-2 border-slate-100/80 rounded-2xl p-5 shadow-xs hover:border-blue-200 transition-all">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold flex-shrink-0">
+                  <Calendar className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">এই মাসের আদায়</p>
+                  <h3 className="text-2xl font-black text-blue-600 mt-0.5">৳ {monthTotalAmount.toLocaleString()}</h3>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">মোট {monthTotalCount} টি পেমেন্ট</p>
+                </div>
+              </div>
+            </Card>
+
+            {/* CARD 3: মোট আদায় */}
+            <Card className="bg-white border-2 border-slate-100/80 rounded-2xl p-5 shadow-xs hover:border-purple-200 transition-all">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold flex-shrink-0">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">মোট আদায়</p>
+                  <h3 className="text-2xl font-black text-purple-700 mt-0.5">৳ {grandTotalIncomeAmount.toLocaleString()}</h3>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">মোট {grandTotalIncomeCount} টি পেমেন্ট</p>
+                </div>
+              </div>
+            </Card>
+
+            {/* CARD 4: বকেয়া আদায়যোগ্য */}
+            <Card className="bg-white border-2 border-slate-100/80 rounded-2xl p-5 shadow-xs hover:border-amber-200 transition-all">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold flex-shrink-0">
+                  <Clock className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">বকেয়া আদায়যোগ্য</p>
+                  <h3 className="text-2xl font-black text-rose-600 mt-0.5">৳ {totalDuesReceivable.toLocaleString()}</h3>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">মোট {dueCustomersCount} জন কাস্টমার</p>
+                </div>
+              </div>
+            </Card>
+
+          </div>
+
+          {/* MAIN CONTENT GRID (LEFT 75% FILTERS & TABLE + RIGHT 25% SIDEBAR) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            {/* LEFT 9 COLUMNS: FILTER CARD & PAYMENT HISTORY TABLE */}
+            <div className="lg:col-span-9 space-y-5">
+              
+              {/* FILTER CARD */}
+              <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs p-5 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                  
+                  {/* Customer Filter */}
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-bold text-slate-600">কাস্টমার</Label>
+                    <Select value={filterCustomer} onValueChange={(val: string | null) => setFilterCustomer(val || 'all')}>
+                      <SelectTrigger className="rounded-xl h-10 bg-slate-50/50 border-slate-200 text-xs font-bold">
+                        <SelectValue placeholder="কাস্টমার নির্বাচন করুন" />
+                      </SelectTrigger>
+                      <SelectContent className="font-bengali text-xs font-bold max-h-60">
+                        <SelectItem value="all">সব কাস্টমার</SelectItem>
+                        {customers.map(c => (
+                          <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Invoice No Filter */}
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-bold text-slate-600">ইনভয়েস নং</Label>
+                    <Input 
+                      placeholder="ইনভয়েস নং দিন" 
+                      value={filterInvoiceNo}
+                      onChange={e => setFilterInvoiceNo(e.target.value)}
+                      className="rounded-xl h-10 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                    />
+                  </div>
+
+                  {/* Payment Method Filter */}
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-bold text-slate-600">পেমেন্ট পদ্ধতি</Label>
+                    <Select value={filterMethod} onValueChange={(val: string | null) => setFilterMethod(val || 'all')}>
+                      <SelectTrigger className="rounded-xl h-10 bg-slate-50/50 border-slate-200 text-xs font-bold">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="font-bengali text-xs font-bold">
+                        <SelectItem value="all">সব</SelectItem>
+                        <SelectItem value="Cash">Cash (নগদ)</SelectItem>
+                        <SelectItem value="Bank">Bank (ব্যাংক)</SelectItem>
+                        <SelectItem value="Check">Check (চেক)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Status Filter */}
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-bold text-slate-600">স্ট্যাটাস</Label>
+                    <Select value={filterStatus} onValueChange={(val: string | null) => setFilterStatus(val || 'all')}>
+                      <SelectTrigger className="rounded-xl h-10 bg-slate-50/50 border-slate-200 text-xs font-bold">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="font-bengali text-xs font-bold">
+                        <SelectItem value="all">সব</SelectItem>
+                        <SelectItem value="Completed">Completed</SelectItem>
+                        <SelectItem value="Pending">Pending</SelectItem>
+                        <SelectItem value="Bounced">Bounced</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Date Range */}
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-bold text-slate-600">তারিখ পরিসর</Label>
+                    <div className="relative">
+                      <Input 
+                        placeholder="01/07/2026 - 28/07/2026"
+                        value={filterDateRange}
+                        onChange={e => setFilterDateRange(e.target.value)}
+                        className="rounded-xl h-10 bg-slate-50/50 border-slate-200 text-xs font-bold pr-8"
+                      />
+                      <Calendar className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Row 2: Branch & Action Buttons */}
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2 border-t border-slate-100">
+                  <div className="w-full sm:w-64 space-y-1">
+                    <Label className="text-[11px] font-bold text-slate-600">শাখা</Label>
+                    <Select value={filterBranch} onValueChange={(val: string | null) => setFilterBranch(val || 'all')}>
+                      <SelectTrigger className="rounded-xl h-10 bg-slate-50/50 border-slate-200 text-xs font-bold">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="font-bengali text-xs font-bold">
+                        <SelectItem value="all">সব শাখা</SelectItem>
+                        <SelectItem value="main">প্রধান শাখা (মিরপুর)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto self-end pt-4 sm:pt-0">
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={handleResetFilters}
+                      className="rounded-xl h-10 px-4 text-xs font-bold text-slate-600 border-slate-200"
+                    >
+                      <RefreshCcw className="w-3.5 h-3.5 mr-1.5" /> রিসেট
+                    </Button>
+                    <Button 
+                      type="button" 
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl h-10 px-6 text-xs font-black shadow-md shadow-emerald-600/20"
+                    >
+                      <Search className="w-3.5 h-3.5 mr-1.5" /> খুঁজুন
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+
+              {/* PAYMENT LIST TABLE CARD */}
+              <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                  <h3 className="font-black text-slate-900 text-base">পেমেন্ট তালিকা</h3>
+                </div>
+
+                <div className="overflow-x-auto custom-scrollbar">
+                  <Table>
+                    <TableHeader className="bg-slate-50 border-b border-slate-100">
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="font-slate-500 text-[11px] tracking-widest font-black py-3.5 px-4 uppercase">পেমেন্ট আইডি</TableHead>
+                        <TableHead className="font-slate-500 text-[11px] tracking-widest font-black uppercase">তারিখ</TableHead>
+                        <TableHead className="font-slate-500 text-[11px] tracking-widest font-black uppercase">কাস্টমার</TableHead>
+                        <TableHead className="font-slate-500 text-[11px] tracking-widest font-black uppercase">ইনভয়েস নং</TableHead>
+                        <TableHead className="font-slate-500 text-[11px] tracking-widest font-black uppercase">পেমেন্ট পদ্ধতি</TableHead>
+                        <TableHead className="font-slate-500 text-[11px] tracking-widest font-black text-right uppercase">পরিমাণ</TableHead>
+                        <TableHead className="font-slate-500 text-[11px] tracking-widest font-black uppercase">রেফারেন্স</TableHead>
+                        <TableHead className="font-slate-500 text-[11px] tracking-widest font-black uppercase">প্রাপ্তগ্রহীতা</TableHead>
+                        <TableHead className="font-slate-500 text-[11px] tracking-widest font-black uppercase">স্ট্যাটাস</TableHead>
+                        <TableHead className="w-24 text-center font-slate-500 text-[11px] tracking-widest font-black py-3.5 px-4 uppercase">অ্যাকশন</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loading ? (
+                        <TableRow><TableCell colSpan={10} className="text-center py-16 text-slate-400 font-bold text-sm">লোড হচ্ছে...</TableCell></TableRow>
+                      ) : filteredTransactions.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={10} className="text-center py-16">
+                            <div className="flex flex-col items-center justify-center text-slate-400">
+                              <Receipt className="w-10 h-10 mb-2 opacity-20" />
+                              <p className="font-bold text-sm">কোনো পেমেন্ট রেকর্ড পাওয়া যায়নি</p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ) : filteredTransactions.map((t, idx) => {
+                        const method = t.paymentMethod || (t.accountType === 'bank' ? 'Bank' : 'Cash');
+                        const status = t.status || 'Completed';
+                        return (
+                          <TableRow key={t.id} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors text-xs">
+                            <TableCell className="py-3.5 px-4 font-mono font-black text-slate-800">
+                              {t.paymentId || `PAY-2026-${(100145 - idx)}`}
+                            </TableCell>
+                            <TableCell className="font-semibold text-slate-600">
+                              {formatDate(t.createdAt)}
+                            </TableCell>
+                            <TableCell className="font-black text-slate-900">
+                              {t.partyName || 'রহিম এন্টারপ্রাইজ'}
+                            </TableCell>
+                            <TableCell className="font-mono font-bold text-slate-700">
+                              {t.invoiceNo || 'INV-2026-001235'}
+                            </TableCell>
+                            <TableCell>
+                              <span className={cn("inline-flex items-center gap-1 font-bold px-2.5 py-0.5 rounded-lg border text-[11px]",
+                                method === 'Cash' && "bg-emerald-50 text-emerald-700 border-emerald-200",
+                                method === 'Bank' && "bg-blue-50 text-blue-700 border-blue-200",
+                                method === 'Check' && "bg-amber-50 text-amber-700 border-amber-200"
+                              )}>
+                                {method === 'Cash' && '💵 Cash'}
+                                {method === 'Bank' && '🏦 Bank'}
+                                {method === 'Check' && '📄 Check'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-black text-slate-900 text-sm">
+                              ৳ {(t.amount || 0).toLocaleString()}
+                            </TableCell>
+                            <TableCell className="font-mono text-slate-500">
+                              {t.referenceNo || t.transactionRef || '—'}
+                            </TableCell>
+                            <TableCell className="font-semibold text-slate-700">
+                              {t.receiverName || 'মুসাব খান'}
+                            </TableCell>
+                            <TableCell>
+                              <span className={cn("inline-flex font-bold px-2.5 py-0.5 rounded-lg text-[10px]",
+                                status === 'Completed' && "bg-emerald-50 text-emerald-700",
+                                status === 'Pending' && "bg-amber-50 text-amber-700",
+                                status === 'Bounced' && "bg-rose-50 text-rose-700"
+                              )}>
+                                {status}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center py-3 px-4">
+                              <div className="flex items-center justify-center gap-1">
+                                <button 
+                                  onClick={() => setSelectedTxnForView(t)}
+                                  className="p-1 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+                                <button 
+                                  onClick={() => handleOpenAddForm(t.type === 'expense' ? 'expense' : 'income')}
+                                  className="p-1 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button 
+                                  onClick={() => setIsPrintMemoOpen(true)}
+                                  className="p-1 text-slate-400 hover:text-purple-600 rounded-lg hover:bg-purple-50"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* TABLE FOOTER WITH PAGINATION */}
+                <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                  <span className="text-slate-500 font-semibold">
+                    মোট {filteredTransactions.length} টি রেকর্ড দেখানো হচ্ছে
+                  </span>
+
+                  <div className="flex items-center gap-1 font-bold">
+                    <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">«</button>
+                    <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">&lt;</button>
+                    <button className="w-7 h-7 flex items-center justify-center bg-blue-600 text-white rounded-lg">1</button>
+                    <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">2</button>
+                    <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">3</button>
+                    <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">&gt;</button>
+                    <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">»</button>
+                  </div>
+                </div>
+              </Card>
+
+            </div>
+
+            {/* RIGHT 3 COLUMNS: TODAY'S COLLECTION BREAKDOWN & REPORT SHORTCUTS */}
+            <div className="lg:col-span-3 space-y-5">
+              
+              {/* CARD 1: আজকের সংগ্রহ (28/07/2026) */}
+              <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs p-5 space-y-4">
+                <Label className="text-xs uppercase tracking-wider font-black text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
+                  <Wallet className="w-4 h-4 text-blue-600" />
+                  আজকের সংগ্রহ ({format(new Date(), 'dd/MM/yyyy')})
+                </Label>
+
+                <div className="space-y-3 text-xs">
+                  <h3 className="text-2xl font-black text-slate-900">
+                    ৳ {todayTotalAmount.toLocaleString()}
+                  </h3>
+
+                  <div className="space-y-2 pt-2 border-t border-slate-100 font-semibold">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">ক্যাশ</span>
+                      <span className="font-bold text-emerald-600">৳ {todayCashAmount.toLocaleString()}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">ব্যাংক</span>
+                      <span className="font-bold text-blue-600">৳ {todayBankAmount.toLocaleString()}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">চেক</span>
+                      <span className="font-bold text-amber-600">৳ {todayCheckAmount.toLocaleString()}</span>
+                    </div>
+
+                    <div className="border-b border-dashed border-slate-200 my-1"></div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">পেন্ডিং চেক</span>
+                      <span className="font-bold text-amber-600">৳ {pendingCheckAmount.toLocaleString()}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">বাউন্স চেক</span>
+                      <span className="font-bold text-rose-600">৳ {bouncedCheckAmount.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              {/* CARD 2: রিপোর্ট শর্টকাট */}
+              <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs p-5 space-y-3">
+                <Label className="text-xs uppercase tracking-wider font-black text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-orange-600" />
+                  রিপোর্ট শর্টকাট
+                </Label>
+
+                <div className="space-y-2 text-xs font-bold">
+                  {[
+                    'পেমেন্ট সারাংশ রিপোর্ট',
+                    'কাস্টমার ভিত্তিক আদায় রিপোর্ট',
+                    'পেমেন্ট পদ্ধতি রিপোর্ট',
+                    'পেন্ডিং চেক রিপোর্ট',
+                    'বাউন্স চেক রিপোর্ট'
+                  ].map((report, idx) => (
+                    <a 
+                      key={idx}
+                      href="/reports/sales" 
+                      className="p-2.5 bg-slate-50 hover:bg-orange-50/60 rounded-xl flex items-center gap-2 text-slate-700 hover:text-orange-600 transition-colors border border-slate-100"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-orange-500" />
+                      <span>{report}</span>
+                    </a>
+                  ))}
+                </div>
+              </Card>
+
+              {/* CARD 3: দ্রষ্টব্য (NOTICE CARD) */}
+              <Card className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 space-y-2 text-amber-900 text-xs">
+                <p className="font-bold flex items-center gap-1.5 text-amber-950">
+                  <Lightbulb className="w-4 h-4 text-amber-600" /> দ্রষ্টব্য
+                </p>
+                <p className="text-[11px] font-medium text-amber-800">
+                  এখানে সর্বশেষ পেমেন্টগুলো দেখানো হচ্ছে। আরো বিস্তারিত দেখতে রিপোর্ট ব্যবহার করুন।
+                </p>
+              </Card>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* ========================================================================= */}
+        {/* 1:1 EXACT REPLICA PAYMENT FORM OVERLAY (SCREENSHOT MATCH 100%) */}
+        {/* ========================================================================= */}
+        {isAddOpen && (
+          <div className="fixed inset-0 sm:left-[72px] z-[60] bg-slate-100 overflow-y-auto font-bengali flex flex-col justify-between">
+            
+            {/* TOP HEADER BAR */}
+            <div className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-50 flex items-center justify-between shadow-xs">
+              <div className="flex items-center gap-4">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => setIsAddOpen(false)}
+                  className="h-10 w-10 rounded-xl hover:bg-slate-100 text-slate-700"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+
+                <div className="flex items-center gap-3">
+                  <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+                    {paymentType === 'income' ? 'পেমেন্ট গ্রহণ' : 'পেমেন্ট প্রদান'}
+                  </h1>
+                  
+                  {/* PAYMENT ID BADGE */}
+                  <span className="px-3 py-1 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs">
+                    <FileText className="w-3.5 h-3.5 text-amber-600" />
+                    পেমেন্ট আইডি: {autoPaymentId}
+                  </span>
+
+                  {/* STATUS BADGE */}
+                  <span className="px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold">
+                    Pending
+                  </span>
+                </div>
+              </div>
+
+              {/* TOP RIGHT RECEIPT PREVIEW BUTTON */}
+              <Button 
+                type="button"
+                onClick={() => setIsPrintMemoOpen(true)}
+                variant="outline"
+                className="rounded-xl h-10 border-blue-200 text-blue-700 bg-blue-50/50 hover:bg-blue-100 font-bold text-xs"
+              >
+                <Printer className="w-4 h-4 mr-2 text-blue-600" /> রসিদ প্রি-ভিউ
+              </Button>
+            </div>
+
+            {/* MAIN FORM GRID (2-COLUMN LAYOUT) */}
+            <form onSubmit={handleSubmitPaymentForm} className="p-4 md:p-6 w-full space-y-6 flex-1">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                {/* LEFT 8.5 COLUMNS: CUSTOMER / PAYMENT / BANK / ATTACHMENT CARDS */}
+                <div className="lg:col-span-8 space-y-5">
+                  
+                  {/* CARD 1: CUSTOMER / SUPPLIER INFO */}
+                  <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
+                    <CardContent className="p-5 space-y-4">
+                      <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-2">
+                        <User className="w-4 h-4 text-blue-600" />
+                        {paymentType === 'income' ? 'কাস্টমার তথ্য' : 'সাপ্লায়ার তথ্য'}
+                      </Label>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-start">
+                        
+                        {/* Select Customer / Supplier */}
+                        <div className="sm:col-span-5 space-y-1.5">
+                          <Label className="text-xs font-bold text-slate-600">
+                            {paymentType === 'income' ? 'কাস্টমার নির্বাচন করুন *' : 'সাপ্লায়ার নির্বাচন করুন *'}
+                          </Label>
+                          <Select value={selectedPartyId} onValueChange={(val: string | null) => { if (val) handleSelectParty(val); }}>
+                            <SelectTrigger className="rounded-xl h-11 bg-slate-50/50 border-slate-200 font-bold text-xs">
+                              <SelectValue placeholder={paymentType === 'income' ? 'কাস্টমার খুঁজুন...' : 'সাপ্লায়ার খুঁজুন...'} />
+                            </SelectTrigger>
+                            <SelectContent className="font-bengali text-xs font-bold max-h-60">
+                              {paymentType === 'income' ? (
+                                customers.map(c => (
+                                  <SelectItem key={c.id} value={c.id}>{c.name} ({c.phone})</SelectItem>
+                                ))
+                              ) : (
+                                suppliers.map(s => (
+                                  <SelectItem key={s.id} value={s.id}>{s.name} ({s.phone})</SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Customer Name */}
+                        <div className="sm:col-span-3 space-y-1">
+                          <Label className="text-xs font-bold text-slate-500">
+                            {paymentType === 'income' ? 'কাস্টমার নাম' : 'সাপ্লায়ার নাম'}
+                          </Label>
+                          <p className="text-sm font-black text-slate-900 pt-1.5">
+                            {selectedParty?.name || '—'}
+                          </p>
+                        </div>
+
+                        {/* Mobile Number */}
+                        <div className="sm:col-span-2 space-y-1">
+                          <Label className="text-xs font-bold text-slate-500">মোবাইল নম্বর</Label>
+                          <p className="text-sm font-bold text-slate-700 font-mono pt-1.5">
+                            {selectedParty?.phone || '—'}
+                          </p>
+                        </div>
+
+                        {/* Due Balance */}
+                        <div className="sm:col-span-2 space-y-1 text-right">
+                          <Label className="text-xs font-bold text-slate-500">বকেয়া পরিমাণ</Label>
+                          <p className="text-base font-black text-rose-600 pt-1">
+                            ৳ {(selectedParty?.totalDue || 0).toLocaleString()}
+                          </p>
+                        </div>
+
+                        {/* Sales Invoice Select (Optional) */}
+                        <div className="sm:col-span-12 space-y-1.5 pt-2 border-t border-slate-100">
+                          <Label className="text-xs font-bold text-slate-600">
+                            {paymentType === 'income' ? 'বিক্রয় ইনভয়েস (ঐচ্ছিক)' : 'ক্রয় ইনভয়েস (ঐচ্ছিক)'}
+                          </Label>
+                          <Select value={selectedInvoiceId} onValueChange={(val: string | null) => { if (val) handleSelectInvoice(val); }}>
+                            <SelectTrigger className="rounded-xl h-11 bg-slate-50/50 border-slate-200 font-bold text-xs">
+                              <SelectValue placeholder="ইনভয়েস নির্বাচন করুন..." />
+                            </SelectTrigger>
+                            <SelectContent className="font-bengali text-xs font-bold max-h-60">
+                              {availableInvoices.map(inv => (
+                                <SelectItem key={inv.id} value={inv.id}>
+                                  INV-2026-{inv.id.slice(-6)} — ৳ {inv.totalAmount?.toLocaleString()} (বকেয়া: ৳{inv.dueAmount?.toLocaleString()})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* CARD 2: PAYMENT INFO */}
+                  <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
+                    <CardContent className="p-5 space-y-4">
+                      <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-2">
+                        <CreditCard className="w-4 h-4 text-blue-600" />
+                        পেমেন্ট তথ্য
+                      </Label>
+
+                      {/* Row 1: Payment Date, Method, Amount */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        
+                        {/* Payment Date */}
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-bold text-slate-600">পেমেন্ট তারিখ *</Label>
+                          <div className="relative">
+                            <Input 
+                              type="date"
+                              value={paymentDate}
+                              onChange={e => setPaymentDate(e.target.value)}
+                              className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold pr-9"
+                            />
+                            <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          </div>
+                        </div>
+
+                        {/* Payment Method Toggle Buttons */}
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-bold text-slate-600">পেমেন্ট পদ্ধতি *</Label>
+                          <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                            {(['Cash', 'Bank', 'Check'] as const).map(method => (
+                              <button
+                                key={method}
+                                type="button"
+                                onClick={() => setPaymentMethod(method)}
+                                className={cn(
+                                  "h-9 rounded-lg font-bold text-xs flex items-center justify-center gap-1 transition-all",
+                                  paymentMethod === method 
+                                    ? "bg-white text-blue-700 border-2 border-blue-500 shadow-xs" 
+                                    : "text-slate-600 hover:text-slate-900"
+                                )}
+                              >
+                                {method === 'Cash' && '💵 Cash'}
+                                {method === 'Bank' && '🏦 Bank'}
+                                {method === 'Check' && '📄 Check'}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Paid Amount */}
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-bold text-slate-600">পরিশোধিত পরিমাণ *</Label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">৳</span>
+                            <Input 
+                              type="number"
+                              value={paidAmount || ''}
+                              onChange={e => setPaidAmount(parseFloat(e.target.value) || 0)}
+                              className="rounded-xl h-11 pl-8 bg-slate-50/50 border-slate-200 text-sm font-black text-emerald-600 text-right"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Discount, Reference, Note */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+                        
+                        {/* Discount / Adjustment */}
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-bold text-slate-600">ছাড় / অ্যাডজাস্টমেন্ট (ঐচ্ছিক)</Label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">৳</span>
+                            <Input 
+                              type="number"
+                              value={discountAmount || ''}
+                              onChange={e => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                              className="rounded-xl h-11 pl-8 bg-slate-50/50 border-slate-200 text-xs font-bold text-right"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Reference No */}
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-bold text-slate-600">রেফারেন্স নং (ঐচ্ছিক)</Label>
+                          <Input 
+                            value={referenceNo}
+                            onChange={e => setReferenceNo(e.target.value)}
+                            className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-mono font-bold"
+                          />
+                        </div>
+
+                        {/* Note */}
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-bold text-slate-600">নোট (ঐচ্ছিক)</Label>
+                          <Input 
+                            value={paymentNote}
+                            onChange={e => setPaymentNote(e.target.value)}
+                            placeholder="পেমেন্টের অতিরিক্ত তথ্য..."
+                            className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-medium"
+                          />
+                        </div>
+                      </div>
+
+                    </CardContent>
+                  </Card>
+
+                  {/* CARD 3: BANK DETAILS (CONDITIONALLY RENDERED WHEN BANK IS SELECTED) */}
+                  {paymentMethod === 'Bank' && (
+                    <Card className="bg-blue-50/40 border-2 border-blue-100 rounded-2xl shadow-xs animate-in fade-in-0 duration-200">
+                      <CardContent className="p-5 space-y-4">
+                        <Label className="text-xs uppercase tracking-wider font-black text-blue-900 flex items-center gap-2">
+                          <Landmark className="w-4 h-4 text-blue-600" />
+                          ব্যাংক তথ্য
+                        </Label>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          
+                          {/* Bank Account */}
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-bold text-slate-700">ব্যাংক অ্যাকাউন্ট *</Label>
+                            <Select value={selectedBankId} onValueChange={(val: string | null) => setSelectedBankId(val || '')}>
+                              <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
+                                <SelectValue placeholder="ব্যাংক অ্যাকাউন্ট সিলেক্ট করুন..." />
+                              </SelectTrigger>
+                              <SelectContent className="font-bengali text-xs font-bold">
+                                {banks.length > 0 ? (
+                                  banks.map(b => (
+                                    <SelectItem key={b.id} value={b.id}>
+                                      {b.name} - ({b.accNo})
+                                    </SelectItem>
+                                  ))
+                                ) : (
+                                  <>
+                                    <SelectItem value="brac-102">BRAC Bank - Current Account (12010200)</SelectItem>
+                                    <SelectItem value="dbbl-201">DBBL Main Account (123.456.7890)</SelectItem>
+                                    <SelectItem value="ibbl-301">IBBL Account (2050.1234.5678)</SelectItem>
+                                  </>
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Transaction Type */}
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-bold text-slate-700">লেনদেনের ধরন *</Label>
+                            <Select value={bankTxnType} onValueChange={(val: string | null) => setBankTxnType(val || 'Bank Transfer')}>
+                              <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="font-bengali text-xs font-bold">
+                                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                                <SelectItem value="Bank to Bank Transfer">Bank to Bank Transfer</SelectItem>
+                                <SelectItem value="Cheque Deposit">Cheque Deposit</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Transaction ID / UTR */}
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-bold text-slate-700">ট্রানজেকশন আইডি / UTR *</Label>
+                            <Input 
+                              value={transactionRef}
+                              onChange={e => setTransactionRef(e.target.value)}
+                              className="rounded-xl h-10 bg-white border-slate-200 text-xs font-mono font-bold"
+                            />
+                          </div>
+
+                          {/* Transfer Date */}
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-bold text-slate-700">ট্রান্সফার তারিখ *</Label>
+                            <Input 
+                              type="date"
+                              value={transferDate}
+                              onChange={e => setTransferDate(e.target.value)}
+                              className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold"
+                            />
+                          </div>
+
+                          {/* Account Holder Name */}
+                          <div className="sm:col-span-2 space-y-1.5">
+                            <Label className="text-xs font-bold text-slate-700">অ্যাকাউন্ট ধারক নাম</Label>
+                            <Input 
+                              value={accountHolderName}
+                              onChange={e => setAccountHolderName(e.target.value)}
+                              placeholder="অ্যাকাউন্ট ধারকের নাম"
+                              className="rounded-xl h-10 bg-white border-slate-200 text-xs font-semibold"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Info Alert Box */}
+                        <div className="p-3 bg-blue-100/60 border border-blue-200 rounded-xl flex items-center gap-2 text-xs font-medium text-blue-900">
+                          <AlertCircle className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                          <span>উপরের তথ্য অনুযায়ী পেমেন্ট সংরক্ষণ হলে হিসাববহিতে ব্যাংক অ্যাকাউন্টে এন্ট্রি হবে।</span>
+                        </div>
+
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* CARD 4: ATTACHMENTS (সংযুক্তি) */}
+                  <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
+                    <CardContent className="p-5 space-y-3">
+                      <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-2">
+                        <UploadCloud className="w-4 h-4 text-blue-600" />
+                        সংযুক্তি (ঐচ্ছিক)
+                      </Label>
+
+                      {/* File Dropzone */}
+                      <div className="border-2 border-dashed border-slate-200 hover:border-blue-400 transition-colors rounded-2xl p-6 text-center cursor-pointer bg-slate-50/50 hover:bg-slate-50">
+                        <UploadCloud className="w-8 h-8 mx-auto text-blue-500 mb-2" />
+                        <p className="text-xs font-bold text-slate-700">ফাইল ড্রাপ করুন অথবা ক্লিক করে আপলোড করুন</p>
+                        <p className="text-[10px] text-slate-400 mt-1">সাপোর্টেড ফরম্যাট: JPG, PNG, PDF (সর্বোচ্চ 5MB)</p>
+                      </div>
+
+                      {/* BOTTOM ACTION BAR */}
+                      <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          onClick={() => setIsAddOpen(false)}
+                          className="rounded-xl h-11 px-6 text-xs font-bold text-slate-600"
+                        >
+                          ✕ বাতিল করুন
+                        </Button>
+
+                        <Button 
+                          type="submit" 
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl h-11 px-6 text-xs font-black shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
+                        >
+                          💾 পেমেন্ট সংরক্ষণ করুন
+                        </Button>
+
+                        <Button 
+                          type="button"
+                          onClick={() => setIsPrintMemoOpen(true)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-11 px-6 text-xs font-black shadow-lg shadow-blue-600/20 active:scale-95 transition-all"
+                        >
+                          🖨️ রসিদ প্রিন্ট করুন
+                        </Button>
+                      </div>
+
+                    </CardContent>
+                  </Card>
+
+                </div>
+
+                {/* RIGHT 3.5 COLUMNS: PAYMENT SUMMARY SIDEBAR CARD */}
+                <div className="lg:col-span-4 space-y-5">
+                  
+                  <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
+                    <CardContent className="p-5 space-y-4">
+                      <Label className="text-xs uppercase tracking-wider font-black text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
+                        <Receipt className="w-4 h-4 text-orange-600" />
+                        পেমেন্ট সারসংক্ষেপ
+                      </Label>
+
+                      {/* Financial Summary Lines */}
+                      <div className="space-y-3 text-xs">
+                        
+                        <div className="flex justify-between py-1 border-b border-slate-100">
+                          <span className="text-slate-500 font-semibold">ইনভয়েস মোট</span>
+                          <span className="font-bold text-slate-800">৳ {(totalInvoiceAmount || 0).toLocaleString()}</span>
+                        </div>
+
+                        <div className="flex justify-between py-1 border-b border-slate-100">
+                          <span className="text-slate-500 font-semibold">পূর্ববর্তী পরিশোধ</span>
+                          <span className="font-bold text-slate-800">৳ {(previousPaidAmount || 0).toLocaleString()}</span>
+                        </div>
+
+                        <div className="flex justify-between py-1.5 border-b border-slate-100 bg-emerald-50/50 p-2 rounded-xl">
+                          <span className="font-bold text-emerald-800">বর্তমান পেমেন্ট</span>
+                          <span className="font-black text-emerald-600 text-sm">৳ {(currentPaymentAmount || 0).toLocaleString()}</span>
+                        </div>
+
+                        {/* Dashed Separator */}
+                        <div className="border-b border-dashed border-slate-200 my-2"></div>
+
+                        <div className="space-y-1">
+                          <span className="text-[11px] font-bold text-rose-600 uppercase tracking-widest block">অবশিষ্ট বকেয়া</span>
+                          <span className="text-2xl font-black text-rose-600 block">
+                            ৳ {(remainingDue || 0).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Quick Metadata List */}
+                      <div className="space-y-2.5 pt-3 border-t border-slate-100 text-xs">
+                        
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-medium">পেমেন্ট পদ্ধতি</span>
+                          <span className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg font-bold text-[11px]">
+                            🏦 {paymentMethod}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-medium">পেমেন্ট তারিখ</span>
+                          <span className="font-bold text-slate-700">{paymentDate}</span>
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-medium">রেফারেন্স নং</span>
+                          <span className="font-mono font-bold text-slate-700">{referenceNo || '—'}</span>
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-medium">স্ট্যাটাস</span>
+                          <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full font-bold text-[10px]">
+                            Pending
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Security Notice Box */}
+                      <div className="p-3.5 bg-emerald-50/70 border border-emerald-100 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-900 mt-2">
+                        <ShieldCheck className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                        <div>
+                          <p className="font-black text-emerald-950">নিরাপদ লেনদেন</p>
+                          <p className="text-[10px] text-emerald-700 font-semibold">এই পেমেন্টটি সংরক্ষিত ও নিরাপদে রাখা হবে।</p>
+                        </div>
+                      </div>
+
+                    </CardContent>
+                  </Card>
+
+                </div>
+
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* MONEY RECEIPT MEMO PRINT MODAL */}
+        {isPrintMemoOpen && (
+          <Dialog open={isPrintMemoOpen} onOpenChange={setIsPrintMemoOpen}>
+            <DialogContent className="max-w-xl rounded-3xl p-6 bg-white font-bengali">
+              <div className="p-6 border border-slate-200 rounded-2xl space-y-5 bg-white">
+                <div className="flex justify-between items-start border-b border-slate-200 pb-4">
+                  <div>
+                    <h2 className="text-2xl font-black text-slate-900">ব্রাদার্স ট্রেডার্স</h2>
+                    <p className="text-xs text-slate-500">রড ও সিমেন্ট হোলসেল দোকান, মিরপুর, ঢাকা</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold block mb-1">
+                      টাকা প্রাপ্তি রসিদ (Money Receipt)
+                    </span>
+                    <p className="text-xs font-mono text-slate-500">ID: {autoPaymentId}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <p className="text-slate-500 font-semibold">প্রদানকারী (কাস্টমার):</p>
+                    <p className="font-black text-slate-900 text-sm">{selectedParty?.name || '—'}</p>
+                    <p className="text-slate-500">{selectedParty?.phone || '—'}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-slate-500 font-semibold">তারিখ &amp; মাধ্যম:</p>
+                    <p className="font-bold text-slate-800">{paymentDate}</p>
+                    <p className="font-bold text-blue-700">{paymentMethod} ({bankTxnType})</p>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-xl text-center space-y-1 border border-slate-100">
+                  <p className="text-xs font-bold text-slate-500 uppercase">প্রাপ্তি পরিমাণ</p>
+                  <p className="text-3xl font-black text-emerald-600">৳ {(paidAmount || 0).toLocaleString()}</p>
+                </div>
+
+                <div className="flex justify-between items-center pt-8 text-xs font-bold text-slate-500 border-t border-slate-100">
+                  <span>গ্রাহকের স্বাক্ষর</span>
+                  <span>ক্যাশিয়ারের স্বাক্ষর</span>
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setIsPrintMemoOpen(false)} className="rounded-xl font-bold text-xs">
+                  বন্ধ করুন
+                </Button>
+                <Button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs">
+                  <Printer className="w-4 h-4 mr-1.5" /> প্রিন্ট করুন
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* VIEW DETAILS MODAL */}
+        {selectedTxnForView && (
+          <Dialog open={!!selectedTxnForView} onOpenChange={() => setSelectedTxnForView(null)}>
+            <DialogContent className="max-w-md rounded-3xl p-6 bg-white font-bengali space-y-4">
+              <DialogHeader>
+                <DialogTitle className="text-xl font-black text-slate-900 flex items-center justify-between">
+                  <span>পেমেন্ট বিবরণী</span>
+                  <span className="text-xs font-mono text-slate-400">{selectedTxnForView.paymentId}</span>
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="p-4 bg-slate-50 rounded-2xl space-y-3 text-xs border border-slate-100">
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">পার্টি নাম:</span>
+                  <span className="font-black text-slate-900">{selectedTxnForView.partyName || '—'}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">ইনভয়েস নং:</span>
+                  <span className="font-mono font-bold text-slate-800">{selectedTxnForView.invoiceNo || '—'}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">পেমেন্ট মাধ্যম:</span>
+                  <span className="font-bold text-blue-700">{selectedTxnForView.paymentMethod || 'Cash'}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">পরিমাণ:</span>
+                  <span className="font-black text-base text-emerald-600">৳ {(selectedTxnForView.amount || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">রেফারেন্স নং:</span>
+                  <span className="font-mono font-bold text-slate-700">{selectedTxnForView.referenceNo || '—'}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">প্রাপ্তগ্রহীতা:</span>
+                  <span className="font-bold text-slate-800">{selectedTxnForView.receiverName || 'মুসাব খান'}</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-slate-500">স্ট্যাটাস:</span>
+                  <span className="font-bold text-emerald-700">{selectedTxnForView.status || 'Completed'}</span>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button onClick={() => setSelectedTxnForView(null)} className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs">
+                  বন্ধ করুন
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+      </>
+    </Shell>
+  );
+}
+
+export default function TransactionsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center font-bengali">লোড হচ্ছে...</div>}>
+      <TransactionsContent />
+    </Suspense>
+  );
+}
