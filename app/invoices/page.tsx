@@ -220,7 +220,11 @@ function InvoicesContent() {
   };
 
   useEffect(() => {
-    loadInvoicesData();
+    let ignore = false;
+    (async () => {
+      await loadInvoicesData();
+    })();
+    return () => { ignore = true; };
   }, []);
 
   // Handle pre-filling form if arriving from /orders?fromOrder={id}
