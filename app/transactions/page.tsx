@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Shell } from '@/components/Shell';
 import { api } from '@/lib/api';
@@ -18,6 +18,8 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
+import { SupplierSearchSelect } from '@/components/SupplierSearchSelect';
 import { toast } from 'sonner';
 import { format, isToday, isSameMonth } from 'date-fns';
 import { bn } from 'date-fns/locale';
@@ -159,7 +161,7 @@ function TransactionsContent() {
 
   const [newBank, setNewBank] = useState({ name: '', accNo: '', initialBalance: 0 });
 
-  const loadAllTransactionsData = async () => {
+  const loadAllTransactionsData = useCallback(async () => {
     try {
       setLoading(true);
       const txList = await api.transactions.list();
@@ -186,31 +188,51 @@ function TransactionsContent() {
 
       const partyList = await api.parties.list();
       const safePartyList = Array.isArray(partyList) ? partyList : [];
-      setCustomers(safePartyList.filter(p => p.party_type === 'customer' || p.party_type === 'both').map(p => ({
+      const loadedCusts = safePartyList.filter(p => p.party_type === 'customer' || p.party_type === 'both').map(p => ({
         id: String(p.id),
         name: p.name,
         phone: p.phone,
         businessName: p.business_name
-      })));
-      setSuppliers(safePartyList.filter(p => p.party_type === 'supplier' || p.party_type === 'both').map(p => ({
+      }));
+      const loadedSupps = safePartyList.filter(p => p.party_type === 'supplier' || p.party_type === 'both').map(p => ({
         id: String(p.id),
         name: p.name,
         phone: p.phone,
         businessName: p.business_name
-      })));
+      }));
+
+      setCustomers(loadedCusts);
+      setSuppliers(loadedSupps);
+      return { loadedCusts, loadedSupps };
     } catch (err) {
       console.error('Error loading transactions page:', err);
+      return { loadedCusts: [], loadedSupps: [] };
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Open Create Payment Form Overlay
-  const handleOpenAddForm = (type: 'income' | 'expense') => {
+  const handleOpenAddForm = useCallback((
+    type: 'income' | 'expense', 
+    targetPartyId?: string,
+    customCusts?: Customer[],
+    customSupps?: Supplier[]
+  ) => {
     setPaymentType(type);
     setAutoPaymentId(`PAY-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`);
-    setSelectedPartyId('');
-    setSelectedParty(null);
+    const pId = targetPartyId || partyParam || '';
+    setSelectedPartyId(pId);
+    if (pId) {
+      const partyList = type === 'income' ? (customCusts || customers) : (customSupps || suppliers);
+      const found = partyList.find(c => String(c.id) === String(pId));
+      if (found) {
+        setSelectedParty(found);
+        setAccountHolderName(found.name);
+      }
+    } else {
+      setSelectedParty(null);
+    }
     setSelectedInvoiceId('');
     setSelectedInvoice(null);
     setPaidAmount(0);
@@ -219,7 +241,7 @@ function TransactionsContent() {
     setPaymentNote('');
     setTransactionRef('');
     setIsAddOpen(true);
-  };
+  }, [partyParam, customers, suppliers]);
 
   const handleCreateAddMoneySubmit = async () => {
     if (addMoneyAmount <= 0) {
@@ -251,7 +273,7 @@ function TransactionsContent() {
   useEffect(() => {
     let ignore = false;
     async function init() {
-      await loadAllTransactionsData();
+      const { loadedCusts, loadedSupps } = await loadAllTransactionsData();
       if (ignore) return;
       if (typeParam === 'income' || typeParam === 'expense' || typeParam === 'contra') {
         setActiveTab(typeParam);
@@ -261,13 +283,14 @@ function TransactionsContent() {
           setIsAddMoneyOpen(true);
         } else {
           const mode = typeParam === 'expense' ? 'expense' : 'income';
-          handleOpenAddForm(mode);
+          handleOpenAddForm(mode, partyParam || undefined, loadedCusts, loadedSupps);
         }
       }
     }
     init();
     return () => { ignore = true; };
-  }, [typeParam, actionParam]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeParam, actionParam, partyParam, loadAllTransactionsData]);
 
   // Reset Filters
   const handleResetFilters = () => {
@@ -945,27 +968,30 @@ function TransactionsContent() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-start">
                         
-                        {/* Select Customer / Supplier */}
+                        {/* Searchable Customer / Supplier Selection */}
                         <div className="sm:col-span-5 space-y-1.5">
                           <Label className="text-xs font-bold text-slate-600">
-                            {paymentType === 'income' ? 'কাস্টমার নির্বাচন করুন *' : 'সাপ্লায়ার নির্বাচন করুন *'}
+                            {paymentType === 'income' ? 'কাস্টমার নির্বাচন করুন (সার্চ করুন) *' : 'সাপ্লায়ার নির্বাচন করুন (সার্চ করুন) *'}
                           </Label>
-                          <Select value={selectedPartyId} onValueChange={(val: string | null) => { if (val) handleSelectParty(val); }}>
-                            <SelectTrigger className="rounded-xl h-11 bg-slate-50/50 border-slate-200 font-bold text-xs">
-                              <SelectValue placeholder={paymentType === 'income' ? 'কাস্টমার খুঁজুন...' : 'সাপ্লায়ার খুঁজুন...'} />
-                            </SelectTrigger>
-                            <SelectContent className="font-bengali text-xs font-bold max-h-60">
-                              {paymentType === 'income' ? (
-                                customers.map(c => (
-                                  <SelectItem key={c.id} value={c.id}>{c.name} ({c.phone})</SelectItem>
-                                ))
-                              ) : (
-                                suppliers.map(s => (
-                                  <SelectItem key={s.id} value={s.id}>{s.name} ({s.phone})</SelectItem>
-                                ))
-                              )}
-                            </SelectContent>
-                          </Select>
+                          {paymentType === 'income' ? (
+                            <CustomerSearchSelect
+                              customers={customers}
+                              selectedCustomer={selectedParty}
+                              onSelectCustomer={(cust) => {
+                                handleSelectParty(cust ? cust.id : '');
+                              }}
+                              placeholder="কাস্টমারের নাম বা ফোন নম্বর দিয়ে খুঁজুন..."
+                            />
+                          ) : (
+                            <SupplierSearchSelect
+                              suppliers={suppliers}
+                              selectedSupplier={selectedParty}
+                              onSelectSupplier={(supp) => {
+                                handleSelectParty(supp ? supp.id : '');
+                              }}
+                              placeholder="সাপ্লায়ারের নাম বা ফোন নম্বর দিয়ে খুঁজুন..."
+                            />
+                          )}
                         </div>
 
                         {/* Customer Name */}

@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
 
 interface ReturnEntry {
   id: string;
@@ -459,23 +460,12 @@ export default function SalesReturnsPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <Label className="text-xs font-bold text-slate-600">কাস্টমার নির্বাচন করুন <span className="text-rose-500">*</span></Label>
-                        <Select 
-                          value={selectedCustomerId} 
-                          onValueChange={(val: string | null) => {
-                            if (val) setSelectedCustomerId(val);
-                          }}
-                        >
-                          <SelectTrigger className="rounded-xl h-11 bg-slate-50 border-slate-200 font-bold text-xs">
-                            <SelectValue placeholder="কাস্টমার নির্বাচন করুন..." />
-                          </SelectTrigger>
-                          <SelectContent className="font-bengali max-h-60 text-xs font-bold">
-                            {customers.map(c => (
-                              <SelectItem key={c.id} value={c.id}>
-                                {c.name} {c.phone ? `(${c.phone})` : ''}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <CustomerSearchSelect
+                          customers={customers}
+                          selectedCustomer={customers.find(c => c.id === selectedCustomerId) || null}
+                          onSelectCustomer={(cust) => setSelectedCustomerId(cust ? cust.id : '')}
+                          placeholder="কাস্টমার নির্বাচন করতে খুঁজুন..."
+                        />
                       </div>
 
                       <div className="space-y-1.5">

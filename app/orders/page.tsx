@@ -22,6 +22,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { InvoiceMemo } from '@/components/InvoiceMemo';
+import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
+import { ProductSearchSelect } from '@/components/ProductSearchSelect';
+import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
 
 interface Product { 
   id: string; 
@@ -36,8 +39,8 @@ interface Product {
 interface Customer { 
   id: string; 
   name: string; 
-  phone: string; 
-  address: string; 
+  phone?: string; 
+  address?: string; 
   businessName?: string; 
 }
 
@@ -126,6 +129,7 @@ export default function OrdersPage() {
   // Cart & Item Selector States
   const [cart, setCart] = useState<OrderItem[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
+  const [selectedCascadingProduct, setSelectedCascadingProduct] = useState<SelectedProductDetails | null>(null);
   const [itemQty, setItemQty] = useState<number>(1);
   const [itemPrice, setItemPrice] = useState<number>(0);
   const [itemDiscount, setItemDiscount] = useState<number>(0);
@@ -225,7 +229,11 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
-    loadOrdersData();
+    let ignore = false;
+    (async () => {
+      await loadOrdersData();
+    })();
+    return () => { ignore = true; };
   }, []);
 
   useEffect(() => {
@@ -233,13 +241,17 @@ export default function OrdersPage() {
       const params = new URLSearchParams(window.location.search);
       const action = params.get('action');
       if (action === 'create') {
-        setIsCreateOrderOpen(true);
+        queueMicrotask(() => {
+          setIsCreateOrderOpen(true);
+        });
       }
       const targetId = params.get('id') || params.get('view');
       if (targetId && orders.length > 0) {
         const match = orders.find(o => String(o.id) === String(targetId) || o.orderId === targetId);
         if (match) {
-          setSelectedOrder(match);
+          queueMicrotask(() => {
+            setSelectedOrder(match);
+          });
         }
       }
     }
@@ -305,10 +317,6 @@ export default function OrdersPage() {
     setIsCreateOrderOpen(true);
   };
 
-  useEffect(() => {
-    loadOrdersData();
-  }, []);
-
   const formatDate = (at: any) => {
     if (!at) return '';
     const date = new Date(at);
@@ -317,29 +325,32 @@ export default function OrdersPage() {
 
   // Cart Add Item with Bundle/Piece option
   const handleAddCartItem = () => {
-    if (!selectedProductId) {
+    const itemName = selectedCascadingProduct?.name || products.find(p => p.id === selectedProductId)?.name;
+    if (!itemName) {
       toast.error('পণ্য নির্বাচন করুন');
       return;
     }
-    const prod = products.find(p => p.id === selectedProductId);
-    if (!prod) return;
+
+    const itemUnitToUse = selectedCascadingProduct?.unit || 'বস্তা/কেজি';
+    const itemId = selectedCascadingProduct?.productId || selectedProductId || String(Date.now());
+    const finalPrice = selectedCascadingProduct?.price || 0;
 
     setCart(prev => {
-      const existing = prev.find(i => i.id === prod.id);
+      const existing = prev.find(i => i.name === itemName);
       if (existing) {
-        return prev.map(i => i.id === prod.id ? { 
+        return prev.map(i => i.name === itemName ? { 
           ...i, 
           quantity: i.quantity + itemQty, 
-          price: itemPrice || prod.sellPrice,
+          price: finalPrice || i.price,
           discount: itemDiscount,
           bundle: bundleCount || i.bundle
         } : i);
       }
       return [...prev, {
-        id: prod.id,
-        name: prod.name,
-        unit: prod.unit || 'বস্তা/কেজি',
-        price: itemPrice || prod.sellPrice,
+        id: itemId,
+        name: itemName,
+        unit: itemUnitToUse,
+        price: finalPrice,
         quantity: itemQty,
         discount: itemDiscount || 0,
         bundle: bundleCount || ''
@@ -351,7 +362,7 @@ export default function OrdersPage() {
     setItemPrice(0);
     setItemDiscount(0);
     setBundleCount('');
-    toast.success(`${prod.name} অর্ডারে যোগ করা হয়েছে`);
+    toast.success(`${itemName} অর্ডারে যোগ করা হয়েছে`);
   };
 
   const handleRemoveCartItem = (id?: string) => {
@@ -764,25 +775,13 @@ export default function OrdersPage() {
                   </div>
 
                   {!isNewCustomer ? (
-                    <Select 
-                      value={selectedCustomer?.id || ''} 
-                      onValueChange={(val: string | null) => {
-                        if (!val) return;
-                        const cust = customers.find(c => c.id === val);
-                        if (cust) setSelectedCustomer(cust);
-                      }}
-                    >
-                      <SelectTrigger className="rounded-xl h-11 bg-white border-slate-200 text-xs font-semibold text-slate-600">
-                        <SelectValue placeholder="কাস্টমারের নাম বা মোবাইল নম্বর দিয়ে..." />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60 font-bengali">
-                        {customers.map(c => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name} {c.phone ? `(${c.phone})` : ''} {c.address ? `— ${c.address}` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <CustomerSearchSelect
+                      customers={customers}
+                      selectedCustomer={selectedCustomer}
+                      onSelectCustomer={(cust) => setSelectedCustomer(cust)}
+                      onAddNewClick={() => setIsNewCustomer(true)}
+                      placeholder="কাস্টমারের নাম বা মোবাইল নম্বর দিয়ে খুঁজুন..."
+                    />
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <Input 
@@ -839,76 +838,22 @@ export default function OrdersPage() {
                     <ShoppingCart className="w-4 h-4 text-emerald-600" /> পণ্য যোগ করুন
                   </h2>
 
-                  <div className="grid grid-cols-12 gap-3 items-end">
-                    <div className="col-span-12 md:col-span-4 space-y-1">
-                      <Label className="text-[11px] font-bold text-slate-600">পণ্য</Label>
-                      <Select 
-                        value={selectedProductId} 
-                        onValueChange={(val: string | null) => {
-                          if (!val) return;
-                          setSelectedProductId(val);
-                          const p = products.find(prod => prod.id === val);
-                          if (p) setItemPrice(p.sellPrice || 0);
-                        }}
-                      >
-                        <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs text-slate-600">
-                          <SelectValue placeholder="পণ্যের নাম লিখুন বা নির্বাচন করুন..." />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-60 font-bengali">
-                          {products.map(p => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.name} (৳{p.sellPrice}/{p.unit || 'পিস'})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="col-span-6 md:col-span-2 space-y-1">
-                      <Label className="text-[11px] font-bold text-slate-600">স্টক উপলব্ধ</Label>
-                      <div className="h-10 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-xs rounded-xl flex items-center justify-center">
-                        {selectedProductId 
-                          ? `${products.find(p => p.id === selectedProductId)?.stock || 0} ${products.find(p => p.id === selectedProductId)?.unit || 'টি'}` 
-                          : '—'}
-                      </div>
-                    </div>
-
-                    <div className="col-span-6 md:col-span-2 space-y-1">
-                      <Label className="text-[11px] font-bold text-slate-600">পরিমাণ</Label>
-                      <Input 
-                        type="number" 
-                        min="1" 
-                        value={itemQty} 
-                        onChange={e => setItemQty(parseFloat(e.target.value) || 1)} 
-                        className="rounded-xl h-10 text-center font-bold border-slate-200 text-xs bg-white" 
-                      />
-                    </div>
-
-                    <div className="col-span-6 md:col-span-2 space-y-1">
-                      <Label className="text-[11px] font-bold text-slate-600">ইউনিট</Label>
-                      <Select value={itemUnit} onValueChange={(v: string | null) => setItemUnit(v || 'বস্তা (Bag)')}>
-                        <SelectTrigger className="rounded-xl h-10 border-slate-200 bg-white text-xs font-bold text-slate-700">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="font-bengali">
-                          <SelectItem value="বস্তা (Bag)">বস্তা (Bag)</SelectItem>
-                          <SelectItem value="কেজি (Kg)">কেজি (Kg)</SelectItem>
-                          <SelectItem value="টন (Ton)">টন (Ton)</SelectItem>
-                          <SelectItem value="পিস (Pcs)">পিস (Pcs)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="col-span-6 md:col-span-2">
-                      <Button 
-                        type="button" 
-                        onClick={handleAddCartItem}
-                        className="w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold h-10 rounded-xl text-xs shadow-sm transition-all"
-                      >
-                        + যোগ করুন
-                      </Button>
-                    </div>
-                  </div>
+                  {/* Step-by-Step Cascading Product Selector (Rod, Cement, Ring) without Price Field */}
+                  <CascadingProductSelector
+                    products={products}
+                    onProductChange={(selected) => {
+                      setSelectedCascadingProduct(selected);
+                      if (selected && selected.productId) {
+                        setSelectedProductId(selected.productId);
+                      }
+                    }}
+                    showPriceField={false}
+                    itemQty={itemQty}
+                    onQtyChange={setItemQty}
+                    itemPrice={itemPrice}
+                    onPriceChange={setItemPrice}
+                    onAddCartItem={handleAddCartItem}
+                  />
 
                   {/* 4. CART ITEMS TABLE */}
                   <div className="space-y-3 pt-2">

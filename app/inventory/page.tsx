@@ -76,6 +76,7 @@ export default function InventoryPage() {
   const [filterCat, setFilterCat] = useState('সব');
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
 
   const [rodSize, setRodSize] = useState('১০ মিলি');
   const [ringSize, setRingSize] = useState('৭" × ৭"');
@@ -421,7 +422,7 @@ export default function InventoryPage() {
                   ) : filtered.length === 0 ? (
                     <TableRow><TableCell colSpan={6} className="text-center py-16 text-slate-400 font-bengali">কোনো পণ্য পাওয়া যায়নি</TableCell></TableRow>
                   ) : filtered.map((product) => (
-                    <TableRow key={product.id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                    <TableRow key={product.id} onClick={() => setViewingProduct(product)} className="border-b border-slate-50 hover:bg-slate-100/80 cursor-pointer transition-colors">
                       <TableCell className="p-3 font-bengali">
                         <div className="font-bold text-slate-800 text-sm">{product.name}</div>
                         {product.brand && <div className="text-[10px] text-slate-400 font-bold">{product.brand}</div>}
@@ -458,10 +459,10 @@ export default function InventoryPage() {
                       </TableCell>
                       <TableCell className="text-right p-3">
                         <div className="flex justify-end gap-1">
-                          <Button size="icon" variant="ghost" onClick={() => openEdit(product)} className="h-7 w-7 text-slate-400 hover:text-orange-600 hover:bg-orange-50">
+                          <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(product); }} title="সম্পাদনা" className="h-7 w-7 text-slate-400 hover:text-orange-600 hover:bg-orange-50">
                             <Edit2 className="w-3.5 h-3.5" />
                           </Button>
-                          <Button size="icon" variant="ghost" onClick={() => handleDelete(product.id)} className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50">
+                          <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); handleDelete(product.id); }} title="মুছে ফেলুন" className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50">
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
@@ -486,7 +487,7 @@ export default function InventoryPage() {
                 ) : alertItems.map(p => {
                   const sInfo = formatDualStock(p.stock, p.unit, p.category);
                   return (
-                    <div key={p.id} className="p-2.5 bg-rose-50 border border-rose-100 rounded-lg flex justify-between items-center">
+                    <div key={p.id} onClick={() => setViewingProduct(p)} className="p-2.5 bg-rose-50 border border-rose-100 rounded-lg flex justify-between items-center cursor-pointer hover:bg-rose-100/70 transition-colors">
                       <div>
                         <p className="text-xs font-bold text-rose-900">{p.name}</p>
                         {p.brand && <p className="text-[10px] text-rose-600 font-bold">{p.brand}</p>}
@@ -503,6 +504,101 @@ export default function InventoryPage() {
           </div>
         </div>
       </div>
+
+      {/* View Product Details Modal */}
+      <Dialog open={!!viewingProduct} onOpenChange={(open) => { if (!open) setViewingProduct(null); }}>
+        <DialogContent className="w-[95vw] max-w-md rounded-2xl p-6 font-bengali">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <Package className="w-5 h-5 text-orange-600" />
+              পণ্যের বিস্তারিত তথ্য
+            </DialogTitle>
+          </DialogHeader>
+
+          {viewingProduct && (
+            <div className="space-y-4 py-2">
+              {/* Header summary box */}
+              <div className="p-4 bg-orange-50 border border-orange-100 rounded-xl space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-bold uppercase">
+                    {viewingProduct.category}
+                  </span>
+                  {viewingProduct.stock <= viewingProduct.alertThreshold && (
+                    <span className="px-2 py-0.5 bg-rose-100 text-rose-700 rounded text-xs font-bold flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" /> স্বল্প স্টক
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-lg font-black text-slate-800 mt-2">{viewingProduct.name}</h3>
+                {viewingProduct.brand && (
+                  <p className="text-xs text-slate-500 font-semibold">ব্র্যান্ড: {viewingProduct.brand}</p>
+                )}
+              </div>
+
+              {/* Details Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                  <span className="text-[11px] text-slate-400 font-bold block mb-0.5">ক্রয় মূল্য</span>
+                  <span className="text-sm font-black text-slate-700">{formatBnCurrency(viewingProduct.buyPrice)}</span>
+                  <span className="text-[10px] text-slate-400 block font-semibold">প্রতি {viewingProduct.unit}</span>
+                </div>
+
+                <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                  <span className="text-[11px] text-slate-400 font-bold block mb-0.5">বিক্রয় মূল্য</span>
+                  <span className="text-sm font-black text-emerald-600">{formatBnCurrency(viewingProduct.sellPrice)}</span>
+                  <span className="text-[10px] text-slate-400 block font-semibold">প্রতি {viewingProduct.unit}</span>
+                </div>
+
+                <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                  <span className="text-[11px] text-slate-400 font-bold block mb-0.5">বর্তমান স্টক</span>
+                  {(() => {
+                    const stockInfo = formatDualStock(viewingProduct.stock, viewingProduct.unit, viewingProduct.category);
+                    return (
+                      <div>
+                        <span className={cn("text-sm font-black block", viewingProduct.stock <= viewingProduct.alertThreshold ? "text-rose-600" : "text-slate-800")}>
+                          {stockInfo.main}
+                          {viewingProduct.stock <= viewingProduct.alertThreshold && <span className="ml-1 text-rose-500">⚠</span>}
+                        </span>
+                        {stockInfo.sub && <span className="text-[10px] text-slate-500 font-semibold block">{stockInfo.sub}</span>}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                  <span className="text-[11px] text-slate-400 font-bold block mb-0.5">আনুমানিক লাভ ({viewingProduct.unit})</span>
+                  <span className="text-sm font-black text-orange-600">
+                    {formatBnCurrency(viewingProduct.sellPrice - viewingProduct.buyPrice)}
+                  </span>
+                </div>
+
+                <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                  <span className="text-[11px] text-slate-400 font-bold block mb-0.5">মোট মজুদ মূল্য</span>
+                  <span className="text-sm font-black text-slate-800">
+                    {formatBnCurrency(viewingProduct.buyPrice * viewingProduct.stock)}
+                  </span>
+                </div>
+
+                <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                  <span className="text-[11px] text-slate-400 font-bold block mb-0.5">সতর্কতা সীমা</span>
+                  <span className="text-sm font-black text-slate-700">
+                    {toBnNum(viewingProduct.alertThreshold)} {viewingProduct.unit}
+                  </span>
+                </div>
+              </div>
+
+              <DialogFooter className="flex gap-2 sm:gap-2 pt-2">
+                <Button variant="outline" onClick={() => setViewingProduct(null)} className="flex-1 font-bengali rounded-lg">
+                  বন্ধ করুন
+                </Button>
+                <Button onClick={() => { const prod = viewingProduct; setViewingProduct(null); openEdit(prod); }} className="flex-1 bg-orange-600 hover:bg-orange-700 font-bengali rounded-lg">
+                  <Edit2 className="w-3.5 h-3.5 mr-1.5" /> সম্পাদনা করুন
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Shell>
   );
 }

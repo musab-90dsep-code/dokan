@@ -20,6 +20,9 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
+import { ProductSearchSelect } from '@/components/ProductSearchSelect';
+import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
 
 interface Product { 
   id: string; 
@@ -33,8 +36,8 @@ interface Product {
 interface Customer { 
   id: string; 
   name: string; 
-  phone: string; 
-  address: string; 
+  phone?: string; 
+  address?: string; 
   businessName?: string;
   totalDue?: number;
 }
@@ -110,6 +113,7 @@ function InvoicesContent() {
   // Cart & Item Selector States
   const [cart, setCart] = useState<OrderItem[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
+  const [selectedCascadingProduct, setSelectedCascadingProduct] = useState<SelectedProductDetails | null>(null);
   const [itemQty, setItemQty] = useState<number>(1);
   const [itemPrice, setItemPrice] = useState<number>(0);
   const [itemDiscount, setItemDiscount] = useState<number>(0);
@@ -269,40 +273,36 @@ function InvoicesContent() {
 
   // Cart Add Item
   const handleAddCartItem = () => {
-    if (!selectedProductId) {
+    const itemName = selectedCascadingProduct?.name || products.find(p => p.id === selectedProductId)?.name;
+    if (!itemName) {
       toast.error('পণ্য নির্বাচন করুন');
       return;
     }
-    const prod = products.find(p => p.id === selectedProductId);
-    if (!prod) return;
 
-    if (prod.stock < itemQty) {
-      toast.error(`পর্যাপ্ত স্টক নেই (বর্তমান স্টক: ${prod.stock} ${prod.unit})`);
-      return;
-    }
+    const itemUnitToUse = selectedCascadingProduct?.unit || 'পিস';
+    const itemId = selectedCascadingProduct?.productId || selectedProductId || String(Date.now());
+    const finalPrice = itemPrice || selectedCascadingProduct?.price || 0;
 
     setCart(prev => {
-      const existing = prev.find(i => i.id === prod.id);
+      const existing = prev.find(i => i.name === itemName);
       if (existing) {
         const updatedQty = existing.quantity + itemQty;
-        const updatedPrice = itemPrice || prod.sellPrice;
-        return prev.map(i => i.id === prod.id ? { 
+        return prev.map(i => i.name === itemName ? { 
           ...i, 
           quantity: updatedQty, 
-          price: updatedPrice, 
+          price: finalPrice, 
           discount: itemDiscount,
-          total: updatedPrice * updatedQty
+          total: finalPrice * updatedQty
         } : i);
       }
-      const initialPrice = itemPrice || prod.sellPrice;
       return [...prev, {
-        id: prod.id,
-        name: prod.name,
-        unit: prod.unit || 'পিস',
-        price: initialPrice,
+        id: itemId,
+        name: itemName,
+        unit: itemUnitToUse,
+        price: finalPrice,
         quantity: itemQty,
         discount: itemDiscount || 0,
-        total: initialPrice * itemQty
+        total: finalPrice * itemQty
       }];
     });
 
@@ -310,7 +310,6 @@ function InvoicesContent() {
     setItemQty(1);
     setItemPrice(0);
     setItemDiscount(0);
-    toast.success(`${prod.name} কার্টে যোগ করা হয়েছে`);
   };
 
   const handleRemoveCartItem = (id?: string) => {
@@ -765,25 +764,13 @@ function InvoicesContent() {
                       <div className="space-y-1.5">
                         <Label className="text-xs font-bold text-slate-600">Select Shop / Customer <span className="text-rose-500">*</span></Label>
                         {!isNewCustomer ? (
-                          <Select 
-                            value={selectedCustomer?.id || ''} 
-                            onValueChange={(val: string | null) => {
-                              if (!val) return;
-                              const cust = customers.find(c => c.id === val);
-                              if (cust) setSelectedCustomer(cust);
-                            }}
-                          >
-                            <SelectTrigger className="rounded-xl h-11 bg-slate-50 border-slate-200 font-bold text-xs">
-                              <SelectValue placeholder="কাস্টমার / দোকান খুঁজুন..." />
-                            </SelectTrigger>
-                            <SelectContent className="font-bengali max-h-60 text-xs font-bold">
-                              {customers.map(c => (
-                                <SelectItem key={c.id} value={c.id}>
-                                  {c.name} {c.phone ? `(${c.phone})` : ''} {c.businessName ? `— ${c.businessName}` : ''}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <CustomerSearchSelect
+                            customers={customers}
+                            selectedCustomer={selectedCustomer}
+                            onSelectCustomer={(cust) => setSelectedCustomer(cust)}
+                            onAddNewClick={() => setIsNewCustomer(true)}
+                            placeholder="কাস্টমার / দোকান সার্চ করুন..."
+                          />
                         ) : (
                           <Input
                             required
@@ -860,64 +847,23 @@ function InvoicesContent() {
                       </Button>
                     </div>
 
-                    {/* Add Product Line Controls */}
-                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-3 bg-slate-50 border border-slate-200/80 rounded-xl items-end">
-                      <div className="sm:col-span-5 space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-500">পণ্য নির্বাচন করুন</Label>
-                        <Select 
-                          value={selectedProductId} 
-                          onValueChange={(val: string | null) => {
-                            const v = val || '';
-                            setSelectedProductId(v);
-                            const p = products.find(prod => prod.id === v);
-                            if (p) setItemPrice(p.sellPrice || 0);
-                          }}
-                        >
-                          <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
-                            <SelectValue placeholder="পণ্য বাছুন..." />
-                          </SelectTrigger>
-                          <SelectContent className="font-bengali max-h-60 text-xs font-bold">
-                            {products.map(p => (
-                              <SelectItem key={p.id} value={p.id} disabled={p.stock <= 0}>
-                                {p.name} — ৳{p.sellPrice.toLocaleString()} (স্টক: {p.stock} {p.unit})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="sm:col-span-2 space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-500">পরিমাণ</Label>
-                        <Input 
-                          type="number" 
-                          min="1" 
-                          value={isNaN(itemQty) ? '' : itemQty} 
-                          onChange={e => setItemQty(parseFloat(e.target.value) || 0)} 
-                          className="rounded-xl h-10 bg-white text-center font-bold text-xs"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-3 space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-500">একক মূল্য (৳)</Label>
-                        <Input 
-                          type="number" 
-                          min="0" 
-                          value={isNaN(itemPrice) ? '' : itemPrice} 
-                          onChange={e => setItemPrice(parseFloat(e.target.value) || 0)} 
-                          className="rounded-xl h-10 bg-white text-center font-bold text-xs text-orange-600"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2 flex items-end">
-                        <Button 
-                          type="button" 
-                          onClick={handleAddCartItem} 
-                          className="w-full bg-orange-600 hover:bg-orange-700 text-white h-10 rounded-xl font-bold text-xs shadow-xs"
-                        >
-                          + যোগ করুন
-                        </Button>
-                      </div>
-                    </div>
+                    {/* Step-by-Step Cascading Product Selector (Rod, Cement, Ring) */}
+                    <CascadingProductSelector
+                      products={products}
+                      onProductChange={(selected) => {
+                        setSelectedCascadingProduct(selected);
+                        if (selected) {
+                          if (selected.productId) setSelectedProductId(selected.productId);
+                          if (selected.price > 0) setItemPrice(selected.price);
+                        }
+                      }}
+                      showPriceField={true}
+                      itemQty={itemQty}
+                      onQtyChange={setItemQty}
+                      itemPrice={itemPrice}
+                      onPriceChange={setItemPrice}
+                      onAddCartItem={handleAddCartItem}
+                    />
 
                     {/* Table matching screenshot columns */}
                     <div className="border border-slate-200 rounded-xl overflow-x-auto">
