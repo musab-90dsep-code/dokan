@@ -343,13 +343,20 @@ export default function PurchasesPage() {
         paid_amount: paidAmount,
         due_amount: cartDueAmount,
         payment_method: paymentMethod.toLowerCase(),
-        items: cart.map(i => ({
-          product_name: i.name,
-          quantity: i.quantity,
-          price: i.price,
-          unit: i.unit,
-          total: i.price * i.quantity
-        })),
+        items: cart.map(i => {
+          const extraCharges = (shippingCost || 0) + (laborCost || 0);
+          const landedUnitPrice = (isLandedCostAuto && cartSubtotal > 0 && extraCharges > 0 && i.quantity > 0)
+            ? i.price + (((i.price * i.quantity / cartSubtotal) * extraCharges) / i.quantity)
+            : i.price;
+          const finalUnitPrice = Math.round(landedUnitPrice * 100) / 100;
+          return {
+            product_name: i.name,
+            quantity: i.quantity,
+            price: finalUnitPrice,
+            unit: i.unit,
+            total: Math.round(finalUnitPrice * i.quantity * 100) / 100
+          };
+        }),
         notes: purchaseNote
       });
 
