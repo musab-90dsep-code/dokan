@@ -114,7 +114,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
   const [formData, setFormData] = useState({
     businessName: '',
     name: '',
-    customerType: 'খুচরা গ্রাহক',
+    customerType: isCustomer ? 'খুচরা গ্রাহক' : 'রড',
     phone: '',
     altPhone: '',
     email: '',
@@ -286,7 +286,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       toast.error(isCustomer ? 'গ্রাহকের নাম পূরণ করুন' : 'কোম্পানি বা প্রতিনিধির নাম পূরণ করুন');
       return;
     }
-    if (!formData.businessName.trim()) {
+    if (isCustomer && !formData.businessName.trim()) {
       toast.error('ব্যবসা / প্রতিষ্ঠানের নাম পূরণ করুন');
       return;
     }
@@ -298,7 +298,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
     const payload: PartyData = {
       party_type: type,
       name: formData.name.trim(),
-      business_name: formData.businessName.trim(),
+      business_name: isCustomer ? formData.businessName.trim() : (formData.businessName.trim() || formData.name.trim()),
       customer_type: formData.customerType,
       supply_type: formData.customerType,
       phone: formData.phone,
@@ -478,7 +478,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                 <div className="relative flex-1 min-w-[240px] max-w-md">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <Input
-                    placeholder="কাস্টমার নাম, মোবাইল, বা ইমেইল সার্চ করুন..."
+                    placeholder={isCustomer ? "কাস্টমার নাম, মোবাইল, বা ইমেইল সার্চ করুন..." : "কোম্পানি বা সরবরাহকারীর নাম, মোবাইল সার্চ করুন..."}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     className="pl-9 h-9 text-xs rounded-xl bg-white border-slate-200"
@@ -488,13 +488,24 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                 {/* Group Selector */}
                 <Select value={filterType} onValueChange={(val) => setFilterType(val || 'সব')}>
                   <SelectTrigger className="w-36 h-9 bg-white border-slate-200 rounded-xl text-xs font-bold">
-                    <SelectValue placeholder="সকল গ্রুপ" />
+                    <SelectValue placeholder="সকল ধরন" />
                   </SelectTrigger>
                   <SelectContent className="font-bengali text-xs">
-                    <SelectItem value="সব">সকল গ্রুপ</SelectItem>
-                    <SelectItem value="খুচরা গ্রাহক">খুচরা ক্রেতা</SelectItem>
-                    <SelectItem value="কন্ট্রাকটর">ঠিকাদার</SelectItem>
-                    <SelectItem value="পাইকারি গ্রাহক">পাইকারি</SelectItem>
+                    <SelectItem value="সব">সকল ধরন</SelectItem>
+                    {isCustomer ? (
+                      <>
+                        <SelectItem value="খুচরা গ্রাহক">খুচরা ক্রেতা</SelectItem>
+                        <SelectItem value="কন্ট্রাকটর">ঠিকাদার</SelectItem>
+                        <SelectItem value="পাইকারি গ্রাহক">পাইকারি</SelectItem>
+                      </>
+                    ) : (
+                      <>
+                        <SelectItem value="রড">রড</SelectItem>
+                        <SelectItem value="সিমেন্ট">সিমেন্ট</SelectItem>
+                        <SelectItem value="রড ও সিমেন্ট">রড ও সিমেন্ট</SelectItem>
+                        <SelectItem value="অন্যান্য">অন্যান্য</SelectItem>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
 
@@ -512,9 +523,9 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                 <TableHeader className="bg-slate-50/80 border-b border-slate-200">
                   <TableRow className="text-xs text-slate-700 font-black">
                     <TableHead className="py-3 px-4 text-left font-black text-slate-900 w-12">ক্রমিক</TableHead>
-                    <TableHead className="py-3 px-4 text-left font-black text-slate-900">কাস্টমারের নাম</TableHead>
+                    <TableHead className="py-3 px-4 text-left font-black text-slate-900">{isCustomer ? 'কাস্টমারের নাম' : 'কোম্পানি / সরবরাহকারী'}</TableHead>
                     <TableHead className="py-3 px-4 text-left font-black text-slate-900">মোবাইল নম্বর</TableHead>
-                    <TableHead className="py-3 px-4 text-left font-black text-slate-900">গ্রুপ</TableHead>
+                    <TableHead className="py-3 px-4 text-left font-black text-slate-900">{isCustomer ? 'গ্রুপ' : 'সরবরাহের ধরন'}</TableHead>
                     <TableHead className="py-3 px-4 text-right font-black text-slate-900">মোট বকেয়া</TableHead>
                     <TableHead className="py-3 px-4 text-left font-black text-slate-900">সর্বশেষ লেনদেন</TableHead>
                     <TableHead className="py-3 px-4 text-center font-black text-slate-900">স্ট্যাটাস</TableHead>
@@ -538,6 +549,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                     filtered.map((p, idx) => {
                       const isWholesale = p.customerType === 'পাইকারি গ্রাহক';
                       const isContractor = p.customerType === 'কন্ট্রাকটর';
+                      const suppType = p.customerType || p.supplyType || 'রড';
                       return (
                         <TableRow
                           key={p.id}
@@ -569,16 +581,31 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           </TableCell>
 
                           <TableCell className="py-3.5 px-4 text-left">
-                            <span className={cn(
-                              "inline-block font-bold text-[11px] px-3 py-0.5 rounded-full",
-                              isContractor
-                                ? "bg-blue-100/80 text-blue-700"
-                                : isWholesale
-                                ? "bg-purple-100/80 text-purple-700"
-                                : "bg-emerald-100/80 text-emerald-700"
-                            )}>
-                              {isContractor ? 'ঠিকাদার' : isWholesale ? 'পাইকারি' : 'খুচরা ক্রেতা'}
-                            </span>
+                            {isCustomer ? (
+                              <span className={cn(
+                                "inline-block font-bold text-[11px] px-3 py-0.5 rounded-full",
+                                isContractor
+                                  ? "bg-blue-100/80 text-blue-700"
+                                  : isWholesale
+                                  ? "bg-purple-100/80 text-purple-700"
+                                  : "bg-emerald-100/80 text-emerald-700"
+                              )}>
+                                {isContractor ? 'ঠিকাদার' : isWholesale ? 'পাইকারি' : 'খুচরা ক্রেতা'}
+                              </span>
+                            ) : (
+                              <span className={cn(
+                                "inline-block font-bold text-[11px] px-3 py-0.5 rounded-full",
+                                suppType === 'সিমেন্ট'
+                                  ? "bg-cyan-100/80 text-cyan-700"
+                                  : suppType === 'রড ও সিমেন্ট'
+                                  ? "bg-purple-100/80 text-purple-700"
+                                  : suppType === 'অন্যান্য'
+                                  ? "bg-slate-100/80 text-slate-700"
+                                  : "bg-amber-100/80 text-amber-800"
+                              )}>
+                                {suppType}
+                              </span>
+                            )}
                           </TableCell>
 
                           <TableCell className="py-3.5 px-4 text-right font-bold text-rose-600">
@@ -638,7 +665,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
             {/* Pagination Footer */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs font-semibold text-slate-500">
               <div>
-                মোট <strong className="text-slate-900 font-bold">{toBnDigits(parties.length)}</strong> জন কাস্টমারের মধ্যে ১ থেকে {toBnDigits(filtered.length)} দেখানো হচ্ছে
+                মোট <strong className="text-slate-900 font-bold">{toBnDigits(parties.length)}</strong> জন {isCustomer ? 'কাস্টমারের' : 'সরবরাহকারীর'} মধ্যে ১ থেকে {toBnDigits(filtered.length)} দেখানো হচ্ছে
               </div>
 
               <div className="flex items-center gap-1.5">
@@ -677,7 +704,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                 </div>
                 <div>
                   <span className="text-[10px] font-black tracking-widest text-orange-600 uppercase">
-                    {isCustomer ? 'গ্রাহক ব্যবস্থাপনা (CUSTOMER MANAGEMENT)' : 'কোম্পানি / সরবরাহকারী ব্যবস্থাপনা (COMPANY MANAGEMENT)'}
+                    {isCustomer ? 'গ্রাহক ব্যবস্থাপনা (CUSTOMER MANAGEMENT)' : 'কোম্পানি / সরবরাহকারী ব্যবস্থাপনা (SUPPLIER MANAGEMENT)'}
                   </span>
                   <h1 className="text-xl font-black text-slate-900 tracking-tight">
                     {editing
@@ -686,7 +713,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         : 'কোম্পানির তথ্য সম্পাদনা'
                       : isCustomer
                       ? 'নতুন গ্রাহক যোগ করুন'
-                      : 'নতুন কোম্পানি যোগ করুন'}
+                      : 'নতুন কোম্পানি / সরবরাহকারী যোগ করুন'}
                   </h1>
                 </div>
               </div>
@@ -716,7 +743,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                       </h2>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-bold text-slate-700">
+                    <div className={cn("grid grid-cols-1 gap-3 text-xs font-bold text-slate-700", isCustomer ? "md:grid-cols-3" : "md:grid-cols-2")}>
                       <div className="space-y-1">
                         <Label className="text-xs font-bold text-slate-700">
                           {isCustomer ? 'গ্রাহকের নাম' : 'কোম্পানি / প্রতিনিধির নাম'} <span className="text-rose-500">*</span>
@@ -730,36 +757,49 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         />
                       </div>
 
-                      <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">
-                          ব্যবসা / প্রতিষ্ঠানের নাম <span className="text-rose-500">*</span>
-                        </Label>
-                        <Input
-                          required
-                          value={formData.businessName}
-                          onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                          placeholder="যেমন: আমিন বিল্ডার্স"
-                          className="rounded-xl h-10 bg-white border-slate-200"
-                        />
-                      </div>
+                      {isCustomer && (
+                        <div className="space-y-1">
+                          <Label className="text-xs font-bold text-slate-700">
+                            ব্যবসা / প্রতিষ্ঠানের নাম <span className="text-rose-500">*</span>
+                          </Label>
+                          <Input
+                            required
+                            value={formData.businessName}
+                            onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
+                            placeholder="যেমন: আমিন বিল্ডার্স"
+                            className="rounded-xl h-10 bg-white border-slate-200"
+                          />
+                        </div>
+                      )}
 
                       <div className="space-y-1">
                         <Label className="text-xs font-bold text-slate-700">
-                          {isCustomer ? 'গ্রাহকের ধরন (ঐচ্ছিক)' : 'সরবরাহের ধরন / বিভাগ (ঐচ্ছিক)'}
+                          {isCustomer ? 'গ্রাহকের ধরন (ঐচ্ছিক)' : 'সরবরাহের ধরন / ক্যাটাগরি (ঐচ্ছিক)'}
                         </Label>
                         <Select
                           value={formData.customerType}
                           onValueChange={(val: string | null) =>
-                            setFormData({ ...formData, customerType: val || 'খুচরা গ্রাহক' })
+                            setFormData({ ...formData, customerType: val || (isCustomer ? 'খুচরা গ্রাহক' : 'রড') })
                           }
                         >
                           <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 font-bold">
                             <SelectValue placeholder="ধরন নির্বাচন করুন" />
                           </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="খুচরা গ্রাহক">খুচরা গ্রাহক (Retail)</SelectItem>
-                            <SelectItem value="পাইকারি গ্রাহক">পাইকারি গ্রাহক (Wholesale)</SelectItem>
-                            <SelectItem value="কন্ট্রাকটর">কন্ট্রাকটর / ডেভেলপার (Contractor)</SelectItem>
+                          <SelectContent className="font-bengali text-xs">
+                            {isCustomer ? (
+                              <>
+                                <SelectItem value="খুচরা গ্রাহক">খুচরা গ্রাহক (Retail)</SelectItem>
+                                <SelectItem value="পাইকারি গ্রাহক">পাইকারি গ্রাহক (Wholesale)</SelectItem>
+                                <SelectItem value="কন্ট্রাকটর">কন্ট্রাকটর / ডেভেলপার (Contractor)</SelectItem>
+                              </>
+                            ) : (
+                              <>
+                                <SelectItem value="রড">🧱 রড (Rod Supplier)</SelectItem>
+                                <SelectItem value="সিমেন্ট">🏗️ সিমেন্ট (Cement Supplier)</SelectItem>
+                                <SelectItem value="রড ও সিমেন্ট">🏢 রড ও সিমেন্ট (Rod & Cement)</SelectItem>
+                                <SelectItem value="অন্যান্য">📦 অন্যান্য (General Supplier)</SelectItem>
+                              </>
+                            )}
                           </SelectContent>
                         </Select>
                       </div>

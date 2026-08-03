@@ -99,6 +99,7 @@ interface Bank {
   id: string;
   name: string;
   accNo: string;
+  branch?: string;
   balance: number;
 }
 
@@ -173,6 +174,96 @@ function MasterReportsContent() {
   const [journalAccountType, setJournalAccountType] = useState<'cash' | 'bank'>('cash');
   const [journalBankId, setJournalBankId] = useState<string>('');
   const [isSubmittingJournal, setIsSubmittingJournal] = useState(false);
+
+  // Bank Management States & Handlers
+  const [bankModalOpen, setBankModalOpen] = useState(false);
+  const [editingBank, setEditingBank] = useState<Bank | null>(null);
+  const [bankName, setBankName] = useState('');
+  const [bankAccNo, setBankAccNo] = useState('');
+  const [bankBranch, setBankBranch] = useState('');
+  const [bankBalance, setBankBalance] = useState<number>(0);
+  const [isSubmittingBank, setIsSubmittingBank] = useState(false);
+
+  const fetchBankList = useCallback(async () => {
+    try {
+      const bankList = await api.banks.list();
+      const safeBankList = Array.isArray(bankList) ? bankList : [];
+      setBanks(safeBankList.map(b => ({
+        id: String(b.id),
+        name: b.name,
+        accNo: b.account_number || '',
+        branch: b.branch || '',
+        balance: Number(b.balance || 0)
+      })));
+    } catch (err) {
+      console.error('Error fetching banks:', err);
+    }
+  }, []);
+
+  const handleOpenAddBank = () => {
+    setEditingBank(null);
+    setBankName('');
+    setBankAccNo('');
+    setBankBranch('');
+    setBankBalance(0);
+    setBankModalOpen(true);
+  };
+
+  const handleOpenEditBank = (b: Bank) => {
+    setEditingBank(b);
+    setBankName(b.name);
+    setBankAccNo(b.accNo);
+    setBankBranch(b.branch || '');
+    setBankBalance(b.balance);
+    setBankModalOpen(true);
+  };
+
+  const handleSaveBank = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bankName.trim()) {
+      toast.error('ব্যাংক এর নাম লিখুন');
+      return;
+    }
+    try {
+      setIsSubmittingBank(true);
+      if (editingBank) {
+        await api.banks.update(editingBank.id, {
+          name: bankName.trim(),
+          account_number: bankAccNo.trim(),
+          branch: bankBranch.trim(),
+          balance: Number(bankBalance || 0)
+        });
+        toast.success('ব্যাংক তথ্য আপডেট হয়েছে');
+      } else {
+        await api.banks.create({
+          name: bankName.trim(),
+          account_number: bankAccNo.trim(),
+          branch: bankBranch.trim(),
+          balance: Number(bankBalance || 0)
+        });
+        toast.success('নতুন ব্যাংক যোগ করা হয়েছে');
+      }
+      setBankModalOpen(false);
+      fetchBankList();
+    } catch (err) {
+      console.error(err);
+      toast.error('ব্যাংক তথ্য সংরক্ষণ করা সম্ভব হয়নি');
+    } finally {
+      setIsSubmittingBank(false);
+    }
+  };
+
+  const handleDeleteBank = async (b: Bank) => {
+    if (!confirm(`আপনি কি নিশ্চিত যে "${b.name}" একাউন্টটি মুছে ফেলতে চান?`)) return;
+    try {
+      await api.banks.delete(b.id);
+      toast.success('ব্যাংক একাউন্ট মুছে ফেলা হয়েছে');
+      fetchBankList();
+    } catch (err) {
+      console.error(err);
+      toast.error('ব্যাংক একাউন্ট মোছা সম্ভব হয়নি');
+    }
+  };
 
   useEffect(() => {
     async function loadReportsData() {
@@ -776,63 +867,7 @@ function MasterReportsContent() {
               );
             })()}
 
-            {/* 2. ব্যাংক এর তালিকা */}
-            {activeTab === 'bank_list' && (() => {
-              const totalBankCount = banks.length;
-              const totalBankBal = banks.reduce((sum, b) => sum + (b.balance || 0), 0);
 
-              return (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div>
-                      <h1 className="text-2xl font-black text-slate-900 tracking-tight">ব্যাংক এর তালিকা</h1>
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold mt-1">
-                        <span>রিপোর্ট</span><span>&rsaquo;</span><span className="text-slate-900 font-bold">ব্যাংক এর তালিকা</span>
-                      </div>
-                    </div>
-                    <button onClick={() => setActiveTab('hub')} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1.5">
-                      <ArrowLeft className="w-4 h-4 text-orange-500" /> সকল রিপোর্ট গ্রিড
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
-                    <Card className="p-5 border-blue-200/60 bg-gradient-to-br from-blue-50/80 to-indigo-50/30 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-blue-600">মোট ব্যাংক অ্যাকাউন্ট</p><p className="text-2xl font-black text-slate-900">{toBnNum(totalBankCount)} টি</p><p className="text-[11px] font-semibold text-slate-500">সক্রিয় ব্যাংক একাউন্ট</p></div><div className="w-11 h-11 rounded-2xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold"><Landmark className="w-5 h-5" /></div></div></Card>
-                    <Card className="p-5 border-emerald-200/60 bg-gradient-to-br from-emerald-50/80 to-teal-50/30 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-emerald-700">মোট ব্যাংক ব্যালেন্স</p><p className="text-2xl font-black text-emerald-600">{formatBnCurrency(totalBankBal)}</p><p className="text-[11px] font-semibold text-slate-500">সকল ব্যাংকের মোট জমা</p></div><div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold"><Wallet className="w-5 h-5" /></div></div></Card>
-                  </div>
-
-                  <Card className="border-slate-200/90 rounded-2xl bg-white overflow-hidden shadow-xs">
-                    <Table>
-                      <TableHeader className="bg-slate-50/90 border-b border-slate-200">
-                        <TableRow>
-                          <TableHead className="font-black text-xs text-center w-16">ক্রমিক</TableHead>
-                          <TableHead className="font-black text-xs">ব্যাংকের নাম</TableHead>
-                          <TableHead className="font-black text-xs">অ্যাকাউন্ট নং</TableHead>
-                          <TableHead className="font-black text-xs text-right">বর্তমান ব্যালেন্স (৳)</TableHead>
-                          <TableHead className="font-black text-xs text-center">স্ট্যাটাস</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {banks.length === 0 ? (
-                          <TableRow><TableCell colSpan={5} className="text-center py-8 text-slate-400 font-bengali">কোনো ব্যাংক একাউন্ট যুক্ত করা হয়নি</TableCell></TableRow>
-                        ) : banks.map((b, idx) => (
-                          <TableRow key={b.id} className="border-b border-slate-100 font-semibold text-xs">
-                            <TableCell className="text-center font-bold text-slate-500">{toBnNum(idx + 1)}</TableCell>
-                            <TableCell className="font-black text-slate-900 text-sm">{b.name}</TableCell>
-                            <TableCell className="font-bold text-slate-600">{toBnNum(b.accNo)}</TableCell>
-                            <TableCell className="text-right font-black text-slate-900 text-sm">{formatBnCurrency(b.balance || 0)}</TableCell>
-                            <TableCell className="text-center"><span className="px-2.5 py-1 rounded-lg text-[11px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200 inline-block">সক্রিয়</span></TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                    <div className="p-4 bg-slate-50/80 border-t border-slate-200 flex justify-between items-center text-xs font-black">
-                      <span>মোট:</span>
-                      <span className="text-emerald-600 text-sm">{formatBnCurrency(totalBankBal)}</span>
-                    </div>
-                  </Card>
-                </div>
-              );
-            })()}
 
             {/* 3. ডেইলী টপসিট */}
             {activeTab === 'daily_topsheet' && (() => {
@@ -1201,6 +1236,144 @@ function MasterReportsContent() {
               );
             })()}
 
+            {/* 9. ব্যাংক এর তালিকা (Bank Account Management) */}
+            {activeTab === 'bank_list' && (() => {
+              const totalBankBalance = banks.reduce((sum, b) => sum + (b.balance || 0), 0);
+              const filteredBanks = banks.filter(b => 
+                !searchQuery.trim() || 
+                b.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                b.accNo.includes(searchQuery) ||
+                (b.branch && b.branch.toLowerCase().includes(searchQuery.toLowerCase()))
+              );
+
+              return (
+                <div className="space-y-6 animate-in fade-in duration-300">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                        <Landmark className="w-7 h-7 text-blue-600" /> ব্যাংক একাউন্ট তালিকা (Bank Accounts)
+                      </h1>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold mt-1">
+                        <span>ড্যাশবোর্ড</span><span>&rsaquo;</span><span>রিপোর্ট</span><span>&rsaquo;</span><span className="text-slate-900 font-bold">ব্যাংক এর তালিকা</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                      <Button onClick={handleOpenAddBank} className="h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5">
+                        <Plus className="w-4 h-4" />
+                        <span>নতুন ব্যাংক যোগ করুন</span>
+                      </Button>
+                      <button onClick={() => setActiveTab('hub')} className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1">
+                        <ArrowLeft className="w-4 h-4 text-orange-500" /> সকল রিপোর্ট
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Summary Metric Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Card className="p-5 border-blue-200 bg-blue-50/40 rounded-2xl flex items-center justify-between shadow-xs">
+                      <div>
+                        <p className="text-xs font-bold text-blue-800">সর্বমোট ব্যাংক একাউন্ট</p>
+                        <p className="text-2xl font-black text-slate-900 mt-1">{toBnNum(banks.length)} টি</p>
+                      </div>
+                      <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
+                        <Landmark className="w-6 h-6" />
+                      </div>
+                    </Card>
+
+                    <Card className="p-5 border-emerald-200 bg-emerald-50/40 rounded-2xl flex items-center justify-between shadow-xs">
+                      <div>
+                        <p className="text-xs font-bold text-emerald-800">মোট ব্যাংক ব্যালেন্স</p>
+                        <p className="text-2xl font-black text-emerald-600 mt-1">{formatBnCurrency(totalBankBalance)}</p>
+                      </div>
+                      <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">
+                        <Wallet className="w-6 h-6" />
+                      </div>
+                    </Card>
+                  </div>
+
+                  {/* Bank List Table Card */}
+                  <Card className="border-slate-200/90 rounded-2xl bg-white overflow-hidden shadow-xs space-y-4 p-4 sm:p-5">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <div className="relative w-full sm:w-80">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Input
+                          placeholder="ব্যাংক এর নাম, হিসাব নম্বর বা শাখা সার্চ করুন..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-9 h-9 text-xs rounded-xl bg-white border-slate-200"
+                        />
+                      </div>
+                      <span className="text-xs font-bold text-slate-500">
+                        মোট {toBnNum(filteredBanks.length)} টি ব্যাংক প্রদর্শিত হচ্ছে
+                      </span>
+                    </div>
+
+                    <div className="border border-slate-200/80 rounded-xl overflow-hidden">
+                      <Table>
+                        <TableHeader className="bg-slate-50 border-b border-slate-200">
+                          <TableRow>
+                            <TableHead className="font-black text-xs text-center w-14">ক্রমিক</TableHead>
+                            <TableHead className="font-black text-xs">ব্যাংক / হিসাবের নাম</TableHead>
+                            <TableHead className="font-black text-xs">হিসাব নম্বর (Account No)</TableHead>
+                            <TableHead className="font-black text-xs">শাখা (Branch)</TableHead>
+                            <TableHead className="font-black text-xs text-right px-6">বর্তমান ব্যালেন্স (৳)</TableHead>
+                            <TableHead className="font-black text-xs text-center">অ্যাকশন</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredBanks.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={6} className="text-center py-10 text-slate-400 font-bengali font-bold">
+                                কোনো ব্যাংক একাউন্ট পাওয়া যায়নি
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            filteredBanks.map((b, i) => (
+                              <TableRow key={b.id} className="border-b border-slate-100 text-xs font-semibold hover:bg-slate-50/80 transition-colors">
+                                <TableCell className="text-center font-bold text-slate-500">{toBnNum(i + 1)}</TableCell>
+                                <TableCell className="font-black text-slate-900">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                                      🏦
+                                    </div>
+                                    <span>{b.name}</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="font-mono font-bold text-slate-700">{b.accNo || 'N/A'}</TableCell>
+                                <TableCell className="text-slate-600">{b.branch || 'প্রধান শাখা'}</TableCell>
+                                <TableCell className="text-right font-black text-emerald-600 px-6 text-sm">
+                                  {formatBnCurrency(b.balance)}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    <button
+                                      onClick={() => handleOpenEditBank(b)}
+                                      className="w-8 h-8 rounded-lg border border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center justify-center transition-colors"
+                                      title="সম্পাদনা করুন"
+                                    >
+                                      ✏️
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteBank(b)}
+                                      className="w-8 h-8 rounded-lg border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center justify-center transition-colors"
+                                      title="মুছে ফেলুন"
+                                    >
+                                      🗑️
+                                    </button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </Card>
+                </div>
+              );
+            })()}
+
           </div>
         )}
 
@@ -1282,6 +1455,74 @@ function MasterReportsContent() {
                 {isSubmittingJournal ? 'জার্নাল হচ্ছে...' : 'অটো জার্নাল সম্পন্ন করুন'}
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ADD / EDIT BANK MODAL */}
+        <Dialog open={bankModalOpen} onOpenChange={setBankModalOpen}>
+          <DialogContent className="max-w-md font-bengali rounded-3xl">
+            <DialogHeader>
+              <DialogTitle className="font-black text-slate-900 text-lg flex items-center gap-2">
+                <Landmark className="w-5 h-5 text-blue-600" />
+                {editingBank ? 'ব্যাংক একাউন্ট সম্পাদনা করুন' : 'নতুন ব্যাংক একাউন্ট যোগ করুন'}
+              </DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSaveBank} className="space-y-4 py-2">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-700">
+                  ব্যাংক / হিসাবের নাম <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  required
+                  value={bankName}
+                  onChange={(e) => setBankName(e.target.value)}
+                  placeholder="যেমন: ডাচ-বাংলা ব্যাংক লিমিটেড"
+                  className="rounded-xl h-10 font-bold text-xs bg-white border-slate-200"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-700">হিসাব নম্বর (Account No)</Label>
+                <Input
+                  value={bankAccNo}
+                  onChange={(e) => setBankAccNo(e.target.value)}
+                  placeholder="যেমন: 123.456.7890"
+                  className="rounded-xl h-10 font-bold text-xs bg-white border-slate-200"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">শাখা (Branch)</Label>
+                  <Input
+                    value={bankBranch}
+                    onChange={(e) => setBankBranch(e.target.value)}
+                    placeholder="যেমন: মিরপুর শাখা"
+                    className="rounded-xl h-10 font-bold text-xs bg-white border-slate-200"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">ব্যালেন্স (৳)</Label>
+                  <Input
+                    type="number"
+                    value={bankBalance}
+                    onChange={(e) => setBankBalance(parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className="rounded-xl h-10 font-black text-xs text-emerald-600 bg-white border-slate-200"
+                  />
+                </div>
+              </div>
+
+              <DialogFooter className="pt-3">
+                <Button type="button" variant="outline" onClick={() => setBankModalOpen(false)} className="rounded-xl text-xs font-bold">
+                  বাতিল
+                </Button>
+                <Button type="submit" disabled={isSubmittingBank} className="rounded-xl text-xs font-black bg-blue-600 hover:bg-blue-700 text-white">
+                  {isSubmittingBank ? 'সংরক্ষণ হচ্ছে...' : editingBank ? 'আপডেট করুন' : 'সংরক্ষণ করুন'}
+                </Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
 

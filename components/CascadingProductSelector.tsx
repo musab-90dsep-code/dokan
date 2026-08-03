@@ -187,7 +187,7 @@ export function CascadingProductSelector({
     let defaultUnit = 'পিস';
 
     if (category === 'রড') {
-      constructedName = `${selectedMm} ${selectedBrand} রড`.trim();
+      constructedName = `${selectedBrand} ${selectedMm} রড`.trim();
       defaultUnit = 'কেজি';
     } else if (category === 'সিমেন্ট') {
       constructedName = selectedBrand.endsWith('সিমেন্ট') ? selectedBrand : `${selectedBrand} সিমেন্ট`;
@@ -198,7 +198,11 @@ export function CascadingProductSelector({
     }
 
     // Exact match search
-    const exact = products.find(p => p.name.toLowerCase() === constructedName.toLowerCase());
+    const exact = products.find(p => 
+      p.name.toLowerCase() === constructedName.toLowerCase() ||
+      p.name.toLowerCase() === `${selectedMm} ${selectedBrand} রড`.toLowerCase() ||
+      p.name.toLowerCase() === `${selectedBrand} ${selectedMm} রড`.toLowerCase()
+    );
     if (exact) {
       return {
         productId: exact.id,
@@ -310,25 +314,11 @@ export function CascadingProductSelector({
 
       {/* 2. Cascading Attributes Row (Based on Category) */}
       <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-        {/* ROD FLOW: mm Select + Brand Select */}
+        {/* ROD FLOW: Brand Select + mm Select */}
         {category === 'রড' && (
           <>
-            <div className="sm:col-span-5 space-y-1">
-              <Label className="text-[11px] font-bold text-slate-600">২. মিলি (mm / Size)</Label>
-              <Select value={selectedMm} onValueChange={(val: string | null) => setSelectedMm(val || '১০ মিলি')}>
-                <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="font-bengali text-xs font-bold">
-                  {ROD_MM_OPTIONS.map((mm) => (
-                    <SelectItem key={mm} value={mm}>{mm}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             <div className="sm:col-span-7 space-y-1">
-              <Label className="text-[11px] font-bold text-slate-600">৩. ব্র্যান্ড (Brand)</Label>
+              <Label className="text-[11px] font-bold text-slate-600">২. কোম্পানি / ব্র্যান্ড (Brand)</Label>
               <Select value={selectedBrand} onValueChange={(val: string | null) => setSelectedBrand(val || 'BSRM')}>
                 <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
                   <SelectValue />
@@ -336,6 +326,20 @@ export function CascadingProductSelector({
                 <SelectContent className="font-bengali text-xs font-bold">
                   {ROD_BRAND_OPTIONS.map((b) => (
                     <SelectItem key={b} value={b}>{b}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="sm:col-span-5 space-y-1">
+              <Label className="text-[11px] font-bold text-slate-600">৩. মিলি (mm / Size)</Label>
+              <Select value={selectedMm} onValueChange={(val: string | null) => setSelectedMm(val || '১০ মিলি')}>
+                <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="font-bengali text-xs font-bold">
+                  {ROD_MM_OPTIONS.map((mm) => (
+                    <SelectItem key={mm} value={mm}>{mm}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

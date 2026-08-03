@@ -443,6 +443,15 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       });
+    },
+    update: async (id: string | number, data: Partial<BankData>): Promise<BankData> => {
+      return request<BankData>(`/banks/${id}/`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+    },
+    delete: async (id: string | number): Promise<void> => {
+      return request<void>(`/banks/${id}/`, { method: 'DELETE' });
     }
   },
 

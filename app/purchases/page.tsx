@@ -318,18 +318,19 @@ export default function PurchasesPage() {
       toast.error('অন্তত একটি পণ্য নির্বাচন করুন');
       return;
     }
-    if (!selectedSupplier && (!isNewSupplier || !newSupplierData.businessName.trim())) {
+    if (!selectedSupplier && (!isNewSupplier || (!newSupplierData.name.trim() && !newSupplierData.businessName.trim()))) {
       toast.error('কোম্পানি / সরবরাহকারী নির্বাচন করুন');
       return;
     }
 
     try {
       let finalSuppId = selectedSupplier?.id;
-      if (isNewSupplier && newSupplierData.name.trim()) {
+      if (isNewSupplier && (newSupplierData.name.trim() || newSupplierData.businessName.trim())) {
+        const suppName = newSupplierData.name.trim() || newSupplierData.businessName.trim();
         const createdParty = await api.parties.create({
           party_type: 'supplier',
-          name: newSupplierData.name.trim(),
-          business_name: newSupplierData.businessName.trim(),
+          name: suppName,
+          business_name: suppName,
           phone: newSupplierData.phone.trim(),
           address: newSupplierData.address.trim()
         });
@@ -633,9 +634,9 @@ export default function PurchasesPage() {
                         ) : (
                           <Input
                             required
-                            placeholder="কোম্পানির নাম"
-                            value={newSupplierData.businessName}
-                            onChange={e => setNewSupplierData({ ...newSupplierData, businessName: e.target.value })}
+                            placeholder="কোম্পানি / সরবরাহকারীর নাম"
+                            value={newSupplierData.name || newSupplierData.businessName}
+                            onChange={e => setNewSupplierData({ ...newSupplierData, name: e.target.value, businessName: e.target.value })}
                             className="rounded-xl h-11 bg-slate-50 border-slate-200 text-xs font-bold"
                           />
                         )}
