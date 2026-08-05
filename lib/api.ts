@@ -113,6 +113,17 @@ export interface ExpenseData {
   notes?: string;
 }
 
+export interface HawlatData {
+  id?: string | number;
+  person_name: string;
+  amount: number;
+  note?: string;
+  date?: string;
+  is_settled?: boolean;
+  settled_at?: string;
+  created_at?: string;
+}
+
 export interface BankData {
   id?: number;
   name: string;
@@ -452,6 +463,38 @@ export const api = {
     },
     delete: async (id: string | number): Promise<void> => {
       return request<void>(`/banks/${id}/`, { method: 'DELETE' });
+    }
+  },
+
+  // Hawlats (Memo Notes)
+  hawlats: {
+    list: async (): Promise<HawlatData[]> => {
+      try {
+        const res: any = await request<HawlatData[]>('/hawlats/');
+        const arr = Array.isArray(res) ? res : (res?.results || []);
+        return arr.map((h: any) => ({
+          ...h,
+          amount: Number(h.amount || 0)
+        }));
+      } catch (e) {
+        console.error('hawlats.list error:', e);
+        return [];
+      }
+    },
+    create: async (data: Partial<HawlatData>): Promise<HawlatData> => {
+      return request<HawlatData>('/hawlats/', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+    update: async (id: string | number, data: Partial<HawlatData>): Promise<HawlatData> => {
+      return request<HawlatData>(`/hawlats/${id}/`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+    },
+    delete: async (id: string | number): Promise<void> => {
+      return request<void>(`/hawlats/${id}/`, { method: 'DELETE' });
     }
   },
 

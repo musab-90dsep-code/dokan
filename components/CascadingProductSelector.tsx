@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
+import { toast } from 'sonner';
+import { toBengaliDigits } from '@/lib/bengaliUtils';
+
 export interface ProductInventoryItem {
   id: string;
   name: string;
@@ -36,6 +39,7 @@ interface CascadingProductSelectorProps {
   products: ProductInventoryItem[];
   onProductChange: (selection: SelectedProductDetails | null) => void;
   showPriceField: boolean; // true for Invoice/Purchase, false for Order
+  onlyInStock?: boolean; // true for Invoice/Order (Sales), false for Purchase
   priceLabel?: string;
   itemPrice: number;
   onPriceChange: (price: number) => void;
@@ -108,6 +112,7 @@ export function CascadingProductSelector({
   products,
   onProductChange,
   showPriceField,
+  onlyInStock = false,
   priceLabel = 'একক মূল্য (৳)',
   itemPrice,
   onPriceChange,
@@ -130,6 +135,137 @@ export function CascadingProductSelector({
   const [selectedBrand, setSelectedBrand] = useState<string>('BSRM');
   const [otherProductId, setOtherProductId] = useState<string>('');
   const [customName, setCustomName] = useState<string>('');
+
+  // Products with positive stock
+  const inStockProducts = useMemo(() => {
+    return products.filter(p => (p.stock || 0) > 0);
+  }, [products]);
+
+  // Dynamically filter Rod Brands
+  const availableRodBrands = useMemo(() => {
+    if (!onlyInStock) return ROD_BRAND_OPTIONS;
+    const rodItems = inStockProducts.filter(p => {
+      const cat = (p.category || '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return cat === 'রড' || cat.includes('rod') || name.includes('রড') || name.includes('মিলি') || name.includes('mm');
+    });
+
+    const filtered = ROD_BRAND_OPTIONS.filter(b =>
+      rodItems.some(p => p.name.toLowerCase().includes(b.toLowerCase()) || (p.brand && p.brand.toLowerCase().includes(b.toLowerCase())))
+    );
+    const customBrands = rodItems
+      .map(p => p.brand)
+      .filter((b): b is string => !!b && !filtered.includes(b));
+
+    const combined = Array.from(new Set([...filtered, ...customBrands]));
+    return combined;
+  }, [onlyInStock, inStockProducts]);
+
+  // Dynamically filter Rod mm options for selectedBrand
+  const availableRodMms = useMemo(() => {
+    if (!onlyInStock) return ROD_MM_OPTIONS;
+    const rodItems = inStockProducts.filter(p => {
+      const cat = (p.category || '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return cat === 'রড' || cat.includes('rod') || name.includes('রড') || name.includes('মিলি') || name.includes('mm');
+    });
+
+    const filtered = ROD_MM_OPTIONS.filter(mm => {
+      const mmNum = mm.replace(/[^0-9]/g, '');
+      return rodItems.some(p => {
+        const name = p.name.toLowerCase();
+        const matchesBrand = !selectedBrand || name.includes(selectedBrand.toLowerCase()) || (p.brand && p.brand.toLowerCase().includes(selectedBrand.toLowerCase()));
+        const matchesMm = name.includes(mm.toLowerCase()) || (mmNum ? (name.includes(`${mmNum}mm`) || name.includes(`${mmNum} মিলি`)) : false);
+        return matchesBrand && matchesMm;
+      });
+    });
+    return filtered;
+  }, [onlyInStock, selectedBrand, inStockProducts]);
+
+  // Dynamically filter Cement Brands
+  const availableCementBrands = useMemo(() => {
+    if (!onlyInStock) return CEMENT_BRAND_OPTIONS;
+    const cementItems = inStockProducts.filter(p => {
+      const cat = (p.category || '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return cat === 'সিমেন্ট' || cat.includes('cement') || name.includes('সিমেন্ট');
+    });
+
+    const filtered = CEMENT_BRAND_OPTIONS.filter(b => {
+      const bCore = b.replace('সিমেন্ট', '').trim().toLowerCase();
+      return cementItems.some(p => p.name.toLowerCase().includes(bCore) || (p.brand && p.brand.toLowerCase().includes(bCore)));
+    });
+    const customBrands = cementItems
+      .map(p => p.brand)
+      .filter((b): b is string => !!b && !filtered.includes(b));
+
+    const combined = Array.from(new Set([...filtered, ...customBrands]));
+    return combined;
+  }, [onlyInStock, inStockProducts]);
+
+  // Dynamically filter Ring Sizes & Brands
+  const availableRingSizes = useMemo(() => {
+    if (!onlyInStock) return RING_SIZE_OPTIONS;
+    const ringItems = inStockProducts.filter(p => {
+      const cat = (p.category || '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return cat === 'রিং' || cat.includes('ring') || name.includes('রিং') || name.includes('ring');
+    });
+
+    const filtered = RING_SIZE_OPTIONS.filter(sz => {
+      const digits = sz.match(/[0-9]+/g) || sz.match(/[০-৯]+/g) || [];
+      return ringItems.some(p => {
+        const name = p.name.toLowerCase();
+        if (name.includes(sz.toLowerCase())) return true;
+        if (digits.length >= 2 && digits.every(d => name.includes(d))) return true;
+        return false;
+      });
+    });
+
+    return filtered;
+  }, [onlyInStock, inStockProducts]);
+
+  const availableRingBrands = useMemo(() => {
+    if (!onlyInStock) return RING_BRAND_OPTIONS;
+    const ringItems = inStockProducts.filter(p => {
+      const cat = (p.category || '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return cat === 'রিং' || cat.includes('ring') || name.includes('রিং') || name.includes('ring');
+    });
+
+    const filtered = RING_BRAND_OPTIONS.filter(b =>
+      ringItems.some(p => p.name.toLowerCase().includes(b.toLowerCase()) || (p.brand && p.brand.toLowerCase().includes(b.toLowerCase())))
+    );
+    return filtered;
+  }, [onlyInStock, inStockProducts]);
+
+  // Derive effective activeBrand and activeMm based on availability
+  const activeBrand = useMemo(() => {
+    if (onlyInStock) {
+      if (category === 'রড' && availableRodBrands.length > 0 && !availableRodBrands.includes(selectedBrand)) {
+        return availableRodBrands[0];
+      }
+      if (category === 'সিমেন্ট' && availableCementBrands.length > 0 && !availableCementBrands.includes(selectedBrand)) {
+        return availableCementBrands[0];
+      }
+      if (category === 'রিং' && availableRingBrands.length > 0 && !availableRingBrands.includes(selectedBrand)) {
+        return availableRingBrands[0];
+      }
+    }
+    return selectedBrand;
+  }, [onlyInStock, category, availableRodBrands, availableCementBrands, availableRingBrands, selectedBrand]);
+
+  const activeMm = useMemo(() => {
+    if (onlyInStock) {
+      if (category === 'রড' && availableRodMms.length > 0 && !availableRodMms.includes(selectedMm)) {
+        return availableRodMms[0];
+      }
+      if (category === 'রিং' && availableRingSizes.length > 0 && !availableRingSizes.includes(selectedMm)) {
+        return availableRingSizes[0];
+      }
+    }
+    return selectedMm;
+  }, [onlyInStock, category, availableRodMms, availableRingSizes, selectedMm]);
 
   // Handle Category Switch & defaults
   const handleCategorySelect = (cat: 'রড' | 'সিমেন্ট' | 'রিং' | 'অন্যান্য') => {
@@ -187,21 +323,21 @@ export function CascadingProductSelector({
     let defaultUnit = 'পিস';
 
     if (category === 'রড') {
-      constructedName = `${selectedBrand} ${selectedMm} রড`.trim();
+      constructedName = `${activeBrand} ${activeMm} রড`.trim();
       defaultUnit = 'কেজি';
     } else if (category === 'সিমেন্ট') {
-      constructedName = selectedBrand.endsWith('সিমেন্ট') ? selectedBrand : `${selectedBrand} সিমেন্ট`;
+      constructedName = activeBrand.endsWith('সিমেন্ট') ? activeBrand : `${activeBrand} সিমেন্ট`;
       defaultUnit = 'বস্তা';
     } else if (category === 'রিং') {
-      constructedName = `${selectedMm} রিং ${selectedBrand ? `(${selectedBrand})` : ''}`.trim();
+      constructedName = `${activeMm} রিং ${activeBrand ? `(${activeBrand})` : ''}`.trim();
       defaultUnit = 'পিস';
     }
 
     // Exact match search
     const exact = products.find(p => 
       p.name.toLowerCase() === constructedName.toLowerCase() ||
-      p.name.toLowerCase() === `${selectedMm} ${selectedBrand} রড`.toLowerCase() ||
-      p.name.toLowerCase() === `${selectedBrand} ${selectedMm} রড`.toLowerCase()
+      p.name.toLowerCase() === `${activeMm} ${activeBrand} রড`.toLowerCase() ||
+      p.name.toLowerCase() === `${activeBrand} ${activeMm} রড`.toLowerCase()
     );
     if (exact) {
       return {
@@ -218,13 +354,13 @@ export function CascadingProductSelector({
     const partial = products.find(p => {
       const pName = p.name.toLowerCase();
       if (category === 'রড') {
-        return pName.includes(selectedMm.toLowerCase()) && pName.includes(selectedBrand.toLowerCase());
+        return pName.includes(activeMm.toLowerCase()) && pName.includes(activeBrand.toLowerCase());
       }
       if (category === 'সিমেন্ট') {
-        return pName.includes(selectedBrand.toLowerCase());
+        return pName.includes(activeBrand.toLowerCase());
       }
       if (category === 'রিং') {
-        return pName.includes(selectedMm.toLowerCase());
+        return pName.includes(activeMm.toLowerCase());
       }
       return false;
     });
@@ -248,7 +384,7 @@ export function CascadingProductSelector({
       unit: defaultUnit,
       stock: 0,
     };
-  }, [category, selectedMm, selectedBrand, otherProductId, customName, products]);
+  }, [category, activeMm, activeBrand, otherProductId, customName, products]);
 
   // Sync state up to parent when selection changes
   useEffect(() => {
@@ -256,8 +392,8 @@ export function CascadingProductSelector({
       productId: matchedProductInfo.productId,
       name: matchedProductInfo.name,
       category,
-      mmSize: selectedMm,
-      brand: selectedBrand,
+      mmSize: activeMm,
+      brand: activeBrand,
       price: matchedProductInfo.price,
       sellPrice: matchedProductInfo.sellPrice,
       unit: matchedProductInfo.unit,
@@ -279,9 +415,13 @@ export function CascadingProductSelector({
       <div className="space-y-1.5">
         <Label className="text-xs font-bold text-slate-700 flex items-center justify-between">
           <span>১. পণ্যের ধরন নির্বাচন করুন (Category)</span>
-          {matchedProductInfo.stock > 0 && (
+          {matchedProductInfo.stock > 0 ? (
             <span className="text-[11px] font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-md">
-              বর্তমান স্টক: {matchedProductInfo.stock} {matchedProductInfo.unit}
+              বর্তমান স্টক: {toBengaliDigits(matchedProductInfo.stock)} {matchedProductInfo.unit}
+            </span>
+          ) : (
+            <span className="text-[11px] font-black text-rose-600 bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-md">
+              ⚠️ স্টকে নেই (স্টক: ০ {matchedProductInfo.unit})
             </span>
           )}
         </Label>
@@ -319,28 +459,36 @@ export function CascadingProductSelector({
           <>
             <div className="sm:col-span-7 space-y-1">
               <Label className="text-[11px] font-bold text-slate-600">২. কোম্পানি / ব্র্যান্ড (Brand)</Label>
-              <Select value={selectedBrand} onValueChange={(val: string | null) => setSelectedBrand(val || 'BSRM')}>
+              <Select value={activeBrand} onValueChange={(val: string | null) => setSelectedBrand(val || '')}>
                 <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="font-bengali text-xs font-bold">
-                  {ROD_BRAND_OPTIONS.map((b) => (
-                    <SelectItem key={b} value={b}>{b}</SelectItem>
-                  ))}
+                  {availableRodBrands.length === 0 ? (
+                    <SelectItem value="_none" disabled>স্টকে কোনো ব্র্যান্ড নেই</SelectItem>
+                  ) : (
+                    availableRodBrands.map((b) => (
+                      <SelectItem key={b} value={b}>{b}</SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="sm:col-span-5 space-y-1">
               <Label className="text-[11px] font-bold text-slate-600">৩. মিলি (mm / Size)</Label>
-              <Select value={selectedMm} onValueChange={(val: string | null) => setSelectedMm(val || '১০ মিলি')}>
+              <Select value={activeMm} onValueChange={(val: string | null) => setSelectedMm(val || '')}>
                 <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="font-bengali text-xs font-bold">
-                  {ROD_MM_OPTIONS.map((mm) => (
-                    <SelectItem key={mm} value={mm}>{mm}</SelectItem>
-                  ))}
+                  {availableRodMms.length === 0 ? (
+                    <SelectItem value="_none" disabled>স্টকে কোনো মিলি/সাইজ নেই</SelectItem>
+                  ) : (
+                    availableRodMms.map((mm) => (
+                      <SelectItem key={mm} value={mm}>{mm}</SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -351,14 +499,18 @@ export function CascadingProductSelector({
         {category === 'সিমেন্ট' && (
           <div className="sm:col-span-12 space-y-1">
             <Label className="text-[11px] font-bold text-slate-600">২. সিমেন্ট ব্র্যান্ড (Brand)</Label>
-            <Select value={selectedBrand} onValueChange={(val: string | null) => setSelectedBrand(val || 'শাহ সিমেন্ট')}>
+            <Select value={activeBrand} onValueChange={(val: string | null) => setSelectedBrand(val || '')}>
               <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="font-bengali text-xs font-bold">
-                {CEMENT_BRAND_OPTIONS.map((b) => (
-                  <SelectItem key={b} value={b}>{b}</SelectItem>
-                ))}
+                {availableCementBrands.length === 0 ? (
+                  <SelectItem value="_none" disabled>স্টকে কোনো সিমেন্ট ব্র্যান্ড নেই</SelectItem>
+                ) : (
+                  availableCementBrands.map((b) => (
+                    <SelectItem key={b} value={b}>{b}</SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -369,28 +521,36 @@ export function CascadingProductSelector({
           <>
             <div className="sm:col-span-5 space-y-1">
               <Label className="text-[11px] font-bold text-slate-600">২. রিং সাইজ (Size)</Label>
-              <Select value={selectedMm} onValueChange={(val: string | null) => setSelectedMm(val || '৭″ × ৭″')}>
+              <Select value={activeMm} onValueChange={(val: string | null) => setSelectedMm(val || '')}>
                 <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="font-bengali text-xs font-bold">
-                  {RING_SIZE_OPTIONS.map((sz) => (
-                    <SelectItem key={sz} value={sz}>{sz}</SelectItem>
-                  ))}
+                  {availableRingSizes.length === 0 ? (
+                    <SelectItem value="_none" disabled>স্টকে কোনো রিং সাইজ নেই</SelectItem>
+                  ) : (
+                    availableRingSizes.map((sz) => (
+                      <SelectItem key={sz} value={sz}>{sz}</SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="sm:col-span-7 space-y-1">
               <Label className="text-[11px] font-bold text-slate-600">৩. রিং গেজ / ক্যাটাগরি</Label>
-              <Select value={selectedBrand} onValueChange={(val: string | null) => setSelectedBrand(val || '৮ মিলি রিং')}>
+              <Select value={activeBrand} onValueChange={(val: string | null) => setSelectedBrand(val || '')}>
                 <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="font-bengali text-xs font-bold">
-                  {RING_BRAND_OPTIONS.map((rb) => (
-                    <SelectItem key={rb} value={rb}>{rb}</SelectItem>
-                  ))}
+                  {availableRingBrands.length === 0 ? (
+                    <SelectItem value="_none" disabled>স্টকে কোনো রিং গেজ নেই</SelectItem>
+                  ) : (
+                    availableRingBrands.map((rb) => (
+                      <SelectItem key={rb} value={rb}>{rb}</SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -417,9 +577,9 @@ export function CascadingProductSelector({
                 <SelectValue placeholder="পণ্য নির্বাচন করুন..." />
               </SelectTrigger>
               <SelectContent className="font-bengali text-xs font-bold max-h-60">
-                {products.map((p) => (
+                {(onlyInStock ? products.filter(p => (p.stock || 0) > 0) : products).map((p) => (
                   <SelectItem key={p.id} value={p.id}>
-                    {p.name} {p.sellPrice ? `— ৳${p.sellPrice}/${p.unit || 'পিস'}` : ''}
+                    {p.name} {p.sellPrice ? `— ৳${p.sellPrice}/${p.unit || 'পিস'}` : ''} (স্টক: {p.stock || 0} {p.unit || 'পিস'})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -491,7 +651,13 @@ export function CascadingProductSelector({
         <div className="sm:col-span-3 flex items-end">
           <Button
             type="button"
-            onClick={onAddCartItem}
+            onClick={() => {
+              if (onlyInStock && matchedProductInfo.stock <= 0) {
+                toast.error('এই পণ্যটি বর্তমানে স্টকে নেই! কেবল স্টকে থাকা পণ্য ইনভয়েসে যোগ করা যাবে।');
+                return;
+              }
+              onAddCartItem();
+            }}
             className="w-full bg-orange-600 hover:bg-orange-700 text-white h-10 rounded-xl font-bold text-xs shadow-xs"
           >
             {buttonLabel}
@@ -502,19 +668,19 @@ export function CascadingProductSelector({
       {/* Selected Item Summary Pill */}
       <div className="flex items-center justify-between text-xs bg-white p-2.5 rounded-xl border border-slate-200/80">
         <div className="flex items-center gap-2">
-          <span className="text-slate-400 font-bold">আইটেম সমারী:</span>
+          <span className="text-slate-400 font-bold">আইটেম সারসংক্ষেপ:</span>
           <span className="font-black text-slate-900">{matchedProductInfo.name}</span>
-          <span className="text-slate-500 font-bold">({itemQty} {matchedProductInfo.unit})</span>
+          <span className="text-slate-500 font-bold">({toBengaliDigits(itemQty)} {matchedProductInfo.unit})</span>
         </div>
         <div className="flex items-center gap-3">
           {showPriceField && (
             <span className="font-black text-orange-600">
-              ক্রয় মোট: ৳{(itemQty * (itemPrice || matchedProductInfo.price || 0)).toLocaleString()}
+              মোট: ৳{toBengaliDigits((itemQty * (itemPrice || matchedProductInfo.price || 0)).toLocaleString('en-IN'))}
             </span>
           )}
           {showSellPriceField && itemSellPrice > 0 && (
             <span className="font-bold text-emerald-600">
-              (বিক্রয়: ৳{itemSellPrice}/{matchedProductInfo.unit})
+              (বিক্রয়: ৳{toBengaliDigits(itemSellPrice.toLocaleString('en-IN'))}/{matchedProductInfo.unit})
             </span>
           )}
         </div>

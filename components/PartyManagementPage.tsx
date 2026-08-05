@@ -444,7 +444,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
             <div>
               <p className="text-xs font-semibold text-slate-500">মোট বাকি</p>
               <p className="text-xl font-black text-slate-900 mt-0.5">
-                ৳ {totalDue.toLocaleString('bn-BD', { minimumFractionDigits: 0 })}
+                ৳ {toBnDigits(totalDue.toLocaleString('en-IN'))}
               </p>
               <p className="text-[10px] text-slate-400 font-medium mt-0.5">সকল কাস্টমারের বাকি</p>
             </div>
@@ -609,7 +609,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           </TableCell>
 
                           <TableCell className="py-3.5 px-4 text-right font-bold text-rose-600">
-                            ৳ {(p.totalDue || 0).toLocaleString('bn-BD')}
+                            ৳ {toBnDigits((p.totalDue || 0).toLocaleString('en-IN'))}
                           </TableCell>
 
                           <TableCell className="py-3.5 px-4 text-left">

@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import { format, isToday, isSameMonth, isSameYear } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { toBengaliDigits } from '@/lib/bengaliUtils';
 
 export interface ExpenseItem {
   id: string;
@@ -332,10 +333,10 @@ export default function ExpensePage() {
               </div>
               <div>
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">আজকের মোট খরচ</p>
-                <h3 className="text-2xl font-black text-emerald-600 mt-0.5">৳ {todaySum.toLocaleString()}</h3>
+                <h3 className="text-2xl font-black text-emerald-600 mt-0.5">৳ {toBengaliDigits(todaySum.toLocaleString('bn-BD'))}</h3>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[11px] text-slate-400 font-semibold">মোট {todayCount || 3}টি খরচ</span>
-                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">▲ 12% গতকালের চেয়ে</span>
+                  <span className="text-[11px] text-slate-400 font-semibold">মোট {toBengaliDigits(todayCount)}টি খরচ</span>
+                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">▲ ১২% গতকালের চেয়ে</span>
                 </div>
               </div>
             </div>
@@ -349,10 +350,10 @@ export default function ExpensePage() {
               </div>
               <div>
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">এই মাসের খরচ</p>
-                <h3 className="text-2xl font-black text-blue-600 mt-0.5">৳ {(monthSum || 124850).toLocaleString()}</h3>
+                <h3 className="text-2xl font-black text-blue-600 mt-0.5">৳ {toBengaliDigits(monthSum.toLocaleString('bn-BD'))}</h3>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[11px] text-slate-400 font-semibold">মোট {monthCount || 26}টি খরচ</span>
-                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">▲ 8% গত মাসের চেয়ে</span>
+                  <span className="text-[11px] text-slate-400 font-semibold">মোট {toBengaliDigits(monthCount)}টি খরচ</span>
+                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">▲ ৮% গত মাসের চেয়ে</span>
                 </div>
               </div>
             </div>
@@ -366,10 +367,10 @@ export default function ExpensePage() {
               </div>
               <div>
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">এই বছরের খরচ</p>
-                <h3 className="text-2xl font-black text-purple-700 mt-0.5">৳ {(yearSum || 1245300).toLocaleString()}</h3>
+                <h3 className="text-2xl font-black text-purple-700 mt-0.5">৳ {toBengaliDigits(yearSum.toLocaleString('bn-BD'))}</h3>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[11px] text-slate-400 font-semibold">মোট {yearCount || 186}টি খরচ</span>
-                  <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">▲ 15% গত বছরের চেয়ে</span>
+                  <span className="text-[11px] text-slate-400 font-semibold">মোট {toBengaliDigits(yearCount)}টি খরচ</span>
+                  <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">▲ ১৫% গত বছরের চেয়ে</span>
                 </div>
               </div>
             </div>
@@ -380,11 +381,11 @@ export default function ExpensePage() {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">বাজেট বনাম খরচ (এই মাস)</p>
-                <span className="text-xl font-black text-amber-500">{budgetPercentage}%</span>
+                <span className="text-xl font-black text-amber-500">{toBengaliDigits(budgetPercentage)}%</span>
               </div>
               
               <p className="text-xs font-bold text-slate-800">
-                ৳ {(monthSum || 124850).toLocaleString()} / ৳ {monthlyBudget.toLocaleString()}
+                ৳ {toBengaliDigits(monthSum.toLocaleString('bn-BD'))} / ৳ {toBengaliDigits(monthlyBudget.toLocaleString('bn-BD'))}
               </p>
 
               {/* PROGRESS BAR */}
@@ -396,7 +397,7 @@ export default function ExpensePage() {
               </div>
 
               <p className="text-[11px] font-bold text-emerald-600 pt-1">
-                অবশিষ্ট বাজেট: ৳ {remainingBudget.toLocaleString()}
+                অবশিষ্ট বাজেট: ৳ {toBengaliDigits(remainingBudget.toLocaleString('bn-BD'))}
               </p>
             </div>
           </Card>
@@ -441,7 +442,7 @@ export default function ExpensePage() {
                       <span className={cn("px-2 py-0.5 rounded-md text-[11px] font-bold",
                         isSelected ? "bg-emerald-200/60 text-emerald-900" : "bg-slate-100 text-slate-500"
                       )}>
-                        {count}
+                        {toBengaliDigits(count)}
                       </span>
                     </button>
                   );
@@ -513,13 +514,13 @@ export default function ExpensePage() {
                         {/* LEFT DATE STAMP */}
                         <div className="w-20 text-center flex-shrink-0 pt-0.5">
                           <p className="text-lg font-black text-slate-900 leading-none">
-                            {format(expDate, 'dd')}
+                            {toBengaliDigits(format(expDate, 'dd'))}
                           </p>
                           <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">
-                            {format(expDate, 'MMM, yyyy', { locale: bn })}
+                            {toBengaliDigits(format(expDate, 'MMM, yyyy', { locale: bn }))}
                           </p>
                           <p className="text-[9px] text-slate-400 font-mono mt-0.5">
-                            {exp.time || '10:15 AM'}
+                            {toBengaliDigits(exp.time || '১০:১৫ AM')}
                           </p>
                         </div>
 
@@ -536,7 +537,7 @@ export default function ExpensePage() {
                               <p className="text-xs text-slate-500 font-semibold">{exp.vendor || 'সাধারণ খরচ'}</p>
                               {(exp.billNo || exp.accountNo) && (
                                 <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                                  {exp.billNo ? `বিল নং: ${exp.billNo}` : `একাউন্ট নং: ${exp.accountNo}`}
+                                  {exp.billNo ? `বিল নং: ${toBengaliDigits(exp.billNo)}` : `একাউন্ট নং: ${toBengaliDigits(exp.accountNo || '')}`}
                                 </p>
                               )}
                             </div>
@@ -544,7 +545,7 @@ export default function ExpensePage() {
                             {/* AMOUNT & STATUS BADGE */}
                             <div className="text-right flex-shrink-0">
                               <p className="text-base font-black text-slate-900">
-                                ৳ {(exp.amount || 0).toLocaleString()}
+                                ৳ {toBengaliDigits((exp.amount || 0).toLocaleString('bn-BD'))}
                               </p>
                               <span className={cn("inline-block text-[10px] font-bold px-2 py-0.5 rounded-full mt-1",
                                 exp.status === 'পরিশোধিত' ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
@@ -609,7 +610,7 @@ export default function ExpensePage() {
                     <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
                     <span className="text-slate-700">বিদ্যুৎ বিল</span>
                   </div>
-                  <span className="font-bold text-slate-900">28% <span className="text-slate-400 font-normal">(৳ 34,850)</span></span>
+                  <span className="font-bold text-slate-900">২৮% <span className="text-slate-400 font-normal">(৳ ৩৪,৮৫০)</span></span>
                 </div>
 
                 <div className="flex justify-between items-center">
@@ -617,7 +618,7 @@ export default function ExpensePage() {
                     <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
                     <span className="text-slate-700">অফিস ভাড়া</span>
                   </div>
-                  <span className="font-bold text-slate-900">20% <span className="text-slate-400 font-normal">(৳ 25,000)</span></span>
+                  <span className="font-bold text-slate-900">২০% <span className="text-slate-400 font-normal">(৳ ২৫,০০০)</span></span>
                 </div>
 
                 <div className="flex justify-between items-center">
@@ -625,7 +626,7 @@ export default function ExpensePage() {
                     <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
                     <span className="text-slate-700">পরিবহন খরচ</span>
                   </div>
-                  <span className="font-bold text-slate-900">16% <span className="text-slate-400 font-normal">(৳ 20,000)</span></span>
+                  <span className="font-bold text-slate-900">১৬% <span className="text-slate-400 font-normal">(৳ ২০,০০০)</span></span>
                 </div>
 
                 <div className="flex justify-between items-center">
@@ -633,7 +634,7 @@ export default function ExpensePage() {
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
                     <span className="text-slate-700">ইন্টারনেট বিল</span>
                   </div>
-                  <span className="font-bold text-slate-900">10% <span className="text-slate-400 font-normal">(৳ 12,500)</span></span>
+                  <span className="font-bold text-slate-900">১০% <span className="text-slate-400 font-normal">(৳ ১২,৫০০)</span></span>
                 </div>
 
                 <div className="flex justify-between items-center">
@@ -641,7 +642,7 @@ export default function ExpensePage() {
                     <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
                     <span className="text-slate-700">অফিস খরচ</span>
                   </div>
-                  <span className="font-bold text-slate-900">8% <span className="text-slate-400 font-normal">(৳ 9,800)</span></span>
+                  <span className="font-bold text-slate-900">৮% <span className="text-slate-400 font-normal">(৳ ৯,৮০০)</span></span>
                 </div>
 
                 <div className="flex justify-between items-center">
@@ -649,13 +650,13 @@ export default function ExpensePage() {
                     <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
                     <span className="text-slate-700">অন্যান্য</span>
                   </div>
-                  <span className="font-bold text-slate-900">18% <span className="text-slate-400 font-normal">(৳ 22,700)</span></span>
+                  <span className="font-bold text-slate-900">১৮% <span className="text-slate-400 font-normal">(৳ ২২,৭০০)</span></span>
                 </div>
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex justify-between items-center">
                 <span className="text-xs font-bold text-slate-500">মোট খরচ</span>
-                <span className="text-lg font-black text-emerald-600">৳ {(monthSum || 124850).toLocaleString()}</span>
+                <span className="text-lg font-black text-emerald-600">৳ {toBengaliDigits(monthSum.toLocaleString('bn-BD'))}</span>
               </div>
             </Card>
 
@@ -674,12 +675,12 @@ export default function ExpensePage() {
                       <Zap className="w-4 h-4 text-amber-500" />
                       <div>
                         <p className="font-black text-slate-900">বিদ্যুৎ বিল (DESCO)</p>
-                        <p className="text-[10px] text-slate-500 font-mono">বিল নং: 202608-5412457</p>
+                        <p className="text-[10px] text-slate-500 font-mono">বিল নং: ২০২৬০৮-৫৪১২৪৫৭</p>
                       </div>
                     </div>
-                    <span className="text-xs font-black text-rose-600">৳ 7,850.00</span>
+                    <span className="text-xs font-black text-rose-600">৳ ৭,৮৫০.০০</span>
                   </div>
-                  <span className="inline-block text-[9px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded float-right">২ দিন পর (30/07/2026)</span>
+                  <span className="inline-block text-[9px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded float-right">২ দিন পর (৩০/০৭/২০২৬)</span>
                 </div>
 
                 {/* Bill 2 */}
@@ -689,12 +690,12 @@ export default function ExpensePage() {
                       <Wifi className="w-4 h-4 text-purple-500" />
                       <div>
                         <p className="font-black text-slate-900">ইন্টারনেট বিল (Link3)</p>
-                        <p className="text-[10px] text-slate-500 font-mono">একাউন্ট নং: 125478</p>
+                        <p className="text-[10px] text-slate-500 font-mono">একাউন্ট নং: ১২৫৪৭৮</p>
                       </div>
                     </div>
-                    <span className="text-xs font-black text-slate-900">৳ 950.00</span>
+                    <span className="text-xs font-black text-slate-900">৳ ৯৫০.০০</span>
                   </div>
-                  <span className="inline-block text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded float-right">৫ দিন পর (02/08/2026)</span>
+                  <span className="inline-block text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded float-right">৫ দিন পর (০২/০৮/২০২৬)</span>
                 </div>
 
                 {/* Bill 3 */}
@@ -704,12 +705,12 @@ export default function ExpensePage() {
                       <Droplets className="w-4 h-4 text-blue-500" />
                       <div>
                         <p className="font-black text-slate-900">পানি বিল (ওয়াসা)</p>
-                        <p className="text-[10px] text-slate-500 font-mono">একাউন্ট নং: WASA-78541</p>
+                        <p className="text-[10px] text-slate-500 font-mono">একাউন্ট নং: WASA-৭৮৫৪১</p>
                       </div>
                     </div>
-                    <span className="text-xs font-black text-slate-900">৳ 1,250.00</span>
+                    <span className="text-xs font-black text-slate-900">৳ ১,২৫০.০০</span>
                   </div>
-                  <span className="inline-block text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded float-right">৭ দিন পর (04/08/2026)</span>
+                  <span className="inline-block text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded float-right">৭ দিন পর (০৪/০৮/২০২৬)</span>
                 </div>
 
               </div>
@@ -833,8 +834,8 @@ export default function ExpensePage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="font-bengali text-xs font-bold">
-                    <SelectItem value="পরিশোধিত">পরিশোধিত (Paid)</SelectItem>
-                    <SelectItem value="বকেয়া">বকেয়া (Due)</SelectItem>
+                    <SelectItem value="পরিশোধিত">পরিশোধিত</SelectItem>
+                    <SelectItem value="বকেয়া">বকেয়া</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -848,8 +849,8 @@ export default function ExpensePage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="font-bengali text-xs font-bold">
-                    <SelectItem value="Cash">💵 Cash (ক্যাশ)</SelectItem>
-                    <SelectItem value="Bank">🏦 Bank (ব্যাংক)</SelectItem>
+                    <SelectItem value="Cash">💵 নগদ (Cash)</SelectItem>
+                    <SelectItem value="Bank">🏦 ব্যাংক (Bank)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -863,7 +864,7 @@ export default function ExpensePage() {
                     </SelectTrigger>
                     <SelectContent className="font-bengali text-xs font-bold">
                       {banks.map(b => (
-                        <SelectItem key={b.id} value={b.id}>{b.name} ({b.accNo})</SelectItem>
+                        <SelectItem key={b.id} value={b.id}>{b.name} ({toBengaliDigits(b.accNo)})</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -906,7 +907,7 @@ export default function ExpensePage() {
             <div className="border-2 border-dashed border-blue-200 hover:border-blue-400 transition-colors rounded-2xl p-8 bg-blue-50/30 cursor-pointer">
               <UploadCloud className="w-10 h-10 text-blue-500 mx-auto mb-2" />
               <p className="text-xs font-bold text-slate-800">বিলের ছবি বা পিডিএফ সিলেক্ট করুন</p>
-              <p className="text-[10px] text-slate-400 mt-1">সর্বোচ্চ ফাইল সাইজ: 5MB</p>
+              <p className="text-[10px] text-slate-400 mt-1">সর্বোচ্চ ফাইল সাইজ: ৫MB</p>
             </div>
             <DialogFooter className="grid grid-cols-2 gap-3">
               <Button variant="outline" onClick={() => setIsUploadReceiptOpen(false)} className="rounded-xl h-10 font-bold text-xs">
@@ -927,7 +928,7 @@ export default function ExpensePage() {
             <DialogHeader>
               <DialogTitle className="text-xl font-black text-slate-900 flex items-center justify-between">
                 <span>খরচের বিবরণী</span>
-                <span className="text-xs font-mono text-slate-400">{selectedExpenseForView.date}</span>
+                <span className="text-xs font-mono text-slate-400">{toBengaliDigits(selectedExpenseForView.date)}</span>
               </DialogTitle>
             </DialogHeader>
 
@@ -944,7 +945,7 @@ export default function ExpensePage() {
               </div>
               <div className="flex justify-between py-1 border-b border-slate-200/60">
                 <span className="text-slate-500">পরিমাণ:</span>
-                <span className="font-black text-base text-rose-600">৳ {(selectedExpenseForView.amount || 0).toLocaleString()}</span>
+                <span className="font-black text-base text-rose-600">৳ {toBengaliDigits((selectedExpenseForView.amount || 0).toLocaleString('bn-BD'))}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-200/60">
                 <span className="text-slate-500">ভেনডর / প্রতিষ্ঠান:</span>
@@ -952,7 +953,7 @@ export default function ExpensePage() {
               </div>
               <div className="flex justify-between py-1 border-b border-slate-200/60">
                 <span className="text-slate-500">পেমেন্ট পদ্ধতি:</span>
-                <span className="font-bold text-slate-700">{selectedExpenseForView.paymentMethod || 'Cash'}</span>
+                <span className="font-bold text-slate-700">{selectedExpenseForView.paymentMethod === 'Bank' ? 'ব্যাংক' : 'নগদ'}</span>
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-slate-500">স্ট্যাটাস:</span>

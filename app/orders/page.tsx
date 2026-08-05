@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { InvoiceMemo } from '@/components/InvoiceMemo';
+import { toBengaliDigits } from '@/lib/bengaliUtils';
 import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
 import { ProductSearchSelect } from '@/components/ProductSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
@@ -146,8 +147,8 @@ export default function OrdersPage() {
   const [orderNote, setOrderNote] = useState<string>('');
 
   // Reference ERP Form Screen-Matched States
-  const [orderDate, setOrderDate] = useState('28/07/2026');
-  const [deliveryDate, setDeliveryDate] = useState('31/07/2026');
+  const [orderDate, setOrderDate] = useState('২৮/০৭/২০২৬');
+  const [deliveryDate, setDeliveryDate] = useState('৩১/০৭/২০২৬');
   const [requiredDelivery, setRequiredDelivery] = useState('না');
   const [itemUnit, setItemUnit] = useState('বস্তা (Bag)');
   const [salesRepresentative, setSalesRepresentative] = useState('রাশেদ আহমেদ');
@@ -319,8 +320,13 @@ export default function OrdersPage() {
 
   const formatDate = (at: any) => {
     if (!at) return '';
-    const date = new Date(at);
-    return format(date, 'dd MMM yyyy, hh:mm a', { locale: bn });
+    try {
+      const date = at?.toDate ? at.toDate() : new Date(at);
+      if (isNaN(date.getTime())) return '';
+      return toBengaliDigits(format(date, 'dd MMM yyyy, hh:mm a', { locale: bn }));
+    } catch {
+      return '';
+    }
   };
 
   // Cart Add Item with Bundle/Piece option
@@ -328,6 +334,11 @@ export default function OrdersPage() {
     const itemName = selectedCascadingProduct?.name || products.find(p => p.id === selectedProductId)?.name;
     if (!itemName) {
       toast.error('পণ্য নির্বাচন করুন');
+      return;
+    }
+
+    if (selectedCascadingProduct && selectedCascadingProduct.stock <= 0) {
+      toast.error('পণ্যটি স্টকে নেই! বিক্রয় অর্ডারে কেবল স্টকে থাকা পণ্য যোগ করা যাবে।');
       return;
     }
 
@@ -542,7 +553,7 @@ export default function OrdersPage() {
               </div>
               <div>
                 <p className="text-[11px] uppercase tracking-widest font-black text-slate-500 font-bengali">চালান অপেক্ষমাণ অর্ডার</p>
-                <p className="text-2xl font-black font-bengali text-orange-700 mt-0.5">{pendingOrdersCount} টি</p>
+                <p className="text-2xl font-black font-bengali text-orange-700 mt-0.5">{toBengaliDigits(pendingOrdersCount)} টি</p>
               </div>
             </CardContent>
           </Card>
@@ -554,7 +565,7 @@ export default function OrdersPage() {
               </div>
               <div>
                 <p className="text-[11px] uppercase tracking-widest font-black text-slate-500 font-bengali">চালান সম্পন্ন অর্ডার</p>
-                <p className="text-2xl font-black font-bengali text-emerald-700 mt-0.5">{invoicedOrdersCount} টি</p>
+                <p className="text-2xl font-black font-bengali text-emerald-700 mt-0.5">{toBengaliDigits(invoicedOrdersCount)} টি</p>
               </div>
             </CardContent>
           </Card>
@@ -566,7 +577,7 @@ export default function OrdersPage() {
               </div>
               <div>
                 <p className="text-[11px] uppercase tracking-widest font-black text-slate-500 font-bengali">সর্বমোট অর্ডার রেকার্ড</p>
-                <p className="text-2xl font-black font-bengali text-slate-900 mt-0.5">{orders.length} টি</p>
+                <p className="text-2xl font-black font-bengali text-slate-900 mt-0.5">{toBengaliDigits(orders.length)} টি</p>
               </div>
             </CardContent>
           </Card>
@@ -635,12 +646,12 @@ export default function OrdersPage() {
                     className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors cursor-pointer"
                   >
                     <TableCell className="py-4 px-6">
-                      <span className="font-mono font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md text-xs">#{o.id.slice(0, 8).toUpperCase()}</span>
+                      <span className="font-mono font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md text-xs">#{toBengaliDigits(o.id.slice(0, 8).toUpperCase())}</span>
                     </TableCell>
                     <TableCell className="font-bengali text-xs font-semibold text-slate-500">{formatDate(o.createdAt)}</TableCell>
                     <TableCell className="font-bengali font-black text-slate-800 text-sm">{o.customerName}</TableCell>
-                    <TableCell className="text-center font-bengali text-xs font-bold text-slate-600">{o.items?.length || 0} টি পণ্য</TableCell>
-                    <TableCell className="text-right font-bengali font-black text-slate-900 text-base">৳{o.totalAmount?.toLocaleString()}</TableCell>
+                    <TableCell className="text-center font-bengali text-xs font-bold text-slate-600">{toBengaliDigits(o.items?.length || 0)} টি পণ্য</TableCell>
+                    <TableCell className="text-right font-bengali font-black text-slate-900 text-base">৳{toBengaliDigits((o.totalAmount || 0).toLocaleString('en-IN'))}</TableCell>
                     <TableCell className="text-center">
                       <span className={cn("px-3 py-1 rounded-lg text-[11px] font-black font-bengali uppercase tracking-wider inline-block",
                         o.invoiced 
@@ -691,7 +702,7 @@ export default function OrdersPage() {
                 </div>
                 <div>
                   <p className="text-[11px] text-orange-800 font-bold">অর্ডার আইডি (স্বয়ংক্রিয়)</p>
-                  <p className="text-sm font-mono font-black text-rose-600">{autoOrderId || 'SO-2026-000156'}</p>
+                  <p className="text-sm font-mono font-black text-rose-600">{toBengaliDigits(autoOrderId || 'SO-২০২৬-০০০১৫৬')}</p>
                 </div>
               </div>
             </div>
@@ -805,7 +816,7 @@ export default function OrdersPage() {
                       <p className="text-slate-500 font-semibold text-[11px] flex items-center gap-1">
                         <PhoneCall className="w-3 h-3 text-slate-400" /> মোবাইল নম্বর
                       </p>
-                      <p className="font-bold text-slate-900 mt-0.5">{selectedCustomer?.phone || '—'}</p>
+                      <p className="font-bold text-slate-900 mt-0.5">{selectedCustomer?.phone ? toBengaliDigits(selectedCustomer.phone) : '—'}</p>
                     </div>
                     <div>
                       <p className="text-slate-500 font-semibold text-[11px] flex items-center gap-1">
@@ -826,7 +837,7 @@ export default function OrdersPage() {
                     <div>
                       <p className="text-slate-500 font-semibold text-[11px]">বকেয়া</p>
                       <p className="font-black text-rose-600 mt-0.5">
-                        {selectedCustomer ? `৳ ${((selectedCustomer as any)?.totalDue || 0).toLocaleString()}` : '—'}
+                        {selectedCustomer ? `৳ ${toBengaliDigits(((selectedCustomer as any)?.totalDue || 0).toLocaleString('en-IN'))}` : '—'}
                       </p>
                     </div>
                   </div>
@@ -841,6 +852,7 @@ export default function OrdersPage() {
                   {/* Step-by-Step Cascading Product Selector (Rod, Cement, Ring) without Price Field */}
                   <CascadingProductSelector
                     products={products}
+                    onlyInStock={true}
                     onProductChange={(selected) => {
                       setSelectedCascadingProduct(selected);
                       if (selected && selected.productId) {
@@ -876,7 +888,7 @@ export default function OrdersPage() {
                           {cart.length > 0 ? (
                             cart.map((item, idx) => (
                               <TableRow key={item.id || idx} className="border-b border-slate-100">
-                                <TableCell className="text-center font-semibold text-slate-500">{idx + 1}</TableCell>
+                                <TableCell className="text-center font-semibold text-slate-500">{toBengaliDigits(idx + 1)}</TableCell>
                                 <TableCell className="font-bold text-slate-900">
                                   <span className="flex items-center gap-2">
                                     <span className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-600 text-[10px]">
@@ -886,10 +898,10 @@ export default function OrdersPage() {
                                   </span>
                                 </TableCell>
                                 <TableCell className="text-center text-slate-600">{item.unit || 'বস্তা'}</TableCell>
-                                <TableCell className="text-center font-bold text-slate-900">{item.quantity}</TableCell>
+                                <TableCell className="text-center font-bold text-slate-900">{toBengaliDigits(item.quantity)}</TableCell>
                                 <TableCell className="text-center">
                                   <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                    {(item as any).stock || 0} {item.unit || 'বস্তা'}
+                                    {toBengaliDigits((item as any).stock || 0)} {item.unit || 'বস্তা'}
                                   </span>
                                 </TableCell>
                                 <TableCell className="text-center text-slate-400">—</TableCell>
@@ -969,7 +981,7 @@ export default function OrdersPage() {
                       </div>
                       <div>
                         <p className="text-[11px] text-slate-500 font-semibold">মোট আইটেম</p>
-                        <p className="text-base font-black text-slate-900">{cart.length}</p>
+                        <p className="text-base font-black text-slate-900">{toBengaliDigits(cart.length)}</p>
                       </div>
                     </div>
 
@@ -981,11 +993,11 @@ export default function OrdersPage() {
                       <div>
                         <p className="text-[11px] text-slate-500 font-semibold">মোট পরিমাণ</p>
                         <p className="text-base font-black text-slate-900">
-                          {cart.reduce((a, i) => a + i.quantity, 0)}
+                          {toBengaliDigits(cart.reduce((a, i) => a + i.quantity, 0))}
                         </p>
                         {cart.length > 0 && (
                           <p className="text-[10px] text-slate-400 font-semibold">
-                            ( {cart.map(i => `${i.quantity} ${i.unit || ''}`).join(', ')} )
+                            ( {cart.map(i => `${toBengaliDigits(i.quantity)} ${i.unit || ''}`).join(', ')} )
                           </p>
                         )}
                       </div>
@@ -999,7 +1011,7 @@ export default function OrdersPage() {
                       <div>
                         <p className="text-[11px] text-slate-500 font-semibold">মোট ওজন (রড)</p>
                         <p className="text-base font-black text-slate-900">
-                          {cart.filter(i => i.unit?.includes('কেজি') || i.name?.includes('রড')).reduce((a, i) => a + i.quantity, 0)} কেজি
+                          {toBengaliDigits(cart.filter(i => i.unit?.includes('কেজি') || i.name?.includes('রড')).reduce((a, i) => a + i.quantity, 0))} কেজি
                         </p>
                       </div>
                     </div>
@@ -1011,7 +1023,7 @@ export default function OrdersPage() {
                       </div>
                       <div>
                         <p className="text-[11px] text-slate-500 font-semibold">ডেলিভারি তারিখ</p>
-                        <p className="text-sm font-bold text-slate-900">{deliveryDate || '—'}</p>
+                        <p className="text-sm font-bold text-slate-900">{toBengaliDigits(deliveryDate) || '—'}</p>
                       </div>
                     </div>
 
@@ -1056,17 +1068,9 @@ export default function OrdersPage() {
 
               <Button 
                 type="submit" 
-                className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold h-11 px-6 rounded-xl shadow-md transition-all"
+                className="bg-[#059669] hover:bg-[#047857] text-white font-bold h-11 px-8 rounded-xl shadow-md transition-all flex items-center gap-2"
               >
-                💾 অর্ডার সংরক্ষণ
-              </Button>
-
-              <Button 
-                type="button" 
-                onClick={handleCreateOrderSubmit}
-                className="bg-[#059669] hover:bg-[#047857] text-white font-bold h-11 px-6 rounded-xl shadow-md transition-all flex items-center gap-2"
-              >
-                ✓ অর্ডার অনুমোদন করুন →
+                ✓ অর্ডার সম্পন্ন করুন
               </Button>
             </div>
 
@@ -1108,7 +1112,7 @@ export default function OrdersPage() {
                 )}
                 <div className="flex justify-between border-t border-emerald-200/60 pt-2 text-base">
                   <span className="font-bold text-slate-800">সর্বমোট ইনভয়েস বিল:</span>
-                  <span className="font-black text-emerald-700 text-lg">৳ {orderToInvoice.totalAmount.toLocaleString()}</span>
+                  <span className="font-black text-emerald-700 text-lg">৳ {toBengaliDigits((orderToInvoice.totalAmount || 0).toLocaleString('en-IN'))}</span>
                 </div>
               </div>
 
@@ -1127,9 +1131,9 @@ export default function OrdersPage() {
                     {orderToInvoice.items?.map((item, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
                         <td className="p-2.5 font-bold text-slate-800">{item.name}</td>
-                        <td className="p-2.5 text-center text-slate-600 font-medium">{item.quantity} {item.unit}</td>
-                        <td className="p-2.5 text-right text-slate-600">৳{item.price?.toLocaleString()}</td>
-                        <td className="p-2.5 text-right font-bold text-slate-900">৳{((item.price - (item.discount || 0)) * item.quantity).toLocaleString()}</td>
+                        <td className="p-2.5 text-center text-slate-600 font-medium">{toBengaliDigits(item.quantity)} {item.unit}</td>
+                        <td className="p-2.5 text-right text-slate-600">৳{toBengaliDigits((item.price || 0).toLocaleString('en-IN'))}</td>
+                        <td className="p-2.5 text-right font-bold text-slate-900">৳{toBengaliDigits(((item.price - (item.discount || 0)) * item.quantity).toLocaleString('en-IN'))}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1355,12 +1359,13 @@ export default function OrdersPage() {
             {/* TOP HEADER BAR */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <button 
+                <Button 
+                  variant="outline" 
                   onClick={() => setSelectedOrder(null)} 
-                  className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 mb-2 cursor-pointer transition-colors"
+                  className="rounded-xl h-9 px-3.5 text-xs font-bold text-slate-700 bg-white border-slate-300 hover:bg-slate-100 shadow-2xs mb-3 flex items-center gap-1.5"
                 >
-                  ← অর্ডার তালিকায় ফিরে যান
-                </button>
+                  ← ফিরে যান (Back)
+                </Button>
                 <div className="flex items-center gap-3">
                   <h1 className="text-2xl font-black text-slate-900 tracking-tight">অর্ডার বিস্তারিত</h1>
                   <span className="bg-orange-50 text-orange-600 font-mono text-sm font-black px-3 py-1 rounded-lg border border-orange-200">
@@ -1378,6 +1383,14 @@ export default function OrdersPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <Button 
                   variant="outline" 
+                  onClick={() => setSelectedOrder(null)} 
+                  className="rounded-xl h-10 text-xs font-bold text-slate-700 border-slate-300 hover:bg-slate-100"
+                >
+                  ← ফিরে যান
+                </Button>
+
+                <Button 
+                  variant="outline" 
                   onClick={() => {
                     const orderToEdit = selectedOrder;
                     setSelectedOrder(null);
@@ -1392,23 +1405,16 @@ export default function OrdersPage() {
                   onClick={() => {
                     router.push(`/invoices?fromOrder=${selectedOrder.id}`);
                   }}
-                  className="rounded-xl h-10 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                  className="rounded-xl h-10 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Approve করুন
-                </Button>
-
-                <Button 
-                  onClick={() => setIsPrintMemoOpen(true)}
-                  className="rounded-xl h-10 text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100"
-                >
-                  <Printer className="w-3.5 h-3.5 mr-1" /> প্রিন্ট (অর্ডার)
+                  <FileText className="w-3.5 h-3.5 mr-1" /> চালান তৈরি করুন
                 </Button>
 
                 <Button 
                   onClick={() => handleDeleteOrder(selectedOrder.id)}
                   className="rounded-xl h-10 text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
                 >
-                  <X className="w-3.5 h-3.5 mr-1" /> বাতিল করুন
+                  <X className="w-3.5 h-3.5 mr-1" /> অর্ডার বাতিল করুন
                 </Button>
               </div>
             </div>
@@ -1490,7 +1496,7 @@ export default function OrdersPage() {
                         <p className="text-[10px] text-slate-400 font-semibold uppercase">কাস্টমারের নাম</p>
                         <div className="flex items-center gap-2 mt-0.5">
                           <p className="text-base font-black text-slate-900">{selectedOrder.customerName || 'সাধারণ ক্রেতা'}</p>
-                          <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full">Regular</span>
+                          <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full">নিয়মিত কাস্টমার</span>
                         </div>
                       </div>
 
@@ -1499,7 +1505,7 @@ export default function OrdersPage() {
                           <p className="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
                             <PhoneCall className="w-3 h-3 text-slate-400" /> মোবাইল নম্বর
                           </p>
-                          <p className="font-bold text-slate-800 mt-0.5">{selectedOrder.customerPhone || '—'}</p>
+                          <p className="font-bold text-slate-800 mt-0.5">{selectedOrder.customerPhone ? toBengaliDigits(selectedOrder.customerPhone) : '—'}</p>
                         </div>
                         <div>
                           <p className="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
@@ -1513,13 +1519,13 @@ export default function OrdersPage() {
                         <div>
                           <p className="text-[10px] text-slate-400 font-semibold">বকেয়া ব্যালেন্স</p>
                           <p className="text-sm font-black text-rose-600 mt-0.5">
-                            ৳ {((customers.find(c => c.id === selectedOrder.customerId) as any)?.totalDue || 0).toLocaleString()}
+                            ৳ {toBengaliDigits((((customers.find(c => c.id === selectedOrder.customerId) as any)?.totalDue || 0)).toLocaleString('en-IN'))}
                           </p>
                         </div>
                         <div>
                           <p className="text-[10px] text-slate-400 font-semibold">মোট বিল</p>
                           <p className="text-sm font-black text-emerald-600 mt-0.5">
-                            ৳ {selectedOrder.totalAmount?.toLocaleString()}
+                            ৳ {toBengaliDigits((selectedOrder.totalAmount || 0).toLocaleString('en-IN'))}
                           </p>
                         </div>
                       </div>
@@ -1547,7 +1553,7 @@ export default function OrdersPage() {
                       <div>
                         <p className="text-[10px] text-slate-400 font-semibold">অর্ডার আইডি</p>
                         <p className="font-mono font-black text-slate-900 mt-0.5">
-                          {(selectedOrder as any).orderId || selectedOrder.id.slice(0, 8).toUpperCase()}
+                          {toBengaliDigits(((selectedOrder as any).orderId || selectedOrder.id.slice(0, 8)).toUpperCase())}
                         </p>
                       </div>
                       <div>
@@ -1556,7 +1562,7 @@ export default function OrdersPage() {
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-400 font-semibold">ডেলিভারি তারিখ</p>
-                        <p className="font-bold text-slate-900 mt-0.5">{(selectedOrder as any).deliveryDate || '—'}</p>
+                        <p className="font-bold text-slate-900 mt-0.5">{(selectedOrder as any).deliveryDate ? toBengaliDigits((selectedOrder as any).deliveryDate) : '—'}</p>
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-400 font-semibold">অর্ডার স্ট্যাটাস</p>
@@ -1566,11 +1572,11 @@ export default function OrdersPage() {
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-400 font-semibold">মোট আইটেম</p>
-                        <p className="font-bold text-slate-900 mt-0.5">{selectedOrder.items?.length || 0} টি</p>
+                        <p className="font-bold text-slate-900 mt-0.5">{toBengaliDigits(selectedOrder.items?.length || 0)} টি</p>
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-400 font-semibold">সর্বমোট বিল</p>
-                        <p className="font-black text-emerald-600 mt-0.5">৳ {selectedOrder.totalAmount?.toLocaleString()}</p>
+                        <p className="font-black text-emerald-600 mt-0.5">৳ {toBengaliDigits((selectedOrder.totalAmount || 0).toLocaleString('en-IN'))}</p>
                       </div>
                     </div>
                   </div>
@@ -1598,7 +1604,7 @@ export default function OrdersPage() {
                       <TableBody className="text-xs">
                         {selectedOrder.items?.map((item, idx) => (
                           <TableRow key={idx} className="border-b border-slate-100">
-                            <TableCell className="text-center font-semibold text-slate-500">{idx + 1}</TableCell>
+                            <TableCell className="text-center font-semibold text-slate-500">{toBengaliDigits(idx + 1)}</TableCell>
                             <TableCell className="font-bold text-slate-900">
                               <span className="flex items-center gap-2">
                                 <span className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-600 text-[10px]">
@@ -1608,9 +1614,9 @@ export default function OrdersPage() {
                               </span>
                             </TableCell>
                             <TableCell className="text-center text-slate-600">{item.unit || 'বস্তা'}</TableCell>
-                            <TableCell className="text-center font-bold text-slate-900">{item.quantity}</TableCell>
-                            <TableCell className="text-right font-semibold text-slate-700">৳ {item.price?.toLocaleString()}</TableCell>
-                            <TableCell className="text-right font-black text-slate-900">৳ {(item.price * item.quantity).toLocaleString()}</TableCell>
+                            <TableCell className="text-center font-bold text-slate-900">{toBengaliDigits(item.quantity)}</TableCell>
+                            <TableCell className="text-right font-semibold text-slate-700">৳ {toBengaliDigits((item.price || 0).toLocaleString('en-IN'))}</TableCell>
+                            <TableCell className="text-right font-black text-slate-900">৳ {toBengaliDigits(((item.price || 0) * item.quantity).toLocaleString('en-IN'))}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -1624,7 +1630,7 @@ export default function OrdersPage() {
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-500 font-semibold">মোট আইটেম</p>
-                        <p className="text-base font-black text-slate-900">{selectedOrder.items?.length || 0}</p>
+                        <p className="text-base font-black text-slate-900">{toBengaliDigits(selectedOrder.items?.length || 0)}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -1634,7 +1640,7 @@ export default function OrdersPage() {
                       <div>
                         <p className="text-[10px] text-slate-500 font-semibold">মোট সিমেন্ট</p>
                         <p className="text-base font-black text-slate-900">
-                          {selectedOrder.items?.filter(i => i.unit?.includes('বস্তা') || i.name?.includes('সিমেন্ট')).reduce((a, b) => a + b.quantity, 0)} Bag
+                          {toBengaliDigits(selectedOrder.items?.filter(i => i.unit?.includes('বস্তা') || i.name?.includes('সিমেন্ট')).reduce((a, b) => a + b.quantity, 0))} বস্তা
                         </p>
                       </div>
                     </div>
@@ -1645,7 +1651,7 @@ export default function OrdersPage() {
                       <div>
                         <p className="text-[10px] text-slate-500 font-semibold">মোট রড</p>
                         <p className="text-base font-black text-slate-900">
-                          {selectedOrder.items?.filter(i => i.unit?.includes('কেজি') || i.name?.includes('রড')).reduce((a, b) => a + b.quantity, 0)} Kg
+                          {toBengaliDigits(selectedOrder.items?.filter(i => i.unit?.includes('কেজি') || i.name?.includes('রড')).reduce((a, b) => a + b.quantity, 0))} কেজি
                         </p>
                       </div>
                     </div>
@@ -1716,22 +1722,22 @@ export default function OrdersPage() {
                   <div className="space-y-2 text-xs">
                     <div className="flex justify-between py-1 border-b border-slate-100">
                       <span className="text-slate-500">মোট আইটেম</span>
-                      <span className="font-bold text-slate-900">{selectedOrder.items?.length || 0}</span>
+                      <span className="font-bold text-slate-900">{toBengaliDigits(selectedOrder.items?.length || 0)}</span>
                     </div>
                     <div className="flex justify-between py-1 border-b border-slate-100">
                       <span className="text-slate-500">মোট পরিমাণ (আইটেমস)</span>
-                      <span className="font-bold text-slate-900">{selectedOrder.items?.reduce((a, b) => a + b.quantity, 0) || 0}</span>
+                      <span className="font-bold text-slate-900">{toBengaliDigits(selectedOrder.items?.reduce((a, b) => a + b.quantity, 0) || 0)}</span>
                     </div>
                     <div className="flex justify-between py-1 border-b border-slate-100">
                       <span className="text-slate-500">মোট সিমেন্ট (ব্যাগ)</span>
                       <span className="font-bold text-slate-900">
-                        {selectedOrder.items?.filter(i => i.unit?.includes('বস্তা') || i.name?.includes('সিমেন্ট')).reduce((a, b) => a + b.quantity, 0)} Bag
+                        {toBengaliDigits(selectedOrder.items?.filter(i => i.unit?.includes('বস্তা') || i.name?.includes('সিমেন্ট')).reduce((a, b) => a + b.quantity, 0))} বস্তা
                       </span>
                     </div>
                     <div className="flex justify-between py-1 border-b border-slate-100">
                       <span className="text-slate-500">মোট রড (কেজি)</span>
                       <span className="font-bold text-slate-900">
-                        {selectedOrder.items?.filter(i => i.unit?.includes('কেজি') || i.name?.includes('রড')).reduce((a, b) => a + b.quantity, 0)} Kg
+                        {toBengaliDigits(selectedOrder.items?.filter(i => i.unit?.includes('কেজি') || i.name?.includes('রড')).reduce((a, b) => a + b.quantity, 0))} কেজি
                       </span>
                     </div>
                     <div className="flex justify-between py-1 border-b border-slate-100">
@@ -1742,7 +1748,7 @@ export default function OrdersPage() {
                     </div>
                     <div className="flex justify-between py-1">
                       <span className="text-slate-500">সর্বমোট বিল</span>
-                      <span className="font-black text-emerald-600">৳ {selectedOrder.totalAmount?.toLocaleString()}</span>
+                      <span className="font-black text-emerald-600">৳ {toBengaliDigits((selectedOrder.totalAmount || 0).toLocaleString('en-IN'))}</span>
                     </div>
                   </div>
                 </div>
@@ -1762,7 +1768,7 @@ export default function OrdersPage() {
 
                     <div className="relative pl-4">
                       <div className="absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white" />
-                      <p className="font-bold text-slate-900">পণ্য যোগ করা হয়েছে ({selectedOrder.items?.length || 0} টি আইটেম)</p>
+                      <p className="font-bold text-slate-900">পণ্য যোগ করা হয়েছে ({toBengaliDigits(selectedOrder.items?.length || 0)} টি আইটেম)</p>
                       <p className="text-[10px] text-slate-400 font-semibold">{formatDate(selectedOrder.createdAt)}</p>
                     </div>
 

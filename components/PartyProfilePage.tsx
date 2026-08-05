@@ -489,7 +489,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   <div>
                     <span className="text-[11px] font-medium text-slate-400 block">ক্রেডিট লিমিট</span>
                     <span className="text-xs font-bold text-blue-600 block mt-0.5">
-                      ৳ {party.creditLimit ? party.creditLimit.toLocaleString('bn-BD', { minimumFractionDigits: 2 }) : '০.০০'}
+                      ৳ {party.creditLimit ? toBnDigits(party.creditLimit.toLocaleString('en-IN', { minimumFractionDigits: 2 })) : '০.০০'}
                     </span>
                   </div>
                 </div>
@@ -499,13 +499,13 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   <div>
                     <span className="text-[11px] font-medium text-slate-400 block">বকেয়া (Due)</span>
                     <span className="text-xs font-black text-rose-600 block mt-0.5">
-                      ৳ {totalDue.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
+                      ৳ {toBnDigits(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
                     </span>
                   </div>
                   <div>
                     <span className="text-[11px] font-medium text-slate-400 block">মোট বিক্রয়</span>
                     <span className="text-xs font-bold text-slate-900 block mt-0.5">
-                      ৳ {totalBill.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
+                      ৳ {toBnDigits(totalBill.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
                     </span>
                   </div>
                 </div>
@@ -730,16 +730,16 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   <div className="grid grid-cols-2 gap-y-3.5 text-xs">
                     <div>
                       <span className="text-slate-500 font-medium block">ওপেনিং ব্যালেন্স</span>
-                      <span className="font-bold text-slate-900 block mt-0.5">৳ {party.openingBalance ? party.openingBalance.toLocaleString('bn-BD', { minimumFractionDigits: 2 }) : '০.০০'}</span>
+                      <span className="font-bold text-slate-900 block mt-0.5">৳ {party.openingBalance ? toBnDigits(party.openingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })) : '০.০০'}</span>
                     </div>
                     <div>
                       <span className="text-slate-500 font-medium block">কমিশন (%)</span>
-                      <span className="font-bold text-slate-900 block mt-0.5">{party.discountPercent ? party.discountPercent + '%' : '—'}</span>
+                      <span className="font-bold text-slate-900 block mt-0.5">{party.discountPercent ? toBnDigits(party.discountPercent) + '%' : '—'}</span>
                     </div>
 
                     <div>
                       <span className="text-slate-500 font-medium block">বকেয়া (Due)</span>
-                      <span className="font-black text-rose-600 block mt-0.5">৳ {totalDue.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                      <span className="font-black text-rose-600 block mt-0.5">৳ {toBnDigits(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                     </div>
                     <div>
                       <span className="text-slate-500 font-medium block">VAT / TIN</span>
@@ -748,7 +748,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
 
                     <div>
                       <span className="text-slate-500 font-medium block">ক্রেডিট লিমিট</span>
-                      <span className="font-bold text-slate-900 block mt-0.5">৳ {party.creditLimit ? party.creditLimit.toLocaleString('bn-BD', { minimumFractionDigits: 2 }) : '০.০০'}</span>
+                      <span className="font-bold text-slate-900 block mt-0.5">৳ {party.creditLimit ? toBnDigits(party.creditLimit.toLocaleString('en-IN', { minimumFractionDigits: 2 })) : '০.০০'}</span>
                     </div>
                     <div>
                       <span className="text-slate-500 font-medium block">পেমেন্ট মেয়াদ</span>
@@ -946,15 +946,15 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                             </TableCell>
 
                             <TableCell className="py-3.5 px-4 text-right font-bold text-rose-600">
-                              {entry.credit > 0 ? `৳ ${entry.credit.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}` : '—'}
+                              {entry.credit > 0 ? `৳ ${toBnDigits(entry.credit.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}` : '—'}
                             </TableCell>
 
                             <TableCell className="py-3.5 px-4 text-right font-bold text-emerald-600">
-                              {entry.debit > 0 ? `৳ ${entry.debit.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}` : '—'}
+                              {entry.debit > 0 ? `৳ ${toBnDigits(entry.debit.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}` : '—'}
                             </TableCell>
 
                             <TableCell className="py-3.5 px-4 text-right font-black text-rose-600">
-                              ৳ {entry.runningBalance.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
+                              ৳ {toBnDigits(entry.runningBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
                             </TableCell>
 
                             <TableCell className="py-3.5 px-4 text-center">

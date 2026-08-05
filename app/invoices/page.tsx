@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
+import { toBengaliDigits } from '@/lib/bengaliUtils';
 import { ProductSearchSelect } from '@/components/ProductSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
 
@@ -86,7 +87,7 @@ interface Invoice {
 function InvoicesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const convertOrderId = searchParams ? searchParams.get('convert') : null;
+  const convertOrderId = searchParams ? (searchParams.get('fromOrder') || searchParams.get('convert')) : null;
   const fromOrderId = convertOrderId;
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -123,6 +124,7 @@ function InvoicesContent() {
   const [cashPaidAmount, setCashPaidAmount] = useState<number>(0);
   const [chequePaidAmount, setChequePaidAmount] = useState<number>(0);
   const [invoicePaymentMethod, setInvoicePaymentMethod] = useState<string>('Cash');
+  const [invoiceDate, setInvoiceDate] = useState<string>('');
   const [invoiceNote, setInvoiceNote] = useState<string>('');
   const [bankName, setBankName] = useState<string>('');
   const [accountNo, setAccountNo] = useState<string>('');
@@ -190,7 +192,7 @@ function InvoicesContent() {
         totalAmount: s.total_amount,
         paidAmount: s.paid_amount,
         dueAmount: s.due_amount,
-        paymentStatus: s.due_amount <= 0 ? 'paid' : s.paid_amount > 0 ? 'partial' : 'unpaid',
+        paymentStatus: s.due_amount <= 0 ? 'পরিশোধিত' : (s.paid_amount || 0) > 0 ? 'আংশিক' : 'বাকি',
         stage: 'approved',
         createdAt: s.created_at
       }));
@@ -231,44 +233,84 @@ function InvoicesContent() {
     return () => { ignore = true; };
   }, []);
 
-  // Handle pre-filling form if arriving from /orders?fromOrder={id}
+  // Handle pre-filling form if arriving from /orders with ?fromOrder={id}
   useEffect(() => {
-    if (fromOrderId && allOrders.length > 0 && customers.length >= 0 && convertedOrderId !== fromOrderId) {
-      const targetOrder = allOrders.find(o => o.id === fromOrderId);
-      if (targetOrder) {
-        queueMicrotask(() => {
-          setConvertedOrderId(targetOrder.id);
-          
-          // Find matching customer
-          const cust = customers.find(c => c.id === targetOrder.customerId || c.name === targetOrder.customerName);
-          if (cust) {
-            setSelectedCustomer(cust);
-            setIsNewCustomer(false);
-          } else {
-            setSelectedCustomer(null);
-            setIsNewCustomer(true);
-            setNewCustomerData({
-              name: targetOrder.customerName || '',
-              phone: targetOrder.customerPhone || '',
-              address: ''
-            });
+    if (fromOrderId && convertedOrderId !== fromOrderId) {
+      let isSubscribed = true;
+      (async () => {
+        try {
+          let targetOrder = allOrders.find(o => o.id === fromOrderId);
+          if (!targetOrder) {
+            const raw = await api.transactions.get(fromOrderId);
+            if (raw && isSubscribed) {
+              targetOrder = {
+                id: String(raw.id),
+                orderId: raw.invoice_no,
+                customerName: raw.party_name || 'গ্রাহক',
+                customerPhone: raw.party_phone || '',
+                customerId: String(raw.party || ''),
+                items: (raw.items || []).map(i => ({
+                  name: i.product_name,
+                  price: i.price,
+                  quantity: i.quantity,
+                  unit: i.unit || 'পিস',
+                  total: i.total
+                })),
+                totalAmount: raw.total_amount,
+                paidAmount: raw.paid_amount,
+                dueAmount: raw.due_amount,
+                paymentStatus: raw.due_amount <= 0 ? 'paid' : raw.paid_amount > 0 ? 'partial' : 'unpaid',
+                createdAt: raw.created_at,
+                note: raw.notes
+              };
+            }
           }
 
-          // Set cart items
-          setCart(targetOrder.items ? targetOrder.items.map(i => ({ ...i })) : []);
-          setInvoicePaidAmount(targetOrder.totalAmount || 0);
-          setInvoiceNote(targetOrder.note || '');
-          setIsCreateInvoiceOpen(true);
-          toast.info('বিক্রয় অর্ডারের তথ্য নিয়ে চালানের ফর্ম লোড হয়েছে।');
-        });
-      }
+          if (targetOrder && isSubscribed) {
+            setConvertedOrderId(targetOrder.id);
+            
+            // Find matching customer
+            const cust = customers.find(c => c.id === targetOrder!.customerId || c.name === targetOrder!.customerName);
+            if (cust) {
+              setSelectedCustomer(cust);
+              setIsNewCustomer(false);
+            } else {
+              setSelectedCustomer(null);
+              setIsNewCustomer(true);
+              setNewCustomerData({
+                name: targetOrder.customerName || '',
+                phone: targetOrder.customerPhone || '',
+                address: ''
+              });
+            }
+
+            // Set cart items
+            setCart(targetOrder.items ? targetOrder.items.map(i => ({ ...i })) : []);
+            setInvoicePaidAmount(targetOrder.paidAmount || targetOrder.totalAmount || 0);
+            setInvoiceNote(targetOrder.note || '');
+            setIsCreateInvoiceOpen(true);
+            toast.info('বিক্রয় অর্ডারের তথ্য নিয়ে চালানের ফর্ম লোড হয়েছে।');
+          }
+        } catch (e) {
+          console.error('Error fetching order for conversion:', e);
+        }
+      })();
+
+      return () => {
+        isSubscribed = false;
+      };
     }
   }, [fromOrderId, allOrders, customers, convertedOrderId]);
 
   const formatDate = (at: any) => {
     if (!at) return '';
-    const date = new Date(at);
-    return format(date, 'dd MMM yyyy, hh:mm a', { locale: bn });
+    try {
+      const date = at?.toDate ? at.toDate() : new Date(at);
+      if (isNaN(date.getTime())) return '';
+      return toBengaliDigits(format(date, 'dd MMM yyyy, hh:mm a', { locale: bn }));
+    } catch {
+      return '';
+    }
   };
 
   // Cart Add Item
@@ -276,6 +318,11 @@ function InvoicesContent() {
     const itemName = selectedCascadingProduct?.name || products.find(p => p.id === selectedProductId)?.name;
     if (!itemName) {
       toast.error('পণ্য নির্বাচন করুন');
+      return;
+    }
+
+    if (selectedCascadingProduct && selectedCascadingProduct.stock <= 0) {
+      toast.error('পণ্যটি স্টকে নেই! বিক্রয় চালানে কেবল স্টকে থাকা পণ্য যোগ করা যাবে।');
       return;
     }
 
@@ -550,10 +597,15 @@ function InvoicesContent() {
     }
   };
 
-  const filtered = invoices.filter(i =>
-    (filterStatus === 'সব' || i.paymentStatus === filterStatus) &&
-    (i.customerName.toLowerCase().includes(search.toLowerCase()) || i.id.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filtered = invoices.filter(i => {
+    const statusMatch = filterStatus === 'সব' || 
+      i.paymentStatus === filterStatus || 
+      (filterStatus === 'পরিশোধিত' && (i.paymentStatus === 'paid' || i.dueAmount <= 0)) ||
+      (filterStatus === 'আংশিক' && (i.paymentStatus === 'partial' || ((i.paidAmount || 0) > 0 && i.dueAmount > 0))) ||
+      (filterStatus === 'বাকি' && (i.paymentStatus === 'unpaid' || ((i.paidAmount || 0) === 0 && i.dueAmount > 0)));
+    const searchMatch = i.customerName.toLowerCase().includes(search.toLowerCase()) || i.id.toLowerCase().includes(search.toLowerCase());
+    return statusMatch && searchMatch;
+  });
 
   const totalSales = invoices.reduce((a, o) => a + o.totalAmount, 0);
   const totalPaid = invoices.reduce((a, o) => a + (o.paidAmount || 0), 0);
@@ -582,9 +634,9 @@ function InvoicesContent() {
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[
-            { label: 'মোট ইনভয়েস বিক্রয়', value: `৳ ${totalSales.toLocaleString()}`, icon: Receipt, color: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-100' },
-            { label: 'মোট ক্যাশ প্রাপ্তি', value: `৳ ${totalPaid.toLocaleString()}`, icon: Banknote, color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-100' },
-            { label: 'মোট বকেয়া চালান', value: `৳ ${totalDue.toLocaleString()}`, icon: AlertCircle, color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-100' },
+            { label: 'মোট ইনভয়েস বিক্রয়', value: `৳ ${toBengaliDigits(totalSales.toLocaleString('en-IN'))}`, icon: Receipt, color: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-100' },
+            { label: 'মোট ক্যাশ প্রাপ্তি', value: `৳ ${toBengaliDigits(totalPaid.toLocaleString('en-IN'))}`, icon: Banknote, color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+            { label: 'মোট বকেয়া চালান', value: `৳ ${toBengaliDigits(totalDue.toLocaleString('en-IN'))}`, icon: AlertCircle, color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-100' },
           ].map((s, i) => (
             <Card key={i} className={cn("border-2 shadow-sm rounded-2xl transition-all hover:shadow-md", s.border, s.bg)}>
               <CardContent className="p-6 flex items-center gap-4">
@@ -664,19 +716,22 @@ function InvoicesContent() {
                     className="border-b border-slate-50 hover:bg-emerald-50/50 cursor-pointer transition-colors"
                   >
                     <TableCell className="py-4 px-6">
-                      <span className="font-mono font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md text-xs">#{inv.id.slice(0, 8).toUpperCase()}</span>
+                      <span className="font-mono font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md text-xs">#{toBengaliDigits(inv.id.slice(0, 8).toUpperCase())}</span>
                     </TableCell>
                     <TableCell className="font-bengali text-xs font-semibold text-slate-500">{formatDate(inv.createdAt)}</TableCell>
                     <TableCell className="font-bengali font-black text-slate-800 text-sm">{inv.customerName}</TableCell>
-                    <TableCell className="text-right font-bengali font-black text-slate-900 text-base">৳{inv.totalAmount?.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-bengali text-emerald-600 font-bold">৳{(inv.paidAmount || 0).toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-bengali text-rose-600 font-bold">৳{(inv.dueAmount || 0).toLocaleString()}</TableCell>
+                    <TableCell className="text-right font-bengali font-black text-slate-900 text-base">৳{toBengaliDigits((inv.totalAmount || 0).toLocaleString('en-IN'))}</TableCell>
+                    <TableCell className="text-right font-bengali text-emerald-600 font-bold">৳{toBengaliDigits((inv.paidAmount || 0).toLocaleString('en-IN'))}</TableCell>
+                    <TableCell className="text-right font-bengali text-rose-600 font-bold">৳{toBengaliDigits((inv.dueAmount || 0).toLocaleString('en-IN'))}</TableCell>
                     <TableCell className="text-center">
                       <span className={cn("px-3 py-1 rounded-lg text-[10px] font-black font-bengali uppercase tracking-wider inline-block",
-                        inv.paymentStatus === 'পরিশোধিত' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                          inv.paymentStatus === 'আংশিক' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                        inv.dueAmount <= 0 || inv.paymentStatus === 'পরিশোধিত' || inv.paymentStatus === 'paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                          (inv.paidAmount || 0) > 0 || inv.paymentStatus === 'আংশিক' || inv.paymentStatus === 'partial' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
                             'bg-rose-50 text-rose-700 border border-rose-100'
-                      )}>{inv.paymentStatus}</span>
+                      )}>
+                        {inv.dueAmount <= 0 || inv.paymentStatus === 'paid' || inv.paymentStatus === 'পরিশোধিত' ? 'পরিশোধিত' :
+                          (inv.paidAmount || 0) > 0 || inv.paymentStatus === 'partial' || inv.paymentStatus === 'আংশিক' ? 'আংশিক' : 'বাকি'}
+                      </span>
                     </TableCell>
                     <TableCell className="text-right py-4 px-6">
                       <div className="flex justify-end gap-1.5">
@@ -714,10 +769,10 @@ function InvoicesContent() {
               </div>
               <div>
                 <span className="text-[10px] font-black tracking-widest text-orange-600 uppercase">
-                  INVOICE MANAGEMENT (ইনভয়েস ব্যবস্থাপনা)
+                  ইনভয়েস ব্যবস্থাপনা
                 </span>
                 <h1 className="text-xl font-black text-slate-900 tracking-tight">
-                  {editingInvoiceId ? 'চালান সম্পাদনা করুন (Edit Sales Invoice)' : convertedOrderId ? 'বিক্রয় অর্ডার থেকে চালান তৈরি' : 'নতুন বিক্রয় ইনভয়েস তৈরি (Create Sales Invoice)'}
+                  {editingInvoiceId ? 'চালান সম্পাদনা করুন' : convertedOrderId ? 'বিক্রয় অর্ডার থেকে চালান তৈরি' : 'নতুন বিক্রয় ইনভয়েস তৈরি করুন'}
                 </h1>
               </div>
             </div>
@@ -744,8 +799,8 @@ function InvoicesContent() {
                   <CardContent className="p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">1</span>
-                        Shop & Basics (দোকান ও প্রাথমিক তথ্য)
+                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">১</span>
+                        দোকান ও প্রাথমিক তথ্য
                       </Label>
                       <button
                         type="button"
@@ -762,7 +817,7 @@ function InvoicesContent() {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       {/* Select Shop / Customer */}
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-bold text-slate-600">Select Shop / Customer <span className="text-rose-500">*</span></Label>
+                        <Label className="text-xs font-bold text-slate-600">কাস্টমার / দোকান নির্বাচন করুন <span className="text-rose-500">*</span></Label>
                         {!isNewCustomer ? (
                           <CustomerSearchSelect
                             customers={customers}
@@ -784,23 +839,23 @@ function InvoicesContent() {
 
                       {/* Invoice Number */}
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-bold text-slate-600">Invoice Number</Label>
+                        <Label className="text-xs font-bold text-slate-600">ইনভয়েস নম্বর</Label>
                         <Input
                           disabled
-                          value="Auto (Will generate)"
+                          value="স্বয়ংক্রিয় (অটো জেনারেট)"
                           className="rounded-xl h-11 bg-slate-100 border-slate-200 text-xs font-bold text-slate-500 cursor-not-allowed"
                         />
                       </div>
 
                       {/* Invoice Date */}
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-bold text-slate-600">Invoice Date <span className="text-rose-500">*</span></Label>
+                        <Label className="text-xs font-bold text-slate-600">ইনভয়েস তারিখ <span className="text-rose-500">*</span></Label>
                         <div className="relative">
                           <Input
-                            type="date"
-                            value={format(new Date(), 'yyyy-MM-dd')}
-                            onChange={() => {}}
-                            className="rounded-xl h-11 bg-slate-50 border-slate-200 text-xs font-bold pr-9"
+                            type="text"
+                            value={invoiceDate || toBengaliDigits(format(new Date(), 'dd/MM/yyyy'))}
+                            onChange={e => setInvoiceDate(e.target.value)}
+                            className="rounded-xl h-11 bg-slate-50 border-slate-200 text-xs font-bold font-bengali pr-9"
                           />
                           <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                         </div>
@@ -816,13 +871,13 @@ function InvoicesContent() {
                           </div>
                           <div>
                             <span className="font-black text-slate-900">{selectedCustomer.name}</span>
-                            {selectedCustomer.phone && <span className="ml-2 text-slate-600 font-semibold">({selectedCustomer.phone})</span>}
+                            {selectedCustomer.phone && <span className="ml-2 text-slate-600 font-semibold">({toBengaliDigits(selectedCustomer.phone)})</span>}
                             {selectedCustomer.address && <p className="text-slate-500 text-[11px] font-semibold">{selectedCustomer.address}</p>}
                           </div>
                         </div>
                         <div className="text-right">
-                          <span className="text-[11px] text-rose-600 font-bold block">পূর্বের মোট বকেয়া (Previous Due)</span>
-                          <span className="font-black text-rose-700 text-base">৳ {selectedCustomerDue.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                          <span className="text-[11px] text-rose-600 font-bold block">পূর্বের মোট বকেয়া</span>
+                          <span className="font-black text-rose-700 text-base">৳ {toBengaliDigits(selectedCustomerDue.toLocaleString('en-IN'))}</span>
                         </div>
                       </div>
                     )}
@@ -834,8 +889,8 @@ function InvoicesContent() {
                   <CardContent className="p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">2</span>
-                        Item Lines (পণ্যসমূহ)
+                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">২</span>
+                        পণ্যসমূহ (আইটেম লাইন)
                       </Label>
                       <Button 
                         type="button"
@@ -843,13 +898,14 @@ function InvoicesContent() {
                         size="sm" 
                         className="h-8 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs"
                       >
-                        <Plus className="w-3.5 h-3.5 mr-1" /> Add Row
+                        <Plus className="w-3.5 h-3.5 mr-1" /> নতুন সারি যোগ
                       </Button>
                     </div>
 
                     {/* Step-by-Step Cascading Product Selector (Rod, Cement, Ring) */}
                     <CascadingProductSelector
                       products={products}
+                      onlyInStock={true}
                       onProductChange={(selected) => {
                         setSelectedCascadingProduct(selected);
                         if (selected) {
@@ -871,12 +927,12 @@ function InvoicesContent() {
                         <TableHeader className="bg-slate-50">
                           <TableRow className="text-[11px]">
                             <TableHead className="w-10 text-center font-black">#</TableHead>
-                            <TableHead className="font-black">Product</TableHead>
-                            <TableHead className="text-center font-black">Series</TableHead>
-                            <TableHead className="text-center font-black">Variant</TableHead>
-                            <TableHead className="text-center font-black">Quantity</TableHead>
-                            <TableHead className="text-right font-black">Unit Price</TableHead>
-                            <TableHead className="text-right font-black">Subtotal</TableHead>
+                            <TableHead className="font-black">পণ্যের নাম</TableHead>
+                            <TableHead className="text-center font-black">সিরিজ / বিবরণ</TableHead>
+                            <TableHead className="text-center font-black">সাইজ / ভ্যারিয়েন্ট</TableHead>
+                            <TableHead className="text-center font-black">পরিমাণ</TableHead>
+                            <TableHead className="text-right font-black">একক মূল্য</TableHead>
+                            <TableHead className="text-right font-black">মোট মূল্য</TableHead>
                             <TableHead className="w-10 text-center font-black">🗑️</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -888,20 +944,20 @@ function InvoicesContent() {
                               </TableCell>
                             </TableRow>
                           ) : cart.map((item, idx) => (
-                            <TableRow key={item.id} className="text-xs border-b border-slate-100">
-                              <TableCell className="text-center font-bold text-slate-400">{idx + 1}</TableCell>
+                            <TableRow key={item.id ? `${item.id}-${idx}` : `${item.name}-${idx}`} className="text-xs border-b border-slate-100">
+                              <TableCell className="text-center font-bold text-slate-400">{toBengaliDigits(idx + 1)}</TableCell>
                               <TableCell className="font-bold text-slate-800">{item.name}</TableCell>
                               <TableCell className="text-center text-slate-400">—</TableCell>
                               <TableCell className="text-center text-slate-400">—</TableCell>
                               <TableCell className="text-center">
                                 <div className="inline-flex items-center gap-1.5">
                                   <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity - 1)} className="w-6 h-6 rounded bg-slate-100 font-bold">-</button>
-                                  <span className="font-bold">{item.quantity} {item.unit}</span>
+                                  <span className="font-bold">{toBengaliDigits(item.quantity)} {item.unit}</span>
                                   <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity + 1)} className="w-6 h-6 rounded bg-slate-100 font-bold">+</button>
                                 </div>
                               </TableCell>
-                              <TableCell className="text-right font-medium text-slate-600">৳{item.price.toLocaleString()}</TableCell>
-                              <TableCell className="text-right font-black text-slate-900">৳{(item.price * item.quantity).toLocaleString()}</TableCell>
+                              <TableCell className="text-right font-medium text-slate-600">৳{toBengaliDigits((item.price || 0).toLocaleString('en-IN'))}</TableCell>
+                              <TableCell className="text-right font-black text-slate-900">৳{toBengaliDigits(((item.price || 0) * item.quantity).toLocaleString('en-IN'))}</TableCell>
                               <TableCell className="text-center">
                                 <button type="button" onClick={() => handleRemoveCartItem(item.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded">
                                   <Trash2 className="w-4 h-4" />
@@ -919,13 +975,13 @@ function InvoicesContent() {
                 <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
                   <CardContent className="p-5 space-y-4">
                     <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">3</span>
-                      Transport & Delivery Site (পরিবহন ও সাইটের তথ্য)
+                      <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">৩</span>
+                      পরিবহন ও সাইটের তথ্য
                     </Label>
 
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
                       <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">Vehicle / Truck No (গাড়ি নং)</Label>
+                        <Label className="text-[11px] font-bold text-slate-600">গাড়ির নম্বর / ট্রাক নং</Label>
                         <Input
                           value={vehicleNo}
                           onChange={e => setVehicleNo(e.target.value)}
@@ -935,7 +991,7 @@ function InvoicesContent() {
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">Driver Name (ড্রাইভারের নাম)</Label>
+                        <Label className="text-[11px] font-bold text-slate-600">ড্রাইভারের নাম</Label>
                         <Input
                           value={driverName}
                           onChange={e => setDriverName(e.target.value)}
@@ -945,7 +1001,7 @@ function InvoicesContent() {
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">Driver Phone (মোবাইল)</Label>
+                        <Label className="text-[11px] font-bold text-slate-600">ড্রাইভারের মোবাইল নম্বর</Label>
                         <Input
                           value={driverPhone}
                           onChange={e => setDriverPhone(e.target.value)}
@@ -955,7 +1011,7 @@ function InvoicesContent() {
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">Delivery Site (সাইট ঠিকানা)</Label>
+                        <Label className="text-[11px] font-bold text-slate-600">ডেলিভারি সাইট ঠিকানা</Label>
                         <Input
                           value={deliveryAddress}
                           onChange={e => setDeliveryAddress(e.target.value)}
@@ -974,26 +1030,28 @@ function InvoicesContent() {
                   <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
                     <CardContent className="p-5 space-y-4">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">4</span>
-                        Totals, Discount & Tax (মোট, ছাড় ও খরচ)
+                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">৪</span>
+                        মোট বিল, ছাড় ও অতিরিক্ত খরচ
                       </Label>
 
                       <div className="grid grid-cols-3 gap-3">
                         <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Discount Type</Label>
+                          <Label className="text-[11px] font-bold text-slate-600">ছাড়ের ধরণ</Label>
                           <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
-                            <SelectTrigger className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold">
-                              <SelectValue />
+                            <SelectTrigger className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali">
+                              <SelectValue>
+                                {discountType === 'percentage' ? 'শতকরা (%)' : 'ফ্ল্যাট (৳)'}
+                              </SelectValue>
                             </SelectTrigger>
                             <SelectContent className="font-bengali text-xs font-bold">
-                              <SelectItem value="percentage">Percentage (%)</SelectItem>
-                              <SelectItem value="flat">Flat (৳)</SelectItem>
+                              <SelectItem value="percentage">শতকরা (%)</SelectItem>
+                              <SelectItem value="flat">ফ্ল্যাট (৳)</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Discount % / Amount</Label>
+                          <Label className="text-[11px] font-bold text-slate-600">ছাড়ের পরিমাণ (% / ৳)</Label>
                           <Input 
                             type="number"
                             value={discountType === 'percentage' ? (discountPercent || '') : (discountFlat || '')}
@@ -1002,17 +1060,17 @@ function InvoicesContent() {
                               if (discountType === 'percentage') setDiscountPercent(val);
                               else setDiscountFlat(val);
                             }}
-                            placeholder="0"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                            placeholder="০"
+                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali"
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Calculated Discount</Label>
+                          <Label className="text-[11px] font-bold text-slate-600">হিসাবকৃত মোট ছাড়</Label>
                           <Input 
                             disabled
-                            value={`৳ ${computedDiscount.toLocaleString()}`}
-                            className="rounded-xl h-10 bg-slate-100 border-slate-200 text-xs font-black text-emerald-600 cursor-not-allowed"
+                            value={`৳ ${toBengaliDigits(computedDiscount.toLocaleString('en-IN'))}`}
+                            className="rounded-xl h-10 bg-slate-100 border-slate-200 text-xs font-black text-emerald-600 cursor-not-allowed font-bengali"
                           />
                         </div>
                       </div>
@@ -1020,11 +1078,11 @@ function InvoicesContent() {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">
-                            <Label className="text-[11px] font-bold text-slate-600">Labor Charge (লেবার খরচ ৳)</Label>
+                            <Label className="text-[11px] font-bold text-slate-600">লেবার খরচ (৳)</Label>
                             <button
                               type="button"
                               onClick={() => handleSaveDefaultLabor(laborCost || 0)}
-                              className="text-[9px] font-black text-amber-700 bg-amber-100 hover:bg-amber-200 px-1.5 py-0.5 rounded border border-amber-300 transition-colors cursor-pointer"
+                              className="text-[9px] font-black text-amber-700 bg-amber-100 hover:bg-amber-200 px-1.5 py-0.5 rounded border border-amber-300 transition-colors cursor-pointer font-bengali"
                               title="বর্তমানে দেওয়া এই সংখ্যাটি সব সময় ডিফল্ট হিসেবে রাখতে এখানে ক্লিক করুন"
                             >
                               📌 ডিফল্ট সেভ করুন
@@ -1034,19 +1092,19 @@ function InvoicesContent() {
                             type="number"
                             value={laborCost || ''}
                             onChange={e => setLaborCost(parseFloat(e.target.value) || 0)}
-                            placeholder="0"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold text-amber-600"
+                            placeholder="০"
+                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold text-amber-600 font-bengali"
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Shipping / Freight (গাড়ি ভাড়া ৳)</Label>
+                          <Label className="text-[11px] font-bold text-slate-600">গাড়ি ভাড়া (৳)</Label>
                           <Input 
                             type="number"
                             value={shippingCost || ''}
                             onChange={e => setShippingCost(parseFloat(e.target.value) || 0)}
-                            placeholder="0"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                            placeholder="০"
+                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali"
                           />
                         </div>
                       </div>
@@ -1056,12 +1114,12 @@ function InvoicesContent() {
                   {/* STEP 5: Register Payment */}
                   <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
                     <CardContent className="p-5 space-y-4">
-                      <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">5</span>
-                        Register Payment (পেমেন্ট তথ্য)
+                      <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5 font-bengali">
+                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">৫</span>
+                        পেমেন্ট এন্ট্রি বিবরণ
                       </Label>
 
-                      <div className="flex items-center gap-4 text-xs font-bold pt-1">
+                      <div className="flex items-center gap-4 text-xs font-bold pt-1 font-bengali">
                         <label className="flex items-center gap-1.5 cursor-pointer">
                           <input 
                             type="radio" 
@@ -1070,7 +1128,7 @@ function InvoicesContent() {
                             onChange={() => setPaymentOption('now')}
                             className="accent-orange-600"
                           />
-                          <span>● Record Payment Now</span>
+                          <span>● এখনই পেমেন্ট জমা নিবেন</span>
                         </label>
 
                         <label className="flex items-center gap-1.5 cursor-pointer">
@@ -1081,7 +1139,7 @@ function InvoicesContent() {
                             onChange={() => setPaymentOption('later')}
                             className="accent-orange-600"
                           />
-                          <span>○ Record Later</span>
+                          <span>○ পরে পেমেন্ট রেকর্ড করবেন</span>
                         </label>
                       </div>
 
@@ -1090,17 +1148,23 @@ function InvoicesContent() {
                           <div className="space-y-3">
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                               <div className="space-y-1 sm:col-span-1">
-                                <Label className="text-[11px] font-bold text-slate-600">Payment Method (পেমেন্ট মাধ্যম)</Label>
+                                <Label className="text-[11px] font-bold text-slate-600">পেমেন্ট মাধ্যম</Label>
                                 <Select value={invoicePaymentMethod} onValueChange={(val: string | null) => setInvoicePaymentMethod(val || 'Cash')}>
-                                  <SelectTrigger className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold">
-                                    <SelectValue />
+                                  <SelectTrigger className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali">
+                                    <SelectValue>
+                                      {invoicePaymentMethod === 'Cash' ? '💵 নগদ (Cash)' :
+                                       invoicePaymentMethod === 'Split' ? '💵+📄 নগদ ও চেক (স্প্লিট পেমেন্ট)' :
+                                       invoicePaymentMethod === 'Cheque' ? '📄 চেক (Cheque)' :
+                                       invoicePaymentMethod === 'Bank' ? '🏦 ব্যাংক ট্রান্সফার' :
+                                       invoicePaymentMethod === 'BankToBank' ? '🔄 ব্যাংক-টু-ব্যাংক' : '💵 নগদ (Cash)'}
+                                    </SelectValue>
                                   </SelectTrigger>
                                   <SelectContent className="font-bengali text-xs font-bold">
-                                    <SelectItem value="Cash">💵 Cash (একক নগদ)</SelectItem>
+                                    <SelectItem value="Cash">💵 নগদ (Cash)</SelectItem>
                                     <SelectItem value="Split">💵+📄 নগদ ও চেক (স্প্লিট পেমেন্ট)</SelectItem>
-                                    <SelectItem value="Cheque">📄 Cheque (একক চেক)</SelectItem>
-                                    <SelectItem value="Bank">🏦 Bank Transfer (ব্যাংক)</SelectItem>
-                                    <SelectItem value="BankToBank">🔄 Bank to Bank (ব্যাংক-টু-ব্যাংক)</SelectItem>
+                                    <SelectItem value="Cheque">📄 চেক (Cheque)</SelectItem>
+                                    <SelectItem value="Bank">🏦 ব্যাংক ট্রান্সফার</SelectItem>
+                                    <SelectItem value="BankToBank">🔄 ব্যাংক-টু-ব্যাংক</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
@@ -1108,29 +1172,29 @@ function InvoicesContent() {
                               {invoicePaymentMethod === 'Split' ? (
                                 <>
                                   <div className="space-y-1">
-                                    <Label className="text-[11px] font-bold text-slate-700">নগদ জমার পরিমাণ (Cash ৳)</Label>
+                                    <Label className="text-[11px] font-bold text-slate-700">নগদ জমার পরিমাণ (৳)</Label>
                                     <Input 
                                       type="number"
                                       value={cashPaidAmount || ''}
                                       onChange={e => setCashPaidAmount(parseFloat(e.target.value) || 0)}
                                       placeholder="যেমন: ১০,০০০"
-                                      className="rounded-xl h-10 bg-emerald-50/70 border-emerald-300 text-xs font-black text-emerald-700"
+                                      className="rounded-xl h-10 bg-emerald-50/70 border-emerald-300 text-xs font-black text-emerald-700 font-bengali"
                                     />
                                   </div>
                                   <div className="space-y-1">
-                                    <Label className="text-[11px] font-bold text-slate-700">চেক জমার পরিমাণ (Cheque ৳)</Label>
+                                    <Label className="text-[11px] font-bold text-slate-700">চেক জমার পরিমাণ (৳)</Label>
                                     <Input 
                                       type="number"
                                       value={chequePaidAmount || ''}
                                       onChange={e => setChequePaidAmount(parseFloat(e.target.value) || 0)}
                                       placeholder="যেমন: ৭০,০০০"
-                                      className="rounded-xl h-10 bg-purple-50/70 border-purple-300 text-xs font-black text-purple-700"
+                                      className="rounded-xl h-10 bg-purple-50/70 border-purple-300 text-xs font-black text-purple-700 font-bengali"
                                     />
                                   </div>
                                 </>
                               ) : (
                                 <div className="space-y-1 sm:col-span-2">
-                                  <Label className="text-[11px] font-bold text-slate-600">Paid Amount (পরিশোধিত ৳)</Label>
+                                  <Label className="text-[11px] font-bold text-slate-600">পরিশোধিত জমার পরিমাণ (৳)</Label>
                                   <Input 
                                     type="number"
                                     value={invoicePaidAmount || ''}
@@ -1140,8 +1204,8 @@ function InvoicesContent() {
                                       if (invoicePaymentMethod === 'Cash') setCashPaidAmount(val);
                                       if (invoicePaymentMethod === 'Cheque') setChequePaidAmount(val);
                                     }}
-                                    placeholder="0.00"
-                                    className="rounded-xl h-10 bg-emerald-50/60 border-emerald-200 text-xs font-black text-emerald-600"
+                                    placeholder="০.০০"
+                                    className="rounded-xl h-10 bg-emerald-50/60 border-emerald-200 text-xs font-black text-emerald-600 font-bengali"
                                   />
                                 </div>
                               )}
@@ -1150,8 +1214,8 @@ function InvoicesContent() {
                             {/* Total Paid Display Banner for Split */}
                             {invoicePaymentMethod === 'Split' && (
                               <div className="p-2.5 bg-slate-100/80 rounded-xl border border-slate-200 flex items-center justify-between text-xs font-bold font-bengali">
-                                <span className="text-slate-600">মোট প্রাপ্তি (নগদ ৳{cashPaidAmount.toLocaleString()} + চেক ৳{chequePaidAmount.toLocaleString()}):</span>
-                                <span className="text-sm font-black text-emerald-700">৳{(cashPaidAmount + chequePaidAmount).toLocaleString()}</span>
+                                <span className="text-slate-600">মোট প্রাপ্তি (নগদ ৳{toBengaliDigits(cashPaidAmount.toLocaleString('en-IN'))} + চেক ৳{toBengaliDigits(chequePaidAmount.toLocaleString('en-IN'))}):</span>
+                                <span className="text-sm font-black text-emerald-700">৳{toBengaliDigits((cashPaidAmount + chequePaidAmount).toLocaleString('en-IN'))}</span>
                               </div>
                             )}
 
@@ -1186,7 +1250,7 @@ function InvoicesContent() {
                                   </Select>
                                 </div>
                                 <div>
-                                  <Label className="text-[10px] font-bold text-slate-600">Txn / Ref No (অপশনাল)</Label>
+                                  <Label className="text-[10px] font-bold text-slate-600">ট্রানজেকশন / রেফারেন্স আইডি (অপশনাল)</Label>
                                   <Input 
                                     placeholder="Txn ID" 
                                     value={transactionRef} 
@@ -1322,49 +1386,49 @@ function InvoicesContent() {
                   <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
                     <CardContent className="p-5 space-y-3">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">6</span>
-                        Signatures & Handled By (কর্মকর্তা ও গন্তব্য)
+                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">৬</span>
+                        কর্মকর্তা ও গোডাউন নির্ধারণ
                       </Label>
 
                       <div className="grid grid-cols-2 gap-3 text-xs">
                         <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Prepared By</Label>
+                          <Label className="text-[11px] font-bold text-slate-600">ইনভয়েস প্রস্তুতকারী</Label>
                           <Input 
                             value={preparedBy}
                             onChange={e => setPreparedBy(e.target.value)}
-                            placeholder="Invoicer Name"
+                            placeholder="প্রস্তুতকারীর নাম"
                             className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Authorized By</Label>
+                          <Label className="text-[11px] font-bold text-slate-600">অনুমোদনকারী কর্মকর্তা</Label>
                           <Input 
                             value={authorizedBy}
                             onChange={e => setAuthorizedBy(e.target.value)}
-                            placeholder="Manager Name"
+                            placeholder="ম্যানেজারের নাম"
                             className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Received By</Label>
+                          <Label className="text-[11px] font-bold text-slate-600">পণ্য গ্রহণকারী</Label>
                           <Input 
                             value={receivedBy}
                             onChange={e => setReceivedBy(e.target.value)}
-                            placeholder="Customer Name"
+                            placeholder="গ্রহীতার নাম"
                             className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Warehouse</Label>
+                          <Label className="text-[11px] font-bold text-slate-600">গোডাউন / ওয়্যারহাউজ</Label>
                           <Select value={warehouse} onValueChange={(val: string | null) => setWarehouse(val || 'Main')}>
                             <SelectTrigger className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent className="font-bengali text-xs font-bold">
-                              <SelectItem value="Main">Main (প্রধান গুদাম)</SelectItem>
+                              <SelectItem value="Main">প্রধান গোডাউন</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1376,15 +1440,15 @@ function InvoicesContent() {
                   <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
                     <CardContent className="p-5 space-y-3">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">7</span>
-                        Notes (Optional) (বিশেষ নির্দেশনার নোট)
+                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">৭</span>
+                        বিশেষ নির্দেশনার নোট (ঐচ্ছিক)
                       </Label>
 
                       <textarea
                         rows={3}
                         value={invoiceNote}
                         onChange={e => setInvoiceNote(e.target.value)}
-                        placeholder="Add any note or special instructions..."
+                        placeholder="যে কোনো বিশেষ নির্দেশনার নোট লিখুন..."
                         className="w-full rounded-xl p-3 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-orange-500"
                       />
                     </CardContent>
@@ -1399,92 +1463,92 @@ function InvoicesContent() {
                 
                 {/* CARD 1: INVOICE SUMMARY */}
                 <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
-                  <CardContent className="p-5 space-y-4">
+                  <CardContent className="p-5 space-y-4 font-bengali">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                       <div className="flex items-center gap-2">
                         <Receipt className="w-4 h-4 text-orange-600" />
-                        <h3 className="text-sm font-black text-slate-900 tracking-tight">Invoice Summary</h3>
+                        <h3 className="text-sm font-black text-slate-900 tracking-tight">ইনভয়েস সারসংক্ষেপ</h3>
                       </div>
                       <span className="bg-orange-50 text-orange-600 text-[10px] font-black px-2 py-0.5 rounded border border-orange-200 uppercase tracking-widest">
-                        DRAFT
+                        ড্রাফট
                       </span>
                     </div>
 
                     <div className="space-y-2 text-xs font-semibold">
                       <div className="flex justify-between text-slate-500">
-                        <span>Shop / Customer</span>
-                        <span className="font-bold text-slate-900">{selectedCustomer?.name || 'UNSELECTED / WALK-IN'}</span>
+                        <span>কাস্টমার / দোকান</span>
+                        <span className="font-bold text-slate-900">{selectedCustomer?.name || 'সাধারণ ক্রেতা'}</span>
                       </div>
 
                       <div className="flex justify-between text-slate-500">
-                        <span>Contact Number</span>
-                        <span className="font-bold text-slate-800">{selectedCustomer?.phone || '+880 1XXX XXXXXX'}</span>
+                        <span>মোবাইল নম্বর</span>
+                        <span className="font-bold text-slate-800">{selectedCustomer?.phone ? toBengaliDigits(selectedCustomer.phone) : '—'}</span>
                       </div>
 
                       <div className="flex justify-between text-slate-500">
-                        <span>Address</span>
-                        <span className="font-bold text-slate-800 text-right max-w-[120px] truncate">{selectedCustomer?.address || 'No address provided'}</span>
+                        <span>ঠিকানা</span>
+                        <span className="font-bold text-slate-800 text-right max-w-[120px] truncate">{selectedCustomer?.address || 'ঠিকানা দেওয়া হয়নি'}</span>
                       </div>
 
                       <div className="flex justify-between text-slate-500 pt-2 border-t border-slate-100">
-                        <span>Invoice Number</span>
-                        <span className="font-bold text-slate-800">Auto (Will generate)</span>
+                        <span>ইনভয়েস নম্বর</span>
+                        <span className="font-bold text-slate-800">স্বয়ংক্রিয় (অটো)</span>
                       </div>
 
                       <div className="flex justify-between text-slate-500">
-                        <span>Invoice Date</span>
-                        <span className="font-bold text-slate-800">{format(new Date(), 'dd MMM yyyy')}</span>
+                        <span>ইনভয়েস তারিখ</span>
+                        <span className="font-bold text-slate-800">{invoiceDate || toBengaliDigits(format(new Date(), 'dd/MM/yyyy'))}</span>
                       </div>
 
                       <div className="flex justify-between text-slate-500">
-                        <span>Invoice Type</span>
-                        <span className="font-bold text-slate-800">SALE</span>
+                        <span>চালানের ধরণ</span>
+                        <span className="font-bold text-slate-800">বিক্রয়</span>
                       </div>
 
                       <div className="space-y-1.5 pt-3 border-t border-slate-100">
                         <div className="flex justify-between text-slate-600">
-                          <span>Items Subtotal</span>
-                          <span className="font-bold text-slate-900">৳ {cartSubtotal.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                          <span>পণ্যের মোট মূল্য</span>
+                          <span className="font-bold text-slate-900">৳ {toBengaliDigits(cartSubtotal.toLocaleString('en-IN'))}</span>
                         </div>
 
                         {cartTotalDiscount > 0 && (
                           <div className="flex justify-between text-emerald-600">
-                            <span>Discount</span>
-                            <span className="font-bold">- ৳ {cartTotalDiscount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                            <span>মোট ছাড়</span>
+                            <span className="font-bold">- ৳ {toBengaliDigits(cartTotalDiscount.toLocaleString('en-IN'))}</span>
                           </div>
                         )}
 
                         {shippingCost > 0 && (
                           <div className="flex justify-between text-blue-600">
-                            <span>Shipping / Freight</span>
-                            <span className="font-bold">+ ৳ {shippingCost.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                            <span>গাড়ি ভাড়া</span>
+                            <span className="font-bold">+ ৳ {toBengaliDigits(shippingCost.toLocaleString('en-IN'))}</span>
                           </div>
                         )}
 
                         {laborCost > 0 && (
                           <div className="flex justify-between text-amber-600">
-                            <span>Labor / Loading Charge</span>
-                            <span className="font-bold">+ ৳ {laborCost.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                            <span>লেবার খরচ</span>
+                            <span className="font-bold">+ ৳ {toBengaliDigits(laborCost.toLocaleString('en-IN'))}</span>
                           </div>
                         )}
 
                         <div className="flex justify-between text-slate-700 font-bold pt-1">
-                          <span>Invoice Total</span>
-                          <span className="font-black text-slate-900">৳ {cartTotalAmount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                          <span>সর্বমোট ইনভয়েস বিল</span>
+                          <span className="font-black text-slate-900">৳ {toBengaliDigits(cartTotalAmount.toLocaleString('en-IN'))}</span>
                         </div>
 
                         <div className="flex justify-between text-rose-600 font-bold">
-                          <span>Previous Shop Due</span>
-                          <span className="font-black">৳ {selectedCustomerDue.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                          <span>পূর্বের বকেয়া</span>
+                          <span className="font-black">৳ {toBengaliDigits(selectedCustomerDue.toLocaleString('en-IN'))}</span>
                         </div>
                       </div>
 
                       <div className="pt-3 border-t border-slate-100 flex justify-between items-baseline">
                         <div>
-                          <span className="text-xs font-bold text-slate-700 block">Grand Total (with Due)</span>
+                          <span className="text-xs font-bold text-slate-700 block">সর্বমোট প্রদেয় বিল (বকেয়াসহ)</span>
                           <span className="text-[10px] text-slate-400 font-bold">চালান + পূর্বের বকেয়া</span>
                         </div>
-                        <span className="text-2xl font-black text-orange-600">৳ {(cartTotalAmount + selectedCustomerDue).toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                        <span className="text-2xl font-black text-orange-600">৳ {toBengaliDigits((cartTotalAmount + selectedCustomerDue).toLocaleString('en-IN'))}</span>
                       </div>
                     </div>
                   </CardContent>
@@ -1492,23 +1556,23 @@ function InvoicesContent() {
 
                 {/* CARD 2: PAYMENT SUMMARY */}
                 <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
-                  <CardContent className="p-5 space-y-3">
+                  <CardContent className="p-5 space-y-3 font-bengali">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                       <div className="flex items-center gap-2">
                         <Banknote className="w-4 h-4 text-emerald-600" />
-                        <h3 className="text-sm font-black text-slate-900 tracking-tight">Payment Summary</h3>
+                        <h3 className="text-sm font-black text-slate-900 tracking-tight">পেমেন্ট সারসংক্ষেপ</h3>
                       </div>
                     </div>
 
                     <div className="text-center py-2 bg-slate-50 rounded-xl border border-slate-100">
                       <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase block">
-                        {invoicePaidAmount > 0 ? `PAID: ৳ ${invoicePaidAmount.toLocaleString()}` : 'NO PAYMENT RECORDED'}
+                        {invoicePaidAmount > 0 ? `জমা: ৳ ${toBengaliDigits(invoicePaidAmount.toLocaleString('en-IN'))}` : 'কোনো পেমেন্ট দেওয়া হয়নি'}
                       </span>
                     </div>
 
                     <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-3">
-                      <span className="font-bold text-slate-600">Remaining Total Due</span>
-                      <span className="text-lg font-black text-rose-600">৳ {cartDueAmount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                      <span className="font-bold text-slate-600">সর্বশেষ অবশিষ্ট বকেয়া</span>
+                      <span className="text-lg font-black text-rose-600">৳ {toBengaliDigits(cartDueAmount.toLocaleString('en-IN'))}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -1519,10 +1583,10 @@ function InvoicesContent() {
           </form>
 
           {/* STICKY BOTTOM ACTION BAR */}
-          <div className="bg-white border-t border-slate-200 px-6 py-4 sticky bottom-0 z-50 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+          <div className="bg-white border-t border-slate-200 px-6 py-4 sticky bottom-0 z-50 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg font-bengali">
             <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold">
               <Lightbulb className="w-4 h-4 text-orange-500 flex-shrink-0" />
-              <span>Review your details before saving. You can save as draft anytime.</span>
+              <span>সংরক্ষণের পূর্বে সব তথ্য পুনরায় পরীক্ষা করে নিন।</span>
             </div>
 
             <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -1532,7 +1596,7 @@ function InvoicesContent() {
                 onClick={() => { setIsCreateInvoiceOpen(false); resetCreateForm(); }}
                 className="rounded-xl h-11 px-5 font-bold text-slate-600 border-slate-200"
               >
-                Cancel
+                বাতিল করুন
               </Button>
               <Button 
                 type="button"
@@ -1540,14 +1604,14 @@ function InvoicesContent() {
                 onClick={handleCreateInvoiceSubmit}
                 className="rounded-xl h-11 px-5 font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200"
               >
-                Save Draft
+                ড্রাফট সেভ করুন
               </Button>
               <Button 
                 type="submit" 
                 onClick={handleCreateInvoiceSubmit}
                 className="rounded-xl h-11 px-6 font-black text-white bg-orange-600 hover:bg-orange-700 shadow-md shadow-orange-600/20 active:scale-95 transition-all"
               >
-                Complete Invoice ✓
+                চালান সম্পূর্ণ করুন ✓
               </Button>
             </div>
           </div>
@@ -1581,10 +1645,13 @@ function InvoicesContent() {
                 <div>
                   <p className="text-slate-400 text-[11px] uppercase tracking-widest font-black mb-1">স্ট্যাটাস</p>
                   <span className={cn("px-2.5 py-1 rounded-lg text-[10px] font-black uppercase inline-block",
-                    selectedInvoice.paymentStatus === 'পরিশোধিত' ? 'bg-emerald-100 text-emerald-800' :
-                      selectedInvoice.paymentStatus === 'আংশিক' ? 'bg-amber-100 text-amber-800' :
+                    (selectedInvoice.dueAmount || 0) <= 0 || selectedInvoice.paymentStatus === 'পরিশোধিত' || selectedInvoice.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-800' :
+                      (selectedInvoice.paidAmount || 0) > 0 || selectedInvoice.paymentStatus === 'আংশিক' || selectedInvoice.paymentStatus === 'partial' ? 'bg-amber-100 text-amber-800' :
                         'bg-rose-100 text-rose-800'
-                  )}>{selectedInvoice.paymentStatus}</span>
+                  )}>
+                    {(selectedInvoice.dueAmount || 0) <= 0 || selectedInvoice.paymentStatus === 'paid' || selectedInvoice.paymentStatus === 'পরিশোধিত' ? 'পরিশোধিত' :
+                      (selectedInvoice.paidAmount || 0) > 0 || selectedInvoice.paymentStatus === 'partial' || selectedInvoice.paymentStatus === 'আংশিক' ? 'আংশিক' : 'বাকি'}
+                  </span>
                 </div>
               </div>
 
@@ -1602,24 +1669,24 @@ function InvoicesContent() {
                     {selectedInvoice.items?.map((item, i) => (
                       <tr key={i} className="hover:bg-slate-50/50">
                         <td className="p-3 font-bold text-slate-800">{item.name}</td>
-                        <td className="p-3 text-center text-slate-600 font-medium">{item.quantity} {item.unit}</td>
-                        <td className="p-3 text-right text-slate-600 font-medium">৳{item.price?.toLocaleString()}</td>
-                        <td className="p-3 text-right font-bold text-slate-800">৳{((item.price - (item.discount || 0)) * item.quantity).toLocaleString()}</td>
+                        <td className="p-3 text-center text-slate-600 font-medium">{toBengaliDigits(item.quantity)} {item.unit}</td>
+                        <td className="p-3 text-right text-slate-600 font-medium">৳{toBengaliDigits((item.price || 0).toLocaleString('en-IN'))}</td>
+                        <td className="p-3 text-right font-bold text-slate-800">৳{toBengaliDigits(((item.price - (item.discount || 0)) * item.quantity).toLocaleString('en-IN'))}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot className="border-t-2 border-slate-200 bg-slate-50/50">
                     <tr>
                       <td colSpan={3} className="p-3 text-right font-bold text-slate-600">মোট বিল</td>
-                      <td className="p-3 text-right font-black text-slate-900 text-lg">৳{selectedInvoice.totalAmount?.toLocaleString()}</td>
+                      <td className="p-3 text-right font-black text-slate-900 text-lg">৳{toBengaliDigits((selectedInvoice.totalAmount || 0).toLocaleString('en-IN'))}</td>
                     </tr>
                     <tr>
                       <td colSpan={3} className="p-3 text-right font-bold text-slate-600">নগদ প্রাপ্তি</td>
-                      <td className="p-3 text-right font-black text-emerald-600 text-lg">৳{selectedInvoice.paidAmount?.toLocaleString()}</td>
+                      <td className="p-3 text-right font-black text-emerald-600 text-lg">৳{toBengaliDigits((selectedInvoice.paidAmount || 0).toLocaleString('en-IN'))}</td>
                     </tr>
                     <tr>
                       <td colSpan={3} className="p-3 text-right font-bold text-slate-600">বকেয়া</td>
-                      <td className="p-3 text-right font-black text-rose-600 text-lg">৳{selectedInvoice.dueAmount?.toLocaleString()}</td>
+                      <td className="p-3 text-right font-black text-rose-600 text-lg">৳{toBengaliDigits((selectedInvoice.dueAmount || 0).toLocaleString('en-IN'))}</td>
                     </tr>
                   </tfoot>
                 </table>

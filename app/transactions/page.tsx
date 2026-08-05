@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { format, isToday, isSameMonth } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { toBengaliDigits } from '@/lib/bengaliUtils';
 
 interface Transaction {
   id: string;
@@ -145,14 +146,23 @@ function TransactionsContent() {
   // Collect/Pay State
   const [selectedInvoice, setSelectedInvoice] = useState<OrderInvoice | null>(null);
 
-  const [paymentDate, setPaymentDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Bank' | 'Check'>('Bank');
+  const [paymentDate, setPaymentDate] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<string>('Cash');
+  const [cashPaidAmount, setCashPaidAmount] = useState<number>(0);
+  const [chequePaidAmount, setChequePaidAmount] = useState<number>(0);
   const [paidAmount, setPaidAmount] = useState<number>(0);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [referenceNo, setReferenceNo] = useState<string>('');
   const [paymentNote, setPaymentNote] = useState<string>('');
 
-  // Bank Specific Details
+  // Bank & Cheque Detailed States (Exact replica of Invoice Register Payment)
+  const [selectedShopBank, setSelectedShopBank] = useState<string>('ডাচ-বাংলা ব্যাংক - 123.456.7890');
+  const [senderBankName, setSenderBankName] = useState<string>('');
+  const [senderAccountNo, setSenderAccountNo] = useState<string>('');
+  const [senderTxnRef, setSenderTxnRef] = useState<string>('');
+  const [bankName, setBankName] = useState<string>('');
+  const [chequeNo, setChequeNo] = useState<string>('');
+  const [chequeDate, setChequeDate] = useState<string>('');
   const [selectedBankId, setSelectedBankId] = useState<string>('');
   const [bankTxnType, setBankTxnType] = useState<string>('Bank Transfer');
   const [transactionRef, setTransactionRef] = useState<string>('');
@@ -396,9 +406,14 @@ function TransactionsContent() {
   };
 
   const formatDate = (at: any) => {
-    if (!at) return '';
-    const date = new Date(at);
-    return format(date, 'dd/MM/yyyy hh:mm a', { locale: bn });
+    if (!at) return '—';
+    try {
+      const date = new Date(at);
+      const formatted = format(date, 'dd/MM/yyyy hh:mm a', { locale: bn });
+      return toBengaliDigits(formatted);
+    } catch {
+      return '—';
+    }
   };
 
   // 100% REAL DYNAMIC FILTERING
@@ -476,29 +491,29 @@ function TransactionsContent() {
                 onClick={() => setIsAddMoneyOpen(true)} 
                 className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all text-xs"
               >
-                <PlusCircle className="w-4 h-4 mr-1.5" /> + টাকা যোগ (Add Money)
+                <PlusCircle className="w-4 h-4 mr-1.5" /> + টাকা যোগ করুন
               </Button>
 
               <Button 
                 onClick={() => handleOpenAddForm('income')} 
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all text-xs"
               >
-                <ArrowUpRight className="w-4 h-4 mr-1.5" /> + পেমেন্ট গ্রহণ (Receive)
+                <ArrowUpRight className="w-4 h-4 mr-1.5" /> + পেমেন্ট গ্রহণ
               </Button>
 
               <Button 
                 onClick={() => handleOpenAddForm('expense')} 
                 className="bg-orange-600 hover:bg-orange-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-orange-600/20 active:scale-95 transition-all text-xs"
               >
-                <ArrowDownRight className="w-4 h-4 mr-1.5" /> - পেমেন্ট প্রদান (Pay Out)
+                <ArrowDownRight className="w-4 h-4 mr-1.5" /> - পেমেন্ট প্রদান
               </Button>
 
               <Button variant="outline" className="h-11 px-4 rounded-xl border-slate-200 text-slate-700 bg-white font-bold text-xs">
-                <FileDown className="w-4 h-4 mr-1.5 text-rose-500" /> PDF এক্সপোর্ট
+                <FileDown className="w-4 h-4 mr-1.5 text-rose-500" /> পিডিএফ ডাউনলোড
               </Button>
 
               <Button variant="outline" className="h-11 px-4 rounded-xl border-slate-200 text-slate-700 bg-white font-bold text-xs">
-                <FileSpreadsheet className="w-4 h-4 mr-1.5 text-emerald-600" /> Excel এক্সপোর্ট
+                <FileSpreadsheet className="w-4 h-4 mr-1.5 text-emerald-600" /> এক্সেল এক্সপোর্ট
               </Button>
 
               <Button variant="outline" onClick={() => window.print()} className="h-11 px-4 rounded-xl border-slate-200 text-slate-700 bg-white font-bold text-xs">
@@ -518,8 +533,8 @@ function TransactionsContent() {
                 </div>
                 <div>
                   <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">আজকের আদায়</p>
-                  <h3 className="text-2xl font-black text-emerald-600 mt-0.5">৳ {todayTotalAmount.toLocaleString()}</h3>
-                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">মোট {todayTotalCount} টি পেমেন্ট</p>
+                  <h3 className="text-2xl font-black text-emerald-600 mt-0.5">৳ {toBengaliDigits(todayTotalAmount.toLocaleString('bn-BD'))}</h3>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">মোট {toBengaliDigits(todayTotalCount)} টি পেমেন্ট</p>
                 </div>
               </div>
             </Card>
@@ -532,8 +547,8 @@ function TransactionsContent() {
                 </div>
                 <div>
                   <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">এই মাসের আদায়</p>
-                  <h3 className="text-2xl font-black text-blue-600 mt-0.5">৳ {monthTotalAmount.toLocaleString()}</h3>
-                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">মোট {monthTotalCount} টি পেমেন্ট</p>
+                  <h3 className="text-2xl font-black text-blue-600 mt-0.5">৳ {toBengaliDigits(monthTotalAmount.toLocaleString('bn-BD'))}</h3>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">মোট {toBengaliDigits(monthTotalCount)} টি পেমেন্ট</p>
                 </div>
               </div>
             </Card>
@@ -546,8 +561,8 @@ function TransactionsContent() {
                 </div>
                 <div>
                   <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">মোট আদায়</p>
-                  <h3 className="text-2xl font-black text-purple-700 mt-0.5">৳ {grandTotalIncomeAmount.toLocaleString()}</h3>
-                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">মোট {grandTotalIncomeCount} টি পেমেন্ট</p>
+                  <h3 className="text-2xl font-black text-purple-700 mt-0.5">৳ {toBengaliDigits(grandTotalIncomeAmount.toLocaleString('bn-BD'))}</h3>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">মোট {toBengaliDigits(grandTotalIncomeCount)} টি পেমেন্ট</p>
                 </div>
               </div>
             </Card>
@@ -560,8 +575,8 @@ function TransactionsContent() {
                 </div>
                 <div>
                   <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">বকেয়া আদায়যোগ্য</p>
-                  <h3 className="text-2xl font-black text-rose-600 mt-0.5">৳ {totalDuesReceivable.toLocaleString()}</h3>
-                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">মোট {dueCustomersCount} জন কাস্টমার</p>
+                  <h3 className="text-2xl font-black text-rose-600 mt-0.5">৳ {toBengaliDigits(totalDuesReceivable.toLocaleString('bn-BD'))}</h3>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">মোট {toBengaliDigits(dueCustomersCount)} জন কাস্টমার</p>
                 </div>
               </div>
             </Card>
@@ -614,9 +629,9 @@ function TransactionsContent() {
                       </SelectTrigger>
                       <SelectContent className="font-bengali text-xs font-bold">
                         <SelectItem value="all">সব</SelectItem>
-                        <SelectItem value="Cash">Cash (নগদ)</SelectItem>
-                        <SelectItem value="Bank">Bank (ব্যাংক)</SelectItem>
-                        <SelectItem value="Check">Check (চেক)</SelectItem>
+                        <SelectItem value="Cash">নগদ (Cash)</SelectItem>
+                        <SelectItem value="Bank">ব্যাংক (Bank)</SelectItem>
+                        <SelectItem value="Check">চেক (Cheque)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -630,9 +645,9 @@ function TransactionsContent() {
                       </SelectTrigger>
                       <SelectContent className="font-bengali text-xs font-bold">
                         <SelectItem value="all">সব</SelectItem>
-                        <SelectItem value="Completed">Completed</SelectItem>
-                        <SelectItem value="Pending">Pending</SelectItem>
-                        <SelectItem value="Bounced">Bounced</SelectItem>
+                        <SelectItem value="Completed">সম্পন্ন (Completed)</SelectItem>
+                        <SelectItem value="Pending">অপেক্ষমাণ (Pending)</SelectItem>
+                        <SelectItem value="Bounced">প্রত্যাখ্যাত (Bounced)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -642,10 +657,10 @@ function TransactionsContent() {
                     <Label className="text-[11px] font-bold text-slate-600">তারিখ পরিসর</Label>
                     <div className="relative">
                       <Input 
-                        placeholder="01/07/2026 - 28/07/2026"
+                        placeholder="০১/০৭/২০২৬ - ২৮/০৭/২০২৬"
                         value={filterDateRange}
                         onChange={e => setFilterDateRange(e.target.value)}
-                        className="rounded-xl h-10 bg-slate-50/50 border-slate-200 text-xs font-bold pr-8"
+                        className="rounded-xl h-10 bg-slate-50/50 border-slate-200 text-xs font-bold pr-8 font-bengali"
                       />
                       <Calendar className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
                     </div>
@@ -726,7 +741,7 @@ function TransactionsContent() {
                         return (
                           <TableRow key={t.id} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors text-xs">
                             <TableCell className="py-3.5 px-4 font-mono font-black text-slate-800">
-                              {t.paymentId || `PAY-2026-${(100145 - idx)}`}
+                              {toBengaliDigits(t.paymentId || `PAY-2026-${(100145 - idx)}`)}
                             </TableCell>
                             <TableCell className="font-semibold text-slate-600">
                               {formatDate(t.createdAt)}
@@ -735,7 +750,7 @@ function TransactionsContent() {
                               {t.partyName || 'রহিম এন্টারপ্রাইজ'}
                             </TableCell>
                             <TableCell className="font-mono font-bold text-slate-700">
-                              {t.invoiceNo || 'INV-2026-001235'}
+                              {toBengaliDigits(t.invoiceNo || 'INV-2026-001235')}
                             </TableCell>
                             <TableCell>
                               <span className={cn("inline-flex items-center gap-1 font-bold px-2.5 py-0.5 rounded-lg border text-[11px]",
@@ -743,16 +758,16 @@ function TransactionsContent() {
                                 method === 'Bank' && "bg-blue-50 text-blue-700 border-blue-200",
                                 method === 'Check' && "bg-amber-50 text-amber-700 border-amber-200"
                               )}>
-                                {method === 'Cash' && '💵 Cash'}
-                                {method === 'Bank' && '🏦 Bank'}
-                                {method === 'Check' && '📄 Check'}
+                                {method === 'Cash' && '💵 নগদ'}
+                                {method === 'Bank' && '🏦 ব্যাংক'}
+                                {method === 'Check' && '📄 চেক'}
                               </span>
                             </TableCell>
                             <TableCell className="text-right font-black text-slate-900 text-sm">
-                              ৳ {(t.amount || 0).toLocaleString()}
+                              ৳ {toBengaliDigits((t.amount || 0).toLocaleString('bn-BD'))}
                             </TableCell>
                             <TableCell className="font-mono text-slate-500">
-                              {t.referenceNo || t.transactionRef || '—'}
+                              {toBengaliDigits(t.referenceNo || t.transactionRef || '—')}
                             </TableCell>
                             <TableCell className="font-semibold text-slate-700">
                               {t.receiverName || 'মুসাব খান'}
@@ -763,7 +778,7 @@ function TransactionsContent() {
                                 status === 'Pending' && "bg-amber-50 text-amber-700",
                                 status === 'Bounced' && "bg-rose-50 text-rose-700"
                               )}>
-                                {status}
+                                {status === 'Completed' ? 'সম্পন্ন' : status === 'Pending' ? 'অপেক্ষমাণ' : status === 'Bounced' ? 'প্রত্যাখ্যাত' : status}
                               </span>
                             </TableCell>
                             <TableCell className="text-center py-3 px-4">
@@ -798,15 +813,15 @@ function TransactionsContent() {
                 {/* TABLE FOOTER WITH PAGINATION */}
                 <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
                   <span className="text-slate-500 font-semibold">
-                    মোট {filteredTransactions.length} টি রেকর্ড দেখানো হচ্ছে
+                    মোট {toBengaliDigits(filteredTransactions.length)} টি রেকর্ড দেখানো হচ্ছে
                   </span>
 
                   <div className="flex items-center gap-1 font-bold">
                     <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">«</button>
                     <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">&lt;</button>
-                    <button className="w-7 h-7 flex items-center justify-center bg-blue-600 text-white rounded-lg">1</button>
-                    <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">2</button>
-                    <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">3</button>
+                    <button className="w-7 h-7 flex items-center justify-center bg-blue-600 text-white rounded-lg">১</button>
+                    <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">২</button>
+                    <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">৩</button>
                     <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">&gt;</button>
                     <button className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">»</button>
                   </div>
@@ -818,44 +833,44 @@ function TransactionsContent() {
             {/* RIGHT 3 COLUMNS: TODAY'S COLLECTION BREAKDOWN & REPORT SHORTCUTS */}
             <div className="lg:col-span-3 space-y-5">
               
-              {/* CARD 1: আজকের সংগ্রহ (28/07/2026) */}
+              {/* CARD 1: আজকের সংগ্রহ */}
               <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs p-5 space-y-4">
                 <Label className="text-xs uppercase tracking-wider font-black text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
                   <Wallet className="w-4 h-4 text-blue-600" />
-                  আজকের সংগ্রহ ({format(new Date(), 'dd/MM/yyyy')})
+                  আজকের সংগ্রহ ({toBengaliDigits(format(new Date(), 'dd/MM/yyyy'))})
                 </Label>
 
                 <div className="space-y-3 text-xs">
                   <h3 className="text-2xl font-black text-slate-900">
-                    ৳ {todayTotalAmount.toLocaleString()}
+                    ৳ {toBengaliDigits(todayTotalAmount.toLocaleString('bn-BD'))}
                   </h3>
 
                   <div className="space-y-2 pt-2 border-t border-slate-100 font-semibold">
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500">ক্যাশ</span>
-                      <span className="font-bold text-emerald-600">৳ {todayCashAmount.toLocaleString()}</span>
+                      <span className="font-bold text-emerald-600">৳ {toBengaliDigits(todayCashAmount.toLocaleString('bn-BD'))}</span>
                     </div>
 
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500">ব্যাংক</span>
-                      <span className="font-bold text-blue-600">৳ {todayBankAmount.toLocaleString()}</span>
+                      <span className="font-bold text-blue-600">৳ {toBengaliDigits(todayBankAmount.toLocaleString('bn-BD'))}</span>
                     </div>
 
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500">চেক</span>
-                      <span className="font-bold text-amber-600">৳ {todayCheckAmount.toLocaleString()}</span>
+                      <span className="font-bold text-amber-600">৳ {toBengaliDigits(todayCheckAmount.toLocaleString('bn-BD'))}</span>
                     </div>
 
                     <div className="border-b border-dashed border-slate-200 my-1"></div>
 
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500">পেন্ডিং চেক</span>
-                      <span className="font-bold text-amber-600">৳ {pendingCheckAmount.toLocaleString()}</span>
+                      <span className="font-bold text-amber-600">৳ {toBengaliDigits(pendingCheckAmount.toLocaleString('bn-BD'))}</span>
                     </div>
 
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500">বাউন্স চেক</span>
-                      <span className="font-bold text-rose-600">৳ {bouncedCheckAmount.toLocaleString()}</span>
+                      <span className="font-bold text-rose-600">৳ {toBengaliDigits(bouncedCheckAmount.toLocaleString('bn-BD'))}</span>
                     </div>
                   </div>
                 </div>
@@ -930,12 +945,12 @@ function TransactionsContent() {
                   {/* PAYMENT ID BADGE */}
                   <span className="px-3 py-1 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs">
                     <FileText className="w-3.5 h-3.5 text-amber-600" />
-                    পেমেন্ট আইডি: {autoPaymentId}
+                    পেমেন্ট আইডি: {toBengaliDigits(autoPaymentId)}
                   </span>
 
                   {/* STATUS BADGE */}
                   <span className="px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold">
-                    Pending
+                    অপেক্ষমাণ
                   </span>
                 </div>
               </div>
@@ -1008,7 +1023,7 @@ function TransactionsContent() {
                         <div className="sm:col-span-2 space-y-1">
                           <Label className="text-xs font-bold text-slate-500">মোবাইল নম্বর</Label>
                           <p className="text-sm font-bold text-slate-700 font-mono pt-1.5">
-                            {selectedParty?.phone || '—'}
+                            {toBengaliDigits(selectedParty?.phone || '—')}
                           </p>
                         </div>
 
@@ -1016,7 +1031,7 @@ function TransactionsContent() {
                         <div className="sm:col-span-2 space-y-1 text-right">
                           <Label className="text-xs font-bold text-slate-500">বকেয়া পরিমাণ</Label>
                           <p className="text-base font-black text-rose-600 pt-1">
-                            ৳ {(selectedParty?.totalDue || 0).toLocaleString()}
+                            ৳ {toBengaliDigits((selectedParty?.totalDue || 0).toLocaleString('bn-BD'))}
                           </p>
                         </div>
 
@@ -1032,7 +1047,7 @@ function TransactionsContent() {
                             <SelectContent className="font-bengali text-xs font-bold max-h-60">
                               {availableInvoices.map(inv => (
                                 <SelectItem key={inv.id} value={inv.id}>
-                                  INV-2026-{inv.id.slice(-6)} — ৳ {inv.totalAmount?.toLocaleString()} (বকেয়া: ৳{inv.dueAmount?.toLocaleString()})
+                                  {toBengaliDigits(`INV-2026-${inv.id.slice(-6)}`)} — ৳ {toBengaliDigits((inv.totalAmount || 0).toLocaleString('bn-BD'))} (বকেয়া: ৳{toBengaliDigits((inv.dueAmount || 0).toLocaleString('bn-BD'))})
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -1043,205 +1058,273 @@ function TransactionsContent() {
                     </CardContent>
                   </Card>
 
-                  {/* CARD 2: PAYMENT INFO */}
+                  {/* CARD 2: PAYMENT INFO (EXACT SAME AS INVOICE REGISTER PAYMENT) */}
                   <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
                     <CardContent className="p-5 space-y-4">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-2">
                         <CreditCard className="w-4 h-4 text-blue-600" />
-                        পেমেন্ট তথ্য
+                        পেমেন্ট এন্ট্রি বিবরণ
                       </Label>
 
-                      {/* Row 1: Payment Date, Method, Amount */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        
-                        {/* Payment Date */}
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-bold text-slate-600">পেমেন্ট তারিখ *</Label>
-                          <div className="relative">
+                      <div className="space-y-3 pt-1 font-bengali">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          
+                          {/* Payment Date */}
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-bold text-slate-600">পেমেন্ট তারিখ *</Label>
                             <Input 
-                              type="date"
-                              value={paymentDate}
+                              type="text"
+                              value={paymentDate || toBengaliDigits(format(new Date(), 'dd/MM/yyyy'))}
                               onChange={e => setPaymentDate(e.target.value)}
-                              className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold pr-9"
-                            />
-                            <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                          </div>
-                        </div>
-
-                        {/* Payment Method Toggle Buttons */}
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-bold text-slate-600">পেমেন্ট পদ্ধতি *</Label>
-                          <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
-                            {(['Cash', 'Bank', 'Check'] as const).map(method => (
-                              <button
-                                key={method}
-                                type="button"
-                                onClick={() => setPaymentMethod(method)}
-                                className={cn(
-                                  "h-9 rounded-lg font-bold text-xs flex items-center justify-center gap-1 transition-all",
-                                  paymentMethod === method 
-                                    ? "bg-white text-blue-700 border-2 border-blue-500 shadow-xs" 
-                                    : "text-slate-600 hover:text-slate-900"
-                                )}
-                              >
-                                {method === 'Cash' && '💵 Cash'}
-                                {method === 'Bank' && '🏦 Bank'}
-                                {method === 'Check' && '📄 Check'}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Paid Amount */}
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-bold text-slate-600">পরিশোধিত পরিমাণ *</Label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">৳</span>
-                            <Input 
-                              type="number"
-                              value={paidAmount || ''}
-                              onChange={e => setPaidAmount(parseFloat(e.target.value) || 0)}
-                              className="rounded-xl h-11 pl-8 bg-slate-50/50 border-slate-200 text-sm font-black text-emerald-600 text-right"
+                              className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali"
                             />
                           </div>
-                        </div>
-                      </div>
 
-                      {/* Row 2: Discount, Reference, Note */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
-                        
-                        {/* Discount / Adjustment */}
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-bold text-slate-600">ছাড় / অ্যাডজাস্টমেন্ট (ঐচ্ছিক)</Label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">৳</span>
+                          {/* Payment Method */}
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-bold text-slate-600">পেমেন্ট মাধ্যম *</Label>
+                            <Select value={paymentMethod} onValueChange={(val: string | null) => setPaymentMethod(val || 'Cash')}>
+                              <SelectTrigger className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali">
+                                <SelectValue>
+                                  {paymentMethod === 'Cash' ? '💵 নগদ (Cash)' :
+                                   paymentMethod === 'Split' ? '💵+📄 নগদ ও চেক (স্প্লিট পেমেন্ট)' :
+                                   paymentMethod === 'Cheque' || paymentMethod === 'Check' ? '📄 চেক (Cheque)' :
+                                   paymentMethod === 'Bank' ? '🏦 ব্যাংক ট্রান্সফার' :
+                                   paymentMethod === 'BankToBank' ? '🔄 ব্যাংক-টু-ব্যাংক' : '💵 নগদ (Cash)'}
+                                </SelectValue>
+                              </SelectTrigger>
+                              <SelectContent className="font-bengali text-xs font-bold">
+                                <SelectItem value="Cash">💵 নগদ (Cash)</SelectItem>
+                                <SelectItem value="Split">💵+📄 নগদ ও চেক (স্প্লিট পেমেন্ট)</SelectItem>
+                                <SelectItem value="Cheque">📄 চেক (Cheque)</SelectItem>
+                                <SelectItem value="Bank">🏦 ব্যাংক ট্রান্সফার</SelectItem>
+                                <SelectItem value="BankToBank">🔄 ব্যাংক-টু-ব্যাংক</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {paymentMethod === 'Split' ? (
+                            <>
+                              <div className="space-y-1">
+                                <Label className="text-[11px] font-bold text-slate-700">নগদ জমার পরিমাণ (৳)</Label>
+                                <Input 
+                                  type="number"
+                                  value={cashPaidAmount || ''}
+                                  onChange={e => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setCashPaidAmount(val);
+                                    setPaidAmount(val + chequePaidAmount);
+                                  }}
+                                  placeholder="যেমন: ১০,০০০"
+                                  className="rounded-xl h-10 bg-emerald-50/70 border-emerald-300 text-xs font-black text-emerald-700 font-bengali"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[11px] font-bold text-slate-700">চেক জমার পরিমাণ (৳)</Label>
+                                <Input 
+                                  type="number"
+                                  value={chequePaidAmount || ''}
+                                  onChange={e => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setChequePaidAmount(val);
+                                    setPaidAmount(cashPaidAmount + val);
+                                  }}
+                                  placeholder="যেমন: ৭০,০০০"
+                                  className="rounded-xl h-10 bg-purple-50/70 border-purple-300 text-xs font-black text-purple-700 font-bengali"
+                                />
+                              </div>
+                            </>
+                          ) : (
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-bold text-slate-600">
+                                {paymentType === 'income' ? 'পরিশোধিত জমার পরিমাণ (৳) *' : 'পরিশোধিত প্রদেয় পরিমাণ (৳) *'}
+                              </Label>
+                              <Input 
+                                type="number"
+                                value={paidAmount || ''}
+                                onChange={e => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  setPaidAmount(val);
+                                  if (paymentMethod === 'Cash') setCashPaidAmount(val);
+                                  if (paymentMethod === 'Cheque' || paymentMethod === 'Check') setChequePaidAmount(val);
+                                }}
+                                placeholder="০.০০"
+                                className="rounded-xl h-10 bg-emerald-50/60 border-emerald-200 text-xs font-black text-emerald-600 font-bengali"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Extra Row: Discount, Reference, Note */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-bold text-slate-600">ছাড় / অ্যাডজাস্টমেন্ট (ঐচ্ছিক)</Label>
                             <Input 
                               type="number"
                               value={discountAmount || ''}
                               onChange={e => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                              className="rounded-xl h-11 pl-8 bg-slate-50/50 border-slate-200 text-xs font-bold text-right"
+                              placeholder="০"
+                              className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-bold text-slate-600">রেফারেন্স নং (ঐচ্ছিক)</Label>
+                            <Input 
+                              value={referenceNo}
+                              onChange={e => setReferenceNo(e.target.value)}
+                              placeholder="যেমন: REF-102"
+                              className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-mono font-bold"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-bold text-slate-600">নোট (ঐচ্ছিক)</Label>
+                            <Input 
+                              value={paymentNote}
+                              onChange={e => setPaymentNote(e.target.value)}
+                              placeholder="পেমেন্টের বিস্তারিত নোট..."
+                              className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-medium font-bengali"
                             />
                           </div>
                         </div>
 
-                        {/* Reference No */}
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-bold text-slate-600">রেফারেন্স নং (ঐচ্ছিক)</Label>
-                          <Input 
-                            value={referenceNo}
-                            onChange={e => setReferenceNo(e.target.value)}
-                            className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-mono font-bold"
-                          />
-                        </div>
+                        {/* BANK DETAILS */}
+                        {paymentMethod === 'Bank' && (
+                          <div className="p-3.5 bg-blue-50/60 border border-blue-100 rounded-xl space-y-2 font-bengali text-xs animate-in fade-in-0">
+                            <p className="font-bold text-blue-900 flex items-center gap-1">
+                              🏦 ব্যাংক একাউন্ট নির্বাচন করুন
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <Label className="text-[10px] font-bold text-slate-600">দোকান ব্যাংক একাউন্ট</Label>
+                                <Select value={selectedShopBank} onValueChange={(val: string | null) => setSelectedShopBank(val || '')}>
+                                  <SelectTrigger className="h-9 rounded-lg bg-white text-xs font-bold border-blue-200">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="font-bengali text-xs font-bold">
+                                    <SelectItem value="ডাচ-বাংলা ব্যাংক - 123.456.7890">ডাচ-বাংলা ব্যাংক (DBBL) - A/C: 123.456.7890</SelectItem>
+                                    <SelectItem value="ইসলামী ব্যাংক - 2050.1234.5678">ইসলামী ব্যাংক (IBBL) - A/C: 2050.1234.5678</SelectItem>
+                                    <SelectItem value="ব্র্যাক ব্যাংক - 1501.2039.4857">ব্র্যাক ব্যাংক (BRAC Bank) - A/C: 1501.2039.4857</SelectItem>
+                                    <SelectItem value="সিটি ব্যাংক - 3101.9876.5432">সিটি ব্যাংক (City Bank) - A/C: 3101.9876.5432</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label className="text-[10px] font-bold text-slate-600">ট্রানজেকশন / রেফারেন্স আইডি (অপশনাল)</Label>
+                                <Input 
+                                  placeholder="Txn ID" 
+                                  value={transactionRef} 
+                                  onChange={e => setTransactionRef(e.target.value)}
+                                  className="h-9 rounded-lg bg-white text-xs font-mono"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
-                        {/* Note */}
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-bold text-slate-600">নোট (ঐচ্ছিক)</Label>
-                          <Input 
-                            value={paymentNote}
-                            onChange={e => setPaymentNote(e.target.value)}
-                            placeholder="পেমেন্টের অতিরিক্ত তথ্য..."
-                            className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-medium"
-                          />
-                        </div>
+                        {/* BANK TO BANK TRANSFER DETAILS */}
+                        {paymentMethod === 'BankToBank' && (
+                          <div className="p-3.5 bg-indigo-50/60 border border-indigo-100 rounded-xl space-y-3 font-bengali text-xs animate-in fade-in-0">
+                            <p className="font-bold text-indigo-900 flex items-center gap-1">
+                              🔄 ব্যাংক-টু-ব্যাংক ট্রান্সফার বিস্তারিত
+                            </p>
+                            
+                            <div className="space-y-1">
+                              <Label className="text-[10px] font-bold text-indigo-950 block">
+                                ১. গ্রহীতার ব্যাংক অ্যাকাউন্ট (দোকানের সেভ করা অ্যাকাউন্ট)
+                              </Label>
+                              <Select value={selectedShopBank} onValueChange={(val: string | null) => setSelectedShopBank(val || '')}>
+                                <SelectTrigger className="h-9 rounded-lg bg-white text-xs font-bold border-indigo-200">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="font-bengali text-xs font-bold">
+                                  <SelectItem value="ডাচ-বাংলা ব্যাংক - 123.456.7890">ডাচ-বাংলা ব্যাংক (DBBL) - A/C: 123.456.7890</SelectItem>
+                                  <SelectItem value="ইসলামী ব্যাংক - 2050.1234.5678">ইসলামী ব্যাংক (IBBL) - A/C: 2050.1234.5678</SelectItem>
+                                  <SelectItem value="ব্র্যাক ব্যাংক - 1501.2039.4857">ব্র্যাক ব্যাংক (BRAC Bank) - A/C: 1501.2039.4857</SelectItem>
+                                  <SelectItem value="সিটি ব্যাংক - 3101.9876.5432">সিটি ব্যাংক (City Bank) - A/C: 3101.9876.5432</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            <div className="space-y-2 pt-2 border-t border-indigo-100">
+                              <Label className="text-[10px] font-bold text-slate-700 block">
+                                ২. প্রেরকের ব্যাংক তথ্য
+                              </Label>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <Label className="text-[10px] font-bold text-slate-600">প্রেরক ব্যাংকের নাম</Label>
+                                  <Input 
+                                    placeholder="যেমন: ইবিএল / প্রাইম ব্যাংক" 
+                                    value={senderBankName} 
+                                    onChange={e => setSenderBankName(e.target.value)}
+                                    className="h-9 rounded-lg bg-white text-xs font-bengali"
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-[10px] font-bold text-slate-600">প্রেরকের অ্যাকাউন্ট নং / নাম</Label>
+                                  <Input 
+                                    placeholder="A/C No or Name" 
+                                    value={senderAccountNo} 
+                                    onChange={e => setSenderAccountNo(e.target.value)}
+                                    className="h-9 rounded-lg bg-white text-xs font-mono"
+                                  />
+                                </div>
+                                <div className="col-span-2">
+                                  <Label className="text-[10px] font-bold text-slate-600">ট্রানজেকশন / রেফারেন্স আইডি</Label>
+                                  <Input 
+                                    placeholder="Txn ID / Ref No" 
+                                    value={senderTxnRef} 
+                                    onChange={e => setSenderTxnRef(e.target.value)}
+                                    className="h-9 rounded-lg bg-white text-xs font-mono"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* CHEQUE DETAILS */}
+                        {(paymentMethod === 'Cheque' || paymentMethod === 'Check' || paymentMethod === 'Split' || chequePaidAmount > 0) && (
+                          <div className="p-3.5 bg-purple-50/80 border border-purple-200 rounded-xl space-y-2 font-bengali text-xs animate-in fade-in-0 shadow-2xs">
+                            <p className="font-bold text-purple-900 flex items-center gap-1.5">
+                              📄 অভাঙানো চেকের বিস্তারিত (পেন্ডিং চেকের তালিকায় যুক্ত হবে)
+                            </p>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <Label className="text-[10px] font-bold text-purple-900">ব্যাংকের নাম</Label>
+                                <Input 
+                                  placeholder="যেমন: ডাচ বাংলা ব্যাংক" 
+                                  value={bankName} 
+                                  onChange={e => setBankName(e.target.value)}
+                                  className="h-9 rounded-lg bg-white text-xs font-bengali"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-[10px] font-bold text-purple-900">চেক নম্বর</Label>
+                                <Input 
+                                  placeholder="CQ-10023" 
+                                  value={chequeNo} 
+                                  onChange={e => setChequeNo(e.target.value)}
+                                  className="h-9 rounded-lg bg-white text-xs font-mono"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-[10px] font-bold text-purple-900">চেকের তারিখ</Label>
+                                <Input 
+                                  type="text" 
+                                  value={chequeDate || toBengaliDigits(format(new Date(), 'dd/MM/yyyy'))} 
+                                  onChange={e => setChequeDate(e.target.value)}
+                                  className="h-9 rounded-lg bg-white text-xs font-bengali font-bold"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                       </div>
-
                     </CardContent>
                   </Card>
-
-                  {/* CARD 3: BANK DETAILS (CONDITIONALLY RENDERED WHEN BANK IS SELECTED) */}
-                  {paymentMethod === 'Bank' && (
-                    <Card className="bg-blue-50/40 border-2 border-blue-100 rounded-2xl shadow-xs animate-in fade-in-0 duration-200">
-                      <CardContent className="p-5 space-y-4">
-                        <Label className="text-xs uppercase tracking-wider font-black text-blue-900 flex items-center gap-2">
-                          <Landmark className="w-4 h-4 text-blue-600" />
-                          ব্যাংক তথ্য
-                        </Label>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          
-                          {/* Bank Account */}
-                          <div className="space-y-1.5">
-                            <Label className="text-xs font-bold text-slate-700">ব্যাংক অ্যাকাউন্ট *</Label>
-                            <Select value={selectedBankId} onValueChange={(val: string | null) => setSelectedBankId(val || '')}>
-                              <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
-                                <SelectValue placeholder="ব্যাংক অ্যাকাউন্ট সিলেক্ট করুন..." />
-                              </SelectTrigger>
-                              <SelectContent className="font-bengali text-xs font-bold">
-                                {banks.length > 0 ? (
-                                  banks.map(b => (
-                                    <SelectItem key={b.id} value={b.id}>
-                                      {b.name} - ({b.accNo})
-                                    </SelectItem>
-                                  ))
-                                ) : (
-                                  <>
-                                    <SelectItem value="brac-102">BRAC Bank - Current Account (12010200)</SelectItem>
-                                    <SelectItem value="dbbl-201">DBBL Main Account (123.456.7890)</SelectItem>
-                                    <SelectItem value="ibbl-301">IBBL Account (2050.1234.5678)</SelectItem>
-                                  </>
-                                )}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {/* Transaction Type */}
-                          <div className="space-y-1.5">
-                            <Label className="text-xs font-bold text-slate-700">লেনদেনের ধরন *</Label>
-                            <Select value={bankTxnType} onValueChange={(val: string | null) => setBankTxnType(val || 'Bank Transfer')}>
-                              <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="font-bengali text-xs font-bold">
-                                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                                <SelectItem value="Bank to Bank Transfer">Bank to Bank Transfer</SelectItem>
-                                <SelectItem value="Cheque Deposit">Cheque Deposit</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {/* Transaction ID / UTR */}
-                          <div className="space-y-1.5">
-                            <Label className="text-xs font-bold text-slate-700">ট্রানজেকশন আইডি / UTR *</Label>
-                            <Input 
-                              value={transactionRef}
-                              onChange={e => setTransactionRef(e.target.value)}
-                              className="rounded-xl h-10 bg-white border-slate-200 text-xs font-mono font-bold"
-                            />
-                          </div>
-
-                          {/* Transfer Date */}
-                          <div className="space-y-1.5">
-                            <Label className="text-xs font-bold text-slate-700">ট্রান্সফার তারিখ *</Label>
-                            <Input 
-                              type="date"
-                              value={transferDate}
-                              onChange={e => setTransferDate(e.target.value)}
-                              className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold"
-                            />
-                          </div>
-
-                          {/* Account Holder Name */}
-                          <div className="sm:col-span-2 space-y-1.5">
-                            <Label className="text-xs font-bold text-slate-700">অ্যাকাউন্ট ধারক নাম</Label>
-                            <Input 
-                              value={accountHolderName}
-                              onChange={e => setAccountHolderName(e.target.value)}
-                              placeholder="অ্যাকাউন্ট ধারকের নাম"
-                              className="rounded-xl h-10 bg-white border-slate-200 text-xs font-semibold"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Info Alert Box */}
-                        <div className="p-3 bg-blue-100/60 border border-blue-200 rounded-xl flex items-center gap-2 text-xs font-medium text-blue-900">
-                          <AlertCircle className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                          <span>উপরের তথ্য অনুযায়ী পেমেন্ট সংরক্ষণ হলে হিসাববহিতে ব্যাংক অ্যাকাউন্টে এন্ট্রি হবে।</span>
-                        </div>
-
-                      </CardContent>
-                    </Card>
-                  )}
 
                   {/* CARD 4: ATTACHMENTS (সংযুক্তি) */}
                   <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
@@ -1266,14 +1349,14 @@ function TransactionsContent() {
                           onClick={() => setIsAddOpen(false)}
                           className="rounded-xl h-11 px-6 text-xs font-bold text-slate-600"
                         >
-                          ✕ বাতিল করুন
+                          ✕ বাতিল
                         </Button>
 
                         <Button 
                           type="submit" 
                           className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl h-11 px-6 text-xs font-black shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
                         >
-                          💾 পেমেন্ট সংরক্ষণ করুন
+                          💾 পেমেন্ট সংরক্ষণ
                         </Button>
 
                         <Button 
@@ -1281,7 +1364,7 @@ function TransactionsContent() {
                           onClick={() => setIsPrintMemoOpen(true)}
                           className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-11 px-6 text-xs font-black shadow-lg shadow-blue-600/20 active:scale-95 transition-all"
                         >
-                          🖨️ রসিদ প্রিন্ট করুন
+                          🖨️ রসিদ প্রিন্ট
                         </Button>
                       </div>
 
@@ -1305,17 +1388,17 @@ function TransactionsContent() {
                         
                         <div className="flex justify-between py-1 border-b border-slate-100">
                           <span className="text-slate-500 font-semibold">ইনভয়েস মোট</span>
-                          <span className="font-bold text-slate-800">৳ {(totalInvoiceAmount || 0).toLocaleString()}</span>
+                          <span className="font-bold text-slate-800">৳ {toBengaliDigits((totalInvoiceAmount || 0).toLocaleString('bn-BD'))}</span>
                         </div>
 
                         <div className="flex justify-between py-1 border-b border-slate-100">
                           <span className="text-slate-500 font-semibold">পূর্ববর্তী পরিশোধ</span>
-                          <span className="font-bold text-slate-800">৳ {(previousPaidAmount || 0).toLocaleString()}</span>
+                          <span className="font-bold text-slate-800">৳ {toBengaliDigits((previousPaidAmount || 0).toLocaleString('bn-BD'))}</span>
                         </div>
 
                         <div className="flex justify-between py-1.5 border-b border-slate-100 bg-emerald-50/50 p-2 rounded-xl">
                           <span className="font-bold text-emerald-800">বর্তমান পেমেন্ট</span>
-                          <span className="font-black text-emerald-600 text-sm">৳ {(currentPaymentAmount || 0).toLocaleString()}</span>
+                          <span className="font-black text-emerald-600 text-sm">৳ {toBengaliDigits((currentPaymentAmount || 0).toLocaleString('bn-BD'))}</span>
                         </div>
 
                         {/* Dashed Separator */}
@@ -1324,7 +1407,7 @@ function TransactionsContent() {
                         <div className="space-y-1">
                           <span className="text-[11px] font-bold text-rose-600 uppercase tracking-widest block">অবশিষ্ট বকেয়া</span>
                           <span className="text-2xl font-black text-rose-600 block">
-                            ৳ {(remainingDue || 0).toLocaleString()}
+                            ৳ {toBengaliDigits((remainingDue || 0).toLocaleString('bn-BD'))}
                           </span>
                         </div>
                       </div>
@@ -1335,24 +1418,24 @@ function TransactionsContent() {
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 font-medium">পেমেন্ট পদ্ধতি</span>
                           <span className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg font-bold text-[11px]">
-                            🏦 {paymentMethod}
+                            🏦 {paymentMethod === 'Cash' ? 'নগদ' : paymentMethod === 'Bank' ? 'ব্যাংক' : paymentMethod === 'Cheque' || paymentMethod === 'Check' ? 'চেক' : paymentMethod}
                           </span>
                         </div>
 
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 font-medium">পেমেন্ট তারিখ</span>
-                          <span className="font-bold text-slate-700">{paymentDate}</span>
+                          <span className="font-bold text-slate-700">{paymentDate || toBengaliDigits(format(new Date(), 'dd/MM/yyyy'))}</span>
                         </div>
 
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 font-medium">রেফারেন্স নং</span>
-                          <span className="font-mono font-bold text-slate-700">{referenceNo || '—'}</span>
+                          <span className="font-mono font-bold text-slate-700">{toBengaliDigits(referenceNo || '—')}</span>
                         </div>
 
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 font-medium">স্ট্যাটাস</span>
                           <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full font-bold text-[10px]">
-                            Pending
+                            অপেক্ষমাণ
                           </span>
                         </div>
                       </div>
@@ -1390,7 +1473,7 @@ function TransactionsContent() {
                     <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold block mb-1">
                       টাকা প্রাপ্তি রসিদ (Money Receipt)
                     </span>
-                    <p className="text-xs font-mono text-slate-500">ID: {autoPaymentId}</p>
+                    <p className="text-xs font-mono text-slate-500">আইডি: {toBengaliDigits(autoPaymentId)}</p>
                   </div>
                 </div>
 
@@ -1398,18 +1481,18 @@ function TransactionsContent() {
                   <div>
                     <p className="text-slate-500 font-semibold">প্রদানকারী (কাস্টমার):</p>
                     <p className="font-black text-slate-900 text-sm">{selectedParty?.name || '—'}</p>
-                    <p className="text-slate-500">{selectedParty?.phone || '—'}</p>
+                    <p className="text-slate-500">{toBengaliDigits(selectedParty?.phone || '—')}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-slate-500 font-semibold">তারিখ &amp; মাধ্যম:</p>
-                    <p className="font-bold text-slate-800">{paymentDate}</p>
-                    <p className="font-bold text-blue-700">{paymentMethod} ({bankTxnType})</p>
+                    <p className="font-bold text-slate-800">{paymentDate || toBengaliDigits(format(new Date(), 'dd/MM/yyyy'))}</p>
+                    <p className="font-bold text-blue-700">{paymentMethod === 'Cash' ? 'নগদ' : paymentMethod === 'Bank' ? 'ব্যাংক' : 'চেক'} ({bankTxnType})</p>
                   </div>
                 </div>
 
                 <div className="p-4 bg-slate-50 rounded-xl text-center space-y-1 border border-slate-100">
                   <p className="text-xs font-bold text-slate-500 uppercase">প্রাপ্তি পরিমাণ</p>
-                  <p className="text-3xl font-black text-emerald-600">৳ {(paidAmount || 0).toLocaleString()}</p>
+                  <p className="text-3xl font-black text-emerald-600">৳ {toBengaliDigits((paidAmount || 0).toLocaleString('bn-BD'))}</p>
                 </div>
 
                 <div className="flex justify-between items-center pt-8 text-xs font-bold text-slate-500 border-t border-slate-100">
@@ -1437,7 +1520,7 @@ function TransactionsContent() {
               <DialogHeader>
                 <DialogTitle className="text-xl font-black text-slate-900 flex items-center justify-between">
                   <span>পেমেন্ট বিবরণী</span>
-                  <span className="text-xs font-mono text-slate-400">{selectedTxnForView.paymentId}</span>
+                  <span className="text-xs font-mono text-slate-400">{toBengaliDigits(selectedTxnForView.paymentId || '')}</span>
                 </DialogTitle>
               </DialogHeader>
 
@@ -1448,19 +1531,19 @@ function TransactionsContent() {
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-200/60">
                   <span className="text-slate-500">ইনভয়েস নং:</span>
-                  <span className="font-mono font-bold text-slate-800">{selectedTxnForView.invoiceNo || '—'}</span>
+                  <span className="font-mono font-bold text-slate-800">{toBengaliDigits(selectedTxnForView.invoiceNo || '—')}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-200/60">
                   <span className="text-slate-500">পেমেন্ট মাধ্যম:</span>
-                  <span className="font-bold text-blue-700">{selectedTxnForView.paymentMethod || 'Cash'}</span>
+                  <span className="font-bold text-blue-700">{selectedTxnForView.paymentMethod === 'Bank' ? 'ব্যাংক' : selectedTxnForView.paymentMethod === 'Check' ? 'চেক' : 'নগদ'}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-200/60">
                   <span className="text-slate-500">পরিমাণ:</span>
-                  <span className="font-black text-base text-emerald-600">৳ {(selectedTxnForView.amount || 0).toLocaleString()}</span>
+                  <span className="font-black text-base text-emerald-600">৳ {toBengaliDigits((selectedTxnForView.amount || 0).toLocaleString('bn-BD'))}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-200/60">
                   <span className="text-slate-500">রেফারেন্স নং:</span>
-                  <span className="font-mono font-bold text-slate-700">{selectedTxnForView.referenceNo || '—'}</span>
+                  <span className="font-mono font-bold text-slate-700">{toBengaliDigits(selectedTxnForView.referenceNo || '—')}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-200/60">
                   <span className="text-slate-500">প্রাপ্তগ্রহীতা:</span>
@@ -1468,7 +1551,7 @@ function TransactionsContent() {
                 </div>
                 <div className="flex justify-between py-1">
                   <span className="text-slate-500">স্ট্যাটাস:</span>
-                  <span className="font-bold text-emerald-700">{selectedTxnForView.status || 'Completed'}</span>
+                  <span className="font-bold text-emerald-700">{selectedTxnForView.status === 'Completed' ? 'সম্পন্ন' : selectedTxnForView.status === 'Pending' ? 'অপেক্ষমাণ' : selectedTxnForView.status === 'Bounced' ? 'প্রত্যাখ্যাত' : selectedTxnForView.status || 'সম্পন্ন'}</span>
                 </div>
               </div>
 
@@ -1517,7 +1600,7 @@ function TransactionsContent() {
                     placeholder="0.00"
                     value={addMoneyAmount || ''}
                     onChange={e => setAddMoneyAmount(parseFloat(e.target.value) || 0)}
-                    className="rounded-xl h-11 pl-9 bg-slate-50/50 border-slate-200 text-base font-black text-blue-600 text-right"
+                    className="rounded-xl h-11 pl-9 bg-slate-50/50 border-slate-200 text-base font-black text-blue-600 text-right font-bengali"
                   />
                 </div>
               </div>
@@ -1563,7 +1646,7 @@ function TransactionsContent() {
                     </SelectTrigger>
                     <SelectContent className="font-bengali text-xs font-bold max-h-48">
                       {banks.map(b => (
-                        <SelectItem key={b.id} value={b.id}>{b.name} ({b.accNo}) — ৳{b.balance.toLocaleString()}</SelectItem>
+                        <SelectItem key={b.id} value={b.id}>{b.name} ({b.accNo}) — ৳{toBengaliDigits(b.balance.toLocaleString('bn-BD'))}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

@@ -751,7 +751,7 @@ export default function PurchasesPage() {
                               </TableCell>
                             </TableRow>
                           ) : cart.map((item, idx) => (
-                            <TableRow key={item.id} className="text-xs border-b border-slate-100">
+                            <TableRow key={item.id ? `${item.id}-${idx}` : `${item.name}-${idx}`} className="text-xs border-b border-slate-100">
                               <TableCell className="text-center font-bold text-slate-400">{idx + 1}</TableCell>
                               <TableCell className="font-bold text-slate-800">{item.name}</TableCell>
                               <TableCell className="text-center text-slate-400">—</TableCell>

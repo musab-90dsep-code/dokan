@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Search, X, ChevronDown, Check, Plus, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { toBengaliDigits } from '@/lib/bengaliUtils';
 
 export interface CustomerOption {
   id: string;
@@ -244,7 +245,7 @@ export function CustomerSearchSelect({
                         <div className="flex items-center gap-3 text-[11px] text-slate-500">
                           {cust.phone && (
                             <span className="flex items-center gap-1 font-mono">
-                              <Phone className="w-3 h-3 text-slate-400" /> {cust.phone}
+                              <Phone className="w-3 h-3 text-slate-400" /> {toBengaliDigits(cust.phone)}
                             </span>
                           )}
                           {cust.address && (
@@ -258,7 +259,7 @@ export function CustomerSearchSelect({
                       <div className="flex items-center gap-2">
                         {cust.totalDue !== undefined && cust.totalDue > 0 && (
                           <span className="text-[10px] font-black bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
-                            বকেয়া: ৳{cust.totalDue.toLocaleString()}
+                            বকেয়া: ৳{toBengaliDigits(cust.totalDue.toLocaleString('en-IN'))}
                           </span>
                         )}
                         {isSelected && <Check className="w-4 h-4 text-orange-600 shrink-0" />}

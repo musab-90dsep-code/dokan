@@ -17,7 +17,9 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { toBengaliDigits } from '@/lib/bengaliUtils';
 import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
+import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
 
 interface ReturnEntry {
   id: string;
@@ -72,10 +74,12 @@ export default function SalesReturnsPage() {
   const [newTakenCart, setNewTakenCart] = useState<ReturnItem[]>([]);
 
   // Item selector helpers
+  const [selectedCascadingReturnProduct, setSelectedCascadingReturnProduct] = useState<SelectedProductDetails | null>(null);
   const [returnProdId, setReturnProdId] = useState('');
   const [returnQty, setReturnQty] = useState(1);
   const [returnPrice, setReturnPrice] = useState(0);
 
+  const [selectedCascadingNewProduct, setSelectedCascadingNewProduct] = useState<SelectedProductDetails | null>(null);
   const [newProdId, setNewProdId] = useState('');
   const [newQty, setNewQty] = useState(1);
   const [newPrice, setNewPrice] = useState(0);
@@ -86,9 +90,32 @@ export default function SalesReturnsPage() {
   const loadReturnsData = async () => {
     try {
       setLoading(true);
+      const returnsList = await api.transactions.list({ transaction_type: 'sale_return' });
+      const mappedReturns: ReturnEntry[] = returnsList.map(r => ({
+        id: String(r.id),
+        customerName: r.party_name || 'সাধারণ গ্রাহক',
+        customerId: String(r.party || ''),
+        totalReturnValue: r.total_amount,
+        totalNewTakenValue: 0,
+        netRefundValue: r.total_amount,
+        dueAdjusted: r.due_amount,
+        cashRefundPaid: r.paid_amount,
+        returnedItems: (r.items || []).map(i => ({
+          id: String(i.product || ''),
+          name: i.product_name,
+          quantity: i.quantity,
+          price: i.price,
+          unit: i.unit || 'পিস'
+        })),
+        newTakenItems: [],
+        reason: r.notes || 'পণ্য ফেরত',
+        createdAt: r.created_at
+      }));
+
+      setReturns(mappedReturns);
+
       const partyList = await api.parties.list({ party_type: 'customer' });
-      const safePartyList = Array.isArray(partyList) ? partyList : [];
-      setCustomers(safePartyList.map(p => ({
+      setCustomers(partyList.map(p => ({
         id: String(p.id),
         name: p.name,
         phone: p.phone,
@@ -97,39 +124,15 @@ export default function SalesReturnsPage() {
       })));
 
       const prodList = await api.inventory.list();
-      const safeProdList = Array.isArray(prodList) ? prodList : [];
-      setProducts(safeProdList.map(p => ({
+      setProducts(prodList.map(p => ({
         id: String(p.id),
         name: p.name,
         sellPrice: Number(p.sell_price || 0),
         stock: Number(p.stock || 0),
         unit: p.unit || 'পিস'
       })));
-
-      const returnTxList = await api.transactions.list({ transaction_type: 'sale_return' });
-      const safeReturnTxList = Array.isArray(returnTxList) ? returnTxList : [];
-      setReturns(safeReturnTxList.map(r => ({
-        id: String(r.id),
-        customerName: r.party_name || 'গ্রাহক',
-        customerId: String(r.party || ''),
-        totalReturnValue: r.total_amount,
-        totalNewTakenValue: 0,
-        netRefundValue: r.total_amount,
-        dueAdjusted: 0,
-        cashRefundPaid: r.paid_amount,
-        returnedItems: (r.items || []).map(i => ({
-          id: String(i.id),
-          name: i.product_name,
-          quantity: i.quantity,
-          price: i.price,
-          unit: i.unit || 'পিস'
-        })),
-        newTakenItems: [],
-        reason: 'পণ্য ফেরত',
-        createdAt: r.created_at
-      })));
     } catch (err) {
-      console.error('Error loading sales returns:', err);
+      console.error('Error loading returns data:', err);
     } finally {
       setLoading(false);
     }
@@ -145,70 +148,86 @@ export default function SalesReturnsPage() {
 
   const formatDate = (at: any) => {
     if (!at) return '';
-    const date = at.toDate ? at.toDate() : new Date(at);
-    return format(date, 'dd MMM yyyy, hh:mm a', { locale: bn });
+    try {
+      const date = at?.toDate ? at.toDate() : new Date(at);
+      if (isNaN(date.getTime())) return '';
+      return toBengaliDigits(format(date, 'dd MMM yyyy, hh:mm a', { locale: bn }));
+    } catch {
+      return '';
+    }
   };
 
   // Add Item to Returned Items Cart
   const handleAddReturnItem = () => {
-    if (!returnProdId) {
+    const itemName = selectedCascadingReturnProduct?.name || products.find(p => p.id === returnProdId)?.name;
+    if (!itemName) {
       toast.error('ফেরতকৃত পণ্য নির্বাচন করুন');
       return;
     }
-    const prod = products.find(p => p.id === returnProdId);
-    if (!prod) return;
 
-    const existingIdx = returnCart.findIndex(i => i.id === prod.id);
+    const itemUnitToUse = selectedCascadingReturnProduct?.unit || 'পিস';
+    const itemId = selectedCascadingReturnProduct?.productId || returnProdId || String(Date.now());
+    const finalPrice = returnPrice || selectedCascadingReturnProduct?.price || 0;
+
+    const existingIdx = returnCart.findIndex(i => i.name === itemName);
     if (existingIdx > -1) {
       const updated = [...returnCart];
       updated[existingIdx].quantity += returnQty;
+      updated[existingIdx].price = finalPrice;
       setReturnCart(updated);
     } else {
       setReturnCart([...returnCart, {
-        id: prod.id,
-        name: prod.name,
+        id: itemId,
+        name: itemName,
         quantity: returnQty,
-        price: returnPrice || prod.sellPrice || 0,
-        unit: prod.unit || 'বস্তা'
+        price: finalPrice,
+        unit: itemUnitToUse
       }]);
     }
     setReturnProdId('');
     setReturnQty(1);
     setReturnPrice(0);
+    setSelectedCascadingReturnProduct(null);
     toast.success('ফেরত পণ্য যোগ করা হয়েছে');
   };
 
   // Add Item to New Taken Items Cart
   const handleAddNewItem = () => {
-    if (!newProdId) {
+    const itemName = selectedCascadingNewProduct?.name || products.find(p => p.id === newProdId)?.name;
+    if (!itemName) {
       toast.error('নতুন নেওয়া পণ্য নির্বাচন করুন');
       return;
     }
-    const prod = products.find(p => p.id === newProdId);
-    if (!prod) return;
 
-    if (newQty > prod.stock) {
-      toast.error(`স্টকে পর্যাপ্ত পণ্য নেই (মজুদ: ${prod.stock})`);
+    const itemUnitToUse = selectedCascadingNewProduct?.unit || products.find(p => p.id === newProdId)?.unit || 'পিস';
+    const itemId = selectedCascadingNewProduct?.productId || newProdId || String(Date.now());
+    const finalPrice = newPrice || selectedCascadingNewProduct?.price || 0;
+
+    const stockAvailable = selectedCascadingNewProduct?.stock ?? products.find(p => p.id === newProdId)?.stock ?? 99999;
+    if (newQty > stockAvailable) {
+      toast.error(`স্টকে পর্যাপ্ত পণ্য নেই (মজুদ: ${stockAvailable})`);
       return;
     }
 
-    const existingIdx = newTakenCart.findIndex(i => i.id === prod.id);
+    const existingIdx = newTakenCart.findIndex(i => i.name === itemName);
     if (existingIdx > -1) {
       const updated = [...newTakenCart];
       updated[existingIdx].quantity += newQty;
+      updated[existingIdx].price = finalPrice;
       setNewTakenCart(updated);
     } else {
       setNewTakenCart([...newTakenCart, {
-        id: prod.id,
-        name: prod.name,
+        id: itemId,
+        name: itemName,
         quantity: newQty,
-        price: newPrice || prod.sellPrice || 0,
-        unit: prod.unit || 'বস্তা'
+        price: finalPrice,
+        unit: itemUnitToUse
       }]);
     }
     setNewProdId('');
     setNewQty(1);
     setNewPrice(0);
+    setSelectedCascadingNewProduct(null);
     toast.success('নতুন পণ্য যোগ করা হয়েছে');
   };
 
@@ -238,27 +257,58 @@ export default function SalesReturnsPage() {
     }
 
     try {
+      // 1. Submit Sales Return for Returned Items (Stock IN)
       await api.transactions.create({
         party: Number(selectedCustomerId),
         transaction_type: 'sale_return',
         total_amount: totalReturnedValue,
         paid_amount: cashRefundPaid,
         due_amount: Math.max(0, totalReturnedValue - cashRefundPaid),
-        items: returnCart.map(item => ({
-          product_name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          total: item.price * item.quantity
-        })),
+        items: returnCart.map(item => {
+          const numId = Number(item.id);
+          return {
+            product: !isNaN(numId) && numId > 0 ? numId : null,
+            product_name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            unit: item.unit,
+            total: item.price * item.quantity
+          };
+        }),
         notes: reason || 'পণ্য ফেরত'
       });
 
-      toast.success('বিক্রয় রিটার্ন সফলভাবে সম্পন্ন হয়েছে!');
+      // 2. If new items were taken, submit Sales Transaction for New Taken Items (Stock OUT)
+      if (newTakenCart.length > 0) {
+        await api.transactions.create({
+          party: Number(selectedCustomerId),
+          transaction_type: 'sale',
+          total_amount: totalNewTakenValue,
+          paid_amount: 0,
+          due_amount: totalNewTakenValue,
+          items: newTakenCart.map(item => {
+            const numId = Number(item.id);
+            return {
+              product: !isNaN(numId) && numId > 0 ? numId : null,
+              product_name: item.name,
+              quantity: item.quantity,
+              price: item.price,
+              unit: item.unit,
+              total: item.price * item.quantity
+            };
+          }),
+          notes: `রিটার্ন এক্সচেঞ্জ ক্রয় (রিটার্ন: ${reason || 'পণ্য ফেরত'})`
+        });
+      }
+
+      toast.success('বিক্রয় রিটার্ন ও স্টক সমন্বয় সফলভাবে সম্পন্ন হয়েছে!');
       setIsOpen(false);
       setSelectedCustomerId('');
       setReturnCart([]);
       setNewTakenCart([]);
       setReason('');
+      setSelectedCascadingReturnProduct(null);
+      setSelectedCascadingNewProduct(null);
       loadReturnsData();
     } catch (err: any) {
       console.error(err);
@@ -508,63 +558,25 @@ export default function SalesReturnsPage() {
                       ফেরতকৃত পণ্য (Returned Products - স্টক পুনঃসংযোজিত হবে)
                     </Label>
 
-                    {/* Product Selector Row */}
-                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end bg-rose-50/40 p-3.5 rounded-xl border border-rose-100">
-                      <div className="sm:col-span-5 space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">পণ্য নির্বাচন করুন</Label>
-                        <Select 
-                          value={returnProdId} 
-                          onValueChange={(val: string | null) => {
-                            if (!val) return;
-                            setReturnProdId(val);
-                            const prod = products.find(p => p.id === val);
-                            if (prod) setReturnPrice(prod.sellPrice || 0);
-                          }}
-                        >
-                          <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
-                            <SelectValue placeholder="ফেরত পণ্য নির্বাচন করুন..." />
-                          </SelectTrigger>
-                          <SelectContent className="font-bengali text-xs font-bold max-h-60">
-                            {products.map(p => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.name} (দর: ৳{p.sellPrice})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="sm:col-span-3 space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">পরিমাণ</Label>
-                        <Input 
-                          type="number" 
-                          min="1" 
-                          value={returnQty} 
-                          onChange={e => setReturnQty(parseFloat(e.target.value) || 1)} 
-                          className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold text-center"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2 space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">একক দর (৳)</Label>
-                        <Input 
-                          type="number" 
-                          value={returnPrice} 
-                          onChange={e => setReturnPrice(parseFloat(e.target.value) || 0)} 
-                          className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold text-right"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <Button 
-                          type="button" 
-                          onClick={handleAddReturnItem}
-                          className="w-full bg-rose-600 hover:bg-rose-700 text-white rounded-xl h-10 font-bold text-xs"
-                        >
-                          + ফেরত যোগ
-                        </Button>
-                      </div>
-                    </div>
+                    {/* Step-by-Step Cascading Product Selector (Rod, Cement, Ring, Others) */}
+                    <CascadingProductSelector
+                      products={products}
+                      onProductChange={(selected) => {
+                        setSelectedCascadingReturnProduct(selected);
+                        if (selected) {
+                          if (selected.productId) setReturnProdId(selected.productId);
+                          if (selected.price > 0) setReturnPrice(selected.price);
+                        }
+                      }}
+                      showPriceField={true}
+                      priceLabel="ফেরত একক দর (৳)"
+                      itemPrice={returnPrice}
+                      onPriceChange={setReturnPrice}
+                      itemQty={returnQty}
+                      onQtyChange={setReturnQty}
+                      onAddCartItem={handleAddReturnItem}
+                      buttonLabel="+ ফেরত যোগ করুন"
+                    />
 
                     {/* Returned Cart Table */}
                     <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -620,63 +632,26 @@ export default function SalesReturnsPage() {
                       নতুন নেওয়া পণ্য / এক্সচেঞ্জ (New Products Taken - স্টক থেকে কমবে)
                     </Label>
 
-                    {/* Product Selector Row */}
-                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end bg-emerald-50/40 p-3.5 rounded-xl border border-emerald-100">
-                      <div className="sm:col-span-5 space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">পণ্য নির্বাচন করুন</Label>
-                        <Select 
-                          value={newProdId} 
-                          onValueChange={(val: string | null) => {
-                            if (!val) return;
-                            setNewProdId(val);
-                            const prod = products.find(p => p.id === val);
-                            if (prod) setNewPrice(prod.sellPrice || 0);
-                          }}
-                        >
-                          <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
-                            <SelectValue placeholder="নতুন পণ্য নির্বাচন করুন..." />
-                          </SelectTrigger>
-                          <SelectContent className="font-bengali text-xs font-bold max-h-60">
-                            {products.map(p => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.name} (স্টক: {p.stock}, দর: ৳{p.sellPrice})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="sm:col-span-3 space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">পরিমাণ</Label>
-                        <Input 
-                          type="number" 
-                          min="1" 
-                          value={newQty} 
-                          onChange={e => setNewQty(parseFloat(e.target.value) || 1)} 
-                          className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold text-center"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2 space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">একক দর (৳)</Label>
-                        <Input 
-                          type="number" 
-                          value={newPrice} 
-                          onChange={e => setNewPrice(parseFloat(e.target.value) || 0)} 
-                          className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold text-right"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <Button 
-                          type="button" 
-                          onClick={handleAddNewItem}
-                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl h-10 font-bold text-xs"
-                        >
-                          + নতুন যোগ
-                        </Button>
-                      </div>
-                    </div>
+                    {/* Step-by-Step Cascading Product Selector (Rod, Cement, Ring, Others) */}
+                    <CascadingProductSelector
+                      products={products}
+                      onlyInStock={true}
+                      onProductChange={(selected) => {
+                        setSelectedCascadingNewProduct(selected);
+                        if (selected) {
+                          if (selected.productId) setNewProdId(selected.productId);
+                          if (selected.price > 0) setNewPrice(selected.price);
+                        }
+                      }}
+                      showPriceField={true}
+                      priceLabel="বিক্রয়/নতুন একক দর (৳)"
+                      itemPrice={newPrice}
+                      onPriceChange={setNewPrice}
+                      itemQty={newQty}
+                      onQtyChange={setNewQty}
+                      onAddCartItem={handleAddNewItem}
+                      buttonLabel="+ নতুন যোগ করুন"
+                    />
 
                     {/* New Taken Cart Table */}
                     <div className="border border-slate-200 rounded-xl overflow-hidden">
