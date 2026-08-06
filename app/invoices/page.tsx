@@ -6,13 +6,13 @@ import { Shell } from '@/components/Shell';
 import { api } from '@/lib/api';
 import { 
   Search, Eye, Printer, X, FileText, Receipt, Banknote, AlertCircle, Plus, 
-  ShoppingCart, User, Phone, Tag, CheckCircle2, DollarSign, Trash2, ArrowRight,
-  Lightbulb, Calendar, Building, UserCheck, Percent, HelpCircle, Edit2
+  ShoppingCart, User, Phone, Tag, CheckCircle2, DollarSign, Trash2, ArrowRight, ArrowLeft,
+  Lightbulb, Calendar, Building, UserCheck, Percent, HelpCircle, Edit2, Filter, ChevronUp, ChevronDown, RotateCcw, Zap, ArrowUpDown
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { format } from 'date-fns';
+import { format, isToday, isYesterday, isSameWeek, isSameMonth, startOfDay, endOfDay } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -99,6 +99,25 @@ function InvoicesContent() {
   const [filterStatus, setFilterStatus] = useState('সব');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [addPayment, setAddPayment] = useState(0);
+
+  // Image-Matched Filter States
+  const [filterInvoiceNo, setFilterInvoiceNo] = useState('');
+  const [filterCustomer, setFilterCustomer] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState('all');
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState('all');
+  const [filterSalesPerson, setFilterSalesPerson] = useState('all');
+  const [filterInvoiceType, setFilterInvoiceType] = useState('all');
+  const [filterBranch, setFilterBranch] = useState('all');
+  const [filterStageStatus, setFilterStageStatus] = useState('all');
+  const [minBill, setMinBill] = useState('');
+  const [maxBill, setMaxBill] = useState('');
+  const [minDue, setMinDue] = useState('');
+  const [maxDue, setMaxDue] = useState('');
+  const [quickFilter, setQuickFilter] = useState('all');
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const [isQuickFilterExpanded, setIsQuickFilterExpanded] = useState(true);
 
   // Direct / Converted Invoice Creation Form States
   const [isCreateInvoiceOpen, setIsCreateInvoiceOpen] = useState(false);
@@ -597,14 +616,104 @@ function InvoicesContent() {
     }
   };
 
-  const filtered = invoices.filter(i => {
-    const statusMatch = filterStatus === 'সব' || 
-      i.paymentStatus === filterStatus || 
-      (filterStatus === 'পরিশোধিত' && (i.paymentStatus === 'paid' || i.dueAmount <= 0)) ||
-      (filterStatus === 'আংশিক' && (i.paymentStatus === 'partial' || ((i.paidAmount || 0) > 0 && i.dueAmount > 0))) ||
-      (filterStatus === 'বাকি' && (i.paymentStatus === 'unpaid' || ((i.paidAmount || 0) === 0 && i.dueAmount > 0)));
-    const searchMatch = i.customerName.toLowerCase().includes(search.toLowerCase()) || i.id.toLowerCase().includes(search.toLowerCase());
-    return statusMatch && searchMatch;
+  const parseInvoiceDate = (at: any): Date | null => {
+    if (!at) return null;
+    try {
+      const d = at?.toDate ? at.toDate() : new Date(at);
+      return isNaN(d.getTime()) ? null : d;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleResetFilters = () => {
+    setFilterInvoiceNo('');
+    setFilterCustomer('all');
+    setStartDate('');
+    setEndDate('');
+    setFilterPaymentStatus('all');
+    setFilterPaymentMethod('all');
+    setFilterSalesPerson('all');
+    setFilterInvoiceType('all');
+    setFilterBranch('all');
+    setFilterStageStatus('all');
+    setMinBill('');
+    setMaxBill('');
+    setMinDue('');
+    setMaxDue('');
+    setQuickFilter('all');
+    setSearch('');
+  };
+
+  const filtered = invoices.filter(item => {
+    // 1. Invoice No / Search
+    const q = (filterInvoiceNo || search).trim().toLowerCase();
+    if (q) {
+      const idMatch = item.id?.toLowerCase().includes(q);
+      const orderIdMatch = item.orderId?.toLowerCase().includes(q);
+      const custMatch = item.customerName?.toLowerCase().includes(q);
+      const phoneMatch = item.customerPhone?.includes(q);
+      if (!idMatch && !orderIdMatch && !custMatch && !phoneMatch) return false;
+    }
+
+    // 2. Customer
+    if (filterCustomer !== 'all') {
+      const matchesCustId = item.customerId && String(item.customerId) === filterCustomer;
+      const matchesCustName = item.customerName === filterCustomer;
+      if (!matchesCustId && !matchesCustName) return false;
+    }
+
+    // 3. Date Range (Start / End)
+    const itemDate = parseInvoiceDate(item.createdAt);
+    if (startDate && itemDate) {
+      if (itemDate < startOfDay(new Date(startDate))) return false;
+    }
+    if (endDate && itemDate) {
+      if (itemDate > endOfDay(new Date(endDate))) return false;
+    }
+
+    // 4. Payment Status
+    if (filterPaymentStatus !== 'all') {
+      const isPaid = item.dueAmount <= 0 || item.paymentStatus === 'paid' || item.paymentStatus === 'পরিশোধিত';
+      const isPartial = (item.paidAmount || 0) > 0 && item.dueAmount > 0;
+      const isUnpaid = (item.paidAmount || 0) === 0 && item.dueAmount > 0;
+
+      if (filterPaymentStatus === 'paid' && !isPaid) return false;
+      if (filterPaymentStatus === 'partial' && !isPartial) return false;
+      if (filterPaymentStatus === 'unpaid' && !isUnpaid) return false;
+    }
+
+    // 5. Payment Method
+    if (filterPaymentMethod !== 'all') {
+      const method = (item.paymentMethod || 'cash').toLowerCase();
+      if (!method.includes(filterPaymentMethod)) return false;
+    }
+
+    // 6. Min/Max Bill
+    if (minBill !== '' && Number(minBill) > 0 && item.totalAmount < Number(minBill)) return false;
+    if (maxBill !== '' && Number(maxBill) > 0 && item.totalAmount > Number(maxBill)) return false;
+
+    // 7. Min/Max Due
+    if (minDue !== '' && Number(minDue) > 0 && item.dueAmount < Number(minDue)) return false;
+    if (maxDue !== '' && Number(maxDue) > 0 && item.dueAmount > Number(maxDue)) return false;
+
+    // 8. Quick Filter Pills
+    if (quickFilter !== 'all') {
+      if (quickFilter === 'today' && itemDate && !isToday(itemDate)) return false;
+      if (quickFilter === 'yesterday' && itemDate && !isYesterday(itemDate)) return false;
+      if (quickFilter === 'this_week' && itemDate && !isSameWeek(itemDate, new Date())) return false;
+      if (quickFilter === 'this_month' && itemDate && !isSameMonth(itemDate, new Date())) return false;
+
+      const isPaid = item.dueAmount <= 0 || item.paymentStatus === 'paid' || item.paymentStatus === 'পরিশোধিত';
+      const isPartial = (item.paidAmount || 0) > 0 && item.dueAmount > 0;
+      const isUnpaid = (item.paidAmount || 0) === 0 && item.dueAmount > 0;
+
+      if (quickFilter === 'unpaid' && !isUnpaid) return false;
+      if (quickFilter === 'partial' && !isPartial) return false;
+      if (quickFilter === 'paid' && !isPaid) return false;
+    }
+
+    return true;
   });
 
   const totalSales = invoices.reduce((a, o) => a + o.totalAmount, 0);
@@ -613,7 +722,8 @@ function InvoicesContent() {
 
   return (
     <Shell>
-      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {!isCreateInvoiceOpen ? (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         {/* Top Title & Header Action */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -625,7 +735,7 @@ function InvoicesContent() {
           
           <Button 
             onClick={() => { resetCreateForm(); setIsCreateInvoiceOpen(true); }}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bengali h-12 px-6 rounded-2xl font-bold shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bengali h-12 px-6 rounded-md font-bold shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
           >
             <Plus className="w-5 h-5 mr-2" />সরাসরি চালান তৈরি করুন
           </Button>
@@ -638,9 +748,9 @@ function InvoicesContent() {
             { label: 'মোট ক্যাশ প্রাপ্তি', value: `৳ ${toBengaliDigits(totalPaid.toLocaleString('en-IN'))}`, icon: Banknote, color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-100' },
             { label: 'মোট বকেয়া চালান', value: `৳ ${toBengaliDigits(totalDue.toLocaleString('en-IN'))}`, icon: AlertCircle, color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-100' },
           ].map((s, i) => (
-            <Card key={i} className={cn("border-2 shadow-sm rounded-2xl transition-all hover:shadow-md", s.border, s.bg)}>
+            <Card key={i} className={cn("border-2 shadow-sm rounded-md transition-all hover:shadow-md", s.border, s.bg)}>
               <CardContent className="p-6 flex items-center gap-4">
-                <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center bg-white shadow-sm", s.color)}>
+                <div className={cn("w-12 h-12 rounded-md flex items-center justify-center bg-white shadow-sm", s.color)}>
                   <s.icon className="w-6 h-6" />
                 </div>
                 <div>
@@ -652,154 +762,392 @@ function InvoicesContent() {
           ))}
         </div>
 
-        {/* Search & Tabs */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex gap-2 bg-slate-100/50 p-1.5 rounded-2xl w-fit border border-slate-100">
-            {['সব', 'পরিশোধিত', 'আংশিক', 'বাকি'].map(s => (
-              <button
-                key={s}
-                onClick={() => setFilterStatus(s)}
-                className={cn("px-5 py-2 rounded-xl text-[13px] font-black font-bengali transition-all",
-                  filterStatus === s
-                    ? 'bg-white text-emerald-600 shadow-sm border border-slate-200/50'
-                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                )}
+        {/* COMPACT & EFFICIENT FILTER CARD */}
+        <Card className="border border-slate-200/80 shadow-xs rounded-md bg-white p-4 font-bengali space-y-3">
+          {/* Top Row: Search + Date Range + Status Quick Pills + More Filter Toggle */}
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+            
+            {/* Unified Search Box (Invoice No, Customer Name, Phone) */}
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                placeholder="ইনভয়েস নং, কাস্টমার নাম বা নম্বর..."
+                value={search}
+                onChange={e => { setSearch(e.target.value); setFilterInvoiceNo(e.target.value); }}
+                className="pl-10 h-10 rounded-md bg-slate-50/80 border-slate-200 text-xs font-bold text-slate-900 focus:bg-white transition-all placeholder:text-slate-400"
+              />
+              {search && (
+                <button 
+                  onClick={() => { setSearch(''); setFilterInvoiceNo(''); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Date Range (Start & End) in 1 Compact Block */}
+            <div className="flex items-center gap-2 bg-slate-50/80 p-1.5 rounded-md border border-slate-200/80">
+              <Calendar className="w-4 h-4 text-slate-400 ml-1 shrink-0" />
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
+                title="শুরুর তারিখ"
+              />
+              <span className="text-slate-300 text-xs font-bold">-</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
+                title="শেষের তারিখ"
+              />
+              {(startDate || endDate) && (
+                <button
+                  onClick={() => { setStartDate(''); setEndDate(''); }}
+                  className="text-slate-400 hover:text-rose-600 px-1"
+                  title="তারিখ ফিল্টার মুছুন"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Status Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+              {[
+                { id: 'all', label: 'সব' },
+                { id: 'paid', label: 'পরিশোধিত' },
+                { id: 'partial', label: 'আংশিক' },
+                { id: 'unpaid', label: 'বাকি' },
+              ].map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    setFilterPaymentStatus(p.id);
+                    setQuickFilter(p.id);
+                  }}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-md text-xs font-bold transition-all border whitespace-nowrap",
+                    (filterPaymentStatus === p.id || quickFilter === p.id)
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* More Filters Toggle */}
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+                className="h-10 px-3.5 rounded-md border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 flex items-center gap-1.5"
               >
-                {s}
-              </button>
-            ))}
+                <Filter className="w-3.5 h-3.5 text-indigo-600" />
+                <span>আরও ফিল্টার</span>
+                {isFilterExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </Button>
+
+              {(search || filterInvoiceNo || filterCustomer !== 'all' || startDate || endDate || filterPaymentStatus !== 'all' || filterPaymentMethod !== 'all' || minBill || maxBill || minDue || maxDue || quickFilter !== 'all') && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetFilters}
+                  className="h-10 px-2.5 rounded-md text-rose-600 hover:bg-rose-50 font-bold text-xs flex items-center gap-1"
+                  title="ফিল্টার রিসেট করুন"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
 
-          <div className="relative w-full md:w-80">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
-              placeholder="ক্রেতা বা ইনভয়েস আইডি..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-11 bg-white border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20 font-bengali rounded-xl h-11 shadow-sm"
-            />
-          </div>
-        </div>
+          {/* Secondary Collapsible Drawer: Advanced Options (Payment Method, Amount Ranges) */}
+          {isFilterExpanded && (
+            <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 animate-in fade-in duration-200">
+              {/* Payment Method */}
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-600">পেমেন্ট মাধ্যম</Label>
+                <Select value={filterPaymentMethod} onValueChange={(val) => setFilterPaymentMethod(val || 'all')}>
+                  <SelectTrigger className="rounded-md h-9 bg-slate-50/50 border-slate-200 text-xs font-bold">
+                    <SelectValue placeholder="সব মাধ্যম" />
+                  </SelectTrigger>
+                  <SelectContent className="font-bengali text-xs font-bold">
+                    <SelectItem value="all">সব মাধ্যম</SelectItem>
+                    <SelectItem value="cash">নগদ</SelectItem>
+                    <SelectItem value="bank">ব্যাংক</SelectItem>
+                    <SelectItem value="cheque">চেক</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-        {/* Invoices Table */}
-        <Card className="border-slate-100 shadow-xl shadow-slate-200/40 rounded-3xl bg-white overflow-hidden">
+              {/* Quick Time Pills */}
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-600">সময়সূচী</Label>
+                <div className="flex items-center gap-1">
+                  {[
+                    { id: 'today', label: 'আজ' },
+                    { id: 'yesterday', label: 'গতকাল' },
+                    { id: 'this_week', label: 'এই সপ্তাহ' },
+                    { id: 'this_month', label: 'এই মাস' },
+                  ].map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => setQuickFilter(quickFilter === t.id ? 'all' : t.id)}
+                      className={cn(
+                        "px-2 py-1.5 rounded-md text-[11px] font-bold transition-all border flex-1 text-center whitespace-nowrap",
+                        quickFilter === t.id
+                          ? "bg-emerald-600 text-white border-emerald-600"
+                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                      )}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Bill Range */}
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-600">মোট বিল (৳)</Label>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    placeholder="সর্বনিম্ন"
+                    value={minBill}
+                    onChange={e => setMinBill(e.target.value)}
+                    className="rounded-md h-9 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                  />
+                  <span className="text-slate-300 text-xs">-</span>
+                  <Input
+                    placeholder="সর্বোচ্চ"
+                    value={maxBill}
+                    onChange={e => setMaxBill(e.target.value)}
+                    className="rounded-md h-9 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* Due Range */}
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-600">বকেয়া পরিমাণ (৳)</Label>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    placeholder="সর্বনিম্ন"
+                    value={minDue}
+                    onChange={e => setMinDue(e.target.value)}
+                    className="rounded-md h-9 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                  />
+                  <span className="text-slate-300 text-xs">-</span>
+                  <Input
+                    placeholder="সর্বোচ্চ"
+                    value={maxDue}
+                    onChange={e => setMaxDue(e.target.value)}
+                    className="rounded-md h-9 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        {/* SECTION 3: INVOICES DATA TABLE */}
+        <Card className="border border-slate-200/80 shadow-md rounded-md bg-white overflow-hidden">
           <CardContent className="p-0 overflow-x-auto custom-scrollbar">
             <Table>
-              <TableHeader className="bg-slate-50 border-b border-slate-100">
+              <TableHeader className="bg-slate-50/80 border-b border-slate-100">
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="font-bengali text-slate-500 text-[11px] tracking-widest font-black py-4 px-6 uppercase">ইনভয়েস #</TableHead>
-                  <TableHead className="font-bengali text-slate-500 text-[11px] tracking-widest font-black uppercase">তারিখ</TableHead>
-                  <TableHead className="font-bengali text-slate-500 text-[11px] tracking-widest font-black uppercase">ক্রেতার নাম</TableHead>
-                  <TableHead className="font-bengali text-slate-500 text-[11px] tracking-widest font-black text-right uppercase">মোট বিল</TableHead>
-                  <TableHead className="font-bengali text-slate-500 text-[11px] tracking-widest font-black text-right uppercase">নগদ প্রাপ্তি</TableHead>
-                  <TableHead className="font-bengali text-slate-500 text-[11px] tracking-widest font-black text-right uppercase">বকেয়া</TableHead>
-                  <TableHead className="font-bengali text-slate-500 text-[11px] tracking-widest font-black text-center uppercase">পেমেন্ট স্ট্যাটাস</TableHead>
-                  <TableHead className="font-bengali text-slate-500 text-[11px] tracking-widest font-black text-right py-4 px-6 uppercase">অ্যাকশন</TableHead>
+                  <TableHead className="w-10 text-center py-4 px-3">
+                    <input type="checkbox" className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  </TableHead>
+                  <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4">
+                    <div className="flex items-center gap-1 cursor-pointer select-none">
+                      <span>ইনভয়েস নং</span>
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </TableHead>
+                  <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4">
+                    <div className="flex items-center gap-1 cursor-pointer select-none">
+                      <span>তারিখ ও সময়</span>
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </TableHead>
+                  <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4">কাস্টমার নাম</TableHead>
+                  <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4 text-right">
+                    <div className="flex items-center justify-end gap-1 cursor-pointer select-none">
+                      <span>মোট বিল (৳)</span>
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </TableHead>
+                  <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4 text-right">
+                    <div className="flex items-center justify-end gap-1 cursor-pointer select-none">
+                      <span>নগদ প্রাপ্তি (৳)</span>
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </TableHead>
+                  <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4 text-right">
+                    <div className="flex items-center justify-end gap-1 cursor-pointer select-none">
+                      <span>বকেয়া (৳)</span>
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </TableHead>
+                  <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4 text-center">
+                    <div className="flex items-center justify-center gap-1 cursor-pointer select-none">
+                      <span>পেমেন্ট স্ট্যাটাস</span>
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </TableHead>
+                  <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4 text-center">
+                    <div className="flex items-center justify-center gap-1 cursor-pointer select-none">
+                      <span>স্ট্যাটাস</span>
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </TableHead>
+                  <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-6 text-center">অ্যাকশন</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={8} className="text-center py-20 text-slate-400 font-bengali font-bold text-lg">লোড হচ্ছে...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center py-20 text-slate-400 font-bengali font-bold text-lg">লোড হচ্ছে...</TableCell></TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-20">
+                    <TableCell colSpan={10} className="text-center py-20">
                       <div className="flex flex-col items-center justify-center text-slate-400">
                         <Receipt className="w-12 h-12 mb-3 opacity-20" />
-                        <p className="font-bengali font-bold text-lg">কোনো অনুমোদনকৃত চালান পাওয়া যায়নি</p>
+                        <p className="font-bengali font-bold text-lg">কোনো ইনভয়েস/চালান পাওয়া যায়নি</p>
                       </div>
                     </TableCell>
                   </TableRow>
-                ) : filtered.map(inv => (
-                  <TableRow 
-                    key={inv.id} 
-                    onClick={() => setSelectedInvoice(inv)}
-                    className="border-b border-slate-50 hover:bg-emerald-50/50 cursor-pointer transition-colors"
-                  >
-                    <TableCell className="py-4 px-6">
-                      <span className="font-mono font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md text-xs">#{toBengaliDigits(inv.id.slice(0, 8).toUpperCase())}</span>
-                    </TableCell>
-                    <TableCell className="font-bengali text-xs font-semibold text-slate-500">{formatDate(inv.createdAt)}</TableCell>
-                    <TableCell className="font-bengali font-black text-slate-800 text-sm">{inv.customerName}</TableCell>
-                    <TableCell className="text-right font-bengali font-black text-slate-900 text-base">৳{toBengaliDigits((inv.totalAmount || 0).toLocaleString('en-IN'))}</TableCell>
-                    <TableCell className="text-right font-bengali text-emerald-600 font-bold">৳{toBengaliDigits((inv.paidAmount || 0).toLocaleString('en-IN'))}</TableCell>
-                    <TableCell className="text-right font-bengali text-rose-600 font-bold">৳{toBengaliDigits((inv.dueAmount || 0).toLocaleString('en-IN'))}</TableCell>
-                    <TableCell className="text-center">
-                      <span className={cn("px-3 py-1 rounded-lg text-[10px] font-black font-bengali uppercase tracking-wider inline-block",
-                        inv.dueAmount <= 0 || inv.paymentStatus === 'পরিশোধিত' || inv.paymentStatus === 'paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                          (inv.paidAmount || 0) > 0 || inv.paymentStatus === 'আংশিক' || inv.paymentStatus === 'partial' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
-                            'bg-rose-50 text-rose-700 border border-rose-100'
-                      )}>
-                        {inv.dueAmount <= 0 || inv.paymentStatus === 'paid' || inv.paymentStatus === 'পরিশোধিত' ? 'পরিশোধিত' :
-                          (inv.paidAmount || 0) > 0 || inv.paymentStatus === 'partial' || inv.paymentStatus === 'আংশিক' ? 'আংশিক' : 'বাকি'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right py-4 px-6">
-                      <div className="flex justify-end gap-1.5">
-                        <Button size="icon" variant="outline" title="ইনভয়েস বিস্তারিত দেখুন" onClick={(e) => { e.stopPropagation(); setSelectedInvoice(inv); }} className="h-9 w-9 text-slate-500 border-slate-200 hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 rounded-xl transition-all">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button size="icon" variant="outline" title="ইনভয়েস এডিট করুন" onClick={(e) => { e.stopPropagation(); handleEditInvoice(inv); }} className="h-9 w-9 text-slate-500 border-slate-200 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50 rounded-xl transition-all">
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button size="icon" variant="outline" title="ইনভয়েস মুছে ফেলুন" onClick={(e) => { e.stopPropagation(); setDeletingInvoice(inv); setIsDeleteDialogOpen(true); }} className="h-9 w-9 text-slate-500 border-slate-200 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 rounded-xl transition-all">
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                        <Button size="icon" variant="outline" title="প্রিন্ট করুন" onClick={(e) => { e.stopPropagation(); window.print(); }} className="h-9 w-9 text-slate-500 border-slate-200 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 rounded-xl transition-all">
-                          <Printer className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                ) : filtered.map(inv => {
+                  const isPaid = inv.dueAmount <= 0 || inv.paymentStatus === 'paid' || inv.paymentStatus === 'পরিশোধিত';
+                  const isPartial = (inv.paidAmount || 0) > 0 && inv.dueAmount > 0;
+                  const isUnpaid = (inv.paidAmount || 0) === 0 && inv.dueAmount > 0;
+
+                  return (
+                    <TableRow
+                      key={inv.id}
+                      onClick={() => setSelectedInvoice(inv)}
+                      className="border-b border-slate-50 hover:bg-slate-50/80 cursor-pointer transition-colors"
+                    >
+                      <TableCell className="text-center py-4 px-3" onClick={e => e.stopPropagation()}>
+                        <input type="checkbox" className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                      </TableCell>
+                      <TableCell className="py-4 px-4">
+                        <span className="font-mono font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-sm text-xs">
+                          #{toBengaliDigits(inv.orderId || inv.id.slice(0, 8).toUpperCase())}
+                        </span>
+                      </TableCell>
+                      <TableCell className="font-bengali text-xs font-medium text-slate-600">
+                        {formatDate(inv.createdAt)}
+                      </TableCell>
+                      <TableCell className="font-bengali text-slate-800 py-4 px-4">
+                        <p className="font-bold text-sm text-slate-900">{inv.customerName}</p>
+                        {inv.customerPhone && (
+                          <p className="text-xs text-slate-400 font-sans mt-0.5">{inv.customerPhone}</p>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-bengali font-bold text-slate-900 text-sm py-4 px-4">
+                        ৳{toBengaliDigits((inv.totalAmount || 0).toLocaleString('en-IN'))}
+                      </TableCell>
+                      <TableCell className="text-right font-bengali font-bold text-emerald-600 text-sm py-4 px-4">
+                        ৳{toBengaliDigits((inv.paidAmount || 0).toLocaleString('en-IN'))}
+                      </TableCell>
+                      <TableCell className="text-right font-bengali font-bold text-rose-600 text-sm py-4 px-4">
+                        ৳{toBengaliDigits((inv.dueAmount || 0).toLocaleString('en-IN'))}
+                      </TableCell>
+                      <TableCell className="text-center py-4 px-4">
+                        <span className={cn(
+                          "px-3 py-1 rounded-md text-xs font-bold font-bengali border inline-block",
+                          isPaid ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                          isPartial ? "bg-amber-50 text-amber-600 border-amber-100" :
+                          "bg-rose-50 text-rose-600 border-rose-100"
+                        )}>
+                          {isPaid ? 'পরিশোধিত' : isPartial ? 'আংশিক' : 'বাকি'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center py-4 px-4">
+                        <span className="bg-emerald-50 text-emerald-600 font-bold px-3 py-1 rounded-md text-xs font-bengali inline-block">
+                          সেল
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right py-4 px-6" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-end gap-1.5">
+                          <Button size="icon" variant="ghost" title="ইনভয়েস বিস্তারিত দেখুন" onClick={() => setSelectedInvoice(inv)} className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md">
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" title="ইনভয়েস এডিট করুন" onClick={() => handleEditInvoice(inv)} className="h-8 w-8 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-md">
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" title="ইনভয়েস মুছে ফেলুন" onClick={() => { setDeletingInvoice(inv); setIsDeleteDialogOpen(true); }} className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" title="প্রিন্ট করুন" onClick={() => window.print()} className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md">
+                            <Printer className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>
         </Card>
       </div>
+      ) : (
+        /* CREATE / CONVERT INVOICE IN-PAGE VIEW (Direct Page View, No Popup Overlay) */
+        <div className="space-y-4 animate-in fade-in duration-300 font-bengali">
+          <div className="w-full bg-slate-100 border-2 border-slate-300 shadow-xl rounded-md overflow-hidden flex flex-col min-h-[calc(100vh-100px)]">
+            
+            {/* FRAME TOP HEADER BAR */}
+            <div className="bg-white border-b border-slate-300 px-6 py-3.5 flex items-center justify-between shadow-xs flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => { setIsCreateInvoiceOpen(false); resetCreateForm(); }}
+                  className="w-9 h-9 rounded-md bg-emerald-100 hover:bg-emerald-200 text-emerald-700 font-bold shadow-xs flex-shrink-0 transition-colors"
+                  title="তালিকায় ফিরে যান"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+                <div>
+                  <span className="text-[10px] font-black tracking-widest text-emerald-600 uppercase block">
+                    ইনভয়েস ব্যবস্থাপনা
+                  </span>
+                  <h1 className="text-lg font-black text-slate-900 tracking-tight leading-none">
+                    {editingInvoiceId ? 'চালান সম্পাদনা করুন' : convertedOrderId ? 'বিক্রয় অর্ডার থেকে চালান তৈরি' : 'নতুন বিক্রয় ইনভয়েস তৈরি করুন'}
+                  </h1>
+                </div>
+              </div>
 
-      {/* CREATE / CONVERT INVOICE OVERLAY (1:1 Screenshot Exact Replica in Dokan Light Theme) */}
-      {isCreateInvoiceOpen && (
-        <div className="fixed inset-0 sm:left-[72px] z-[60] bg-slate-100 overflow-y-auto font-bengali flex flex-col justify-between">
-          
-          {/* TOP HEADER BAR */}
-          <div className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-50 flex items-center justify-between shadow-xs">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-orange-100 flex items-center justify-center text-orange-600 font-bold shadow-xs">
-                <Receipt className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[10px] font-black tracking-widest text-orange-600 uppercase">
-                  ইনভয়েস ব্যবস্থাপনা
-                </span>
-                <h1 className="text-xl font-black text-slate-900 tracking-tight">
-                  {editingInvoiceId ? 'চালান সম্পাদনা করুন' : convertedOrderId ? 'বিক্রয় অর্ডার থেকে চালান তৈরি' : 'নতুন বিক্রয় ইনভয়েস তৈরি করুন'}
-                </h1>
-              </div>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => { setIsCreateInvoiceOpen(false); resetCreateForm(); }}
+                className="h-9 w-9 rounded-md hover:bg-rose-50 hover:text-rose-600 text-slate-500 transition-colors"
+                title="বন্ধ করুন"
+              >
+                <X className="w-5 h-5" />
+              </Button>
             </div>
 
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={() => { setIsCreateInvoiceOpen(false); resetCreateForm(); }}
-              className="h-9 w-9 rounded-xl hover:bg-slate-100 text-slate-500"
-            >
-              <X className="w-5 h-5" />
-            </Button>
-          </div>
-
-          {/* MAIN FORM GRID */}
-          <form onSubmit={handleCreateInvoiceSubmit} className="p-4 md:p-6 w-full space-y-6 flex-1">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              
-              {/* LEFT 9 COLUMNS: 7 STEPS */}
-              <div className="lg:col-span-9 space-y-5">
+            {/* MAIN FORM GRID INSIDE FRAME */}
+            <form onSubmit={handleCreateInvoiceSubmit} className="p-4 md:p-6 w-full space-y-6 flex-1 overflow-y-auto">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 
-                {/* STEP 1: Shop & Basics */}
-                <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
+                {/* LEFT 9 COLUMNS: 7 STEPS */}
+                <div className="lg:col-span-9 space-y-5">
+                <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
                   <CardContent className="p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">১</span>
+                        <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">১</span>
                         দোকান ও প্রাথমিক তথ্য
                       </Label>
                       <button
@@ -808,7 +1156,7 @@ function InvoicesContent() {
                           setIsNewCustomer(!isNewCustomer);
                           setSelectedCustomer(null);
                         }}
-                        className="text-xs font-bold text-orange-600 hover:underline flex items-center gap-1"
+                        className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
                       >
                         {isNewCustomer ? '← তালিকা থেকে বাছুন' : '+ নতুন কাস্টমার এন্ট্রি করুন'}
                       </button>
@@ -832,7 +1180,7 @@ function InvoicesContent() {
                             placeholder="কাস্টমারের নাম"
                             value={newCustomerData.name}
                             onChange={e => setNewCustomerData({ ...newCustomerData, name: e.target.value })}
-                            className="rounded-xl h-11 bg-slate-50 border-slate-200 text-xs font-bold"
+                            className="rounded-md h-11 bg-slate-50 border-slate-200 text-xs font-bold"
                           />
                         )}
                       </div>
@@ -843,7 +1191,7 @@ function InvoicesContent() {
                         <Input
                           disabled
                           value="স্বয়ংক্রিয় (অটো জেনারেট)"
-                          className="rounded-xl h-11 bg-slate-100 border-slate-200 text-xs font-bold text-slate-500 cursor-not-allowed"
+                          className="rounded-md h-11 bg-slate-100 border-slate-200 text-xs font-bold text-slate-500 cursor-not-allowed"
                         />
                       </div>
 
@@ -855,7 +1203,7 @@ function InvoicesContent() {
                             type="text"
                             value={invoiceDate || toBengaliDigits(format(new Date(), 'dd/MM/yyyy'))}
                             onChange={e => setInvoiceDate(e.target.value)}
-                            className="rounded-xl h-11 bg-slate-50 border-slate-200 text-xs font-bold font-bengali pr-9"
+                            className="rounded-md h-11 bg-slate-50 border-slate-200 text-xs font-bold font-bengali pr-9"
                           />
                           <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                         </div>
@@ -864,9 +1212,9 @@ function InvoicesContent() {
 
                     {/* Customer Existing Due Alert Box */}
                     {selectedCustomer && (
-                      <div className="p-3.5 bg-rose-50/80 border border-rose-200 rounded-xl flex items-center justify-between text-xs font-bengali mt-3">
+                      <div className="p-3.5 bg-rose-50/80 border border-rose-200 rounded-md flex items-center justify-between text-xs font-bengali mt-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
+                          <div className="w-8 h-8 rounded-md bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
                             <AlertCircle className="w-4 h-4" />
                           </div>
                           <div>
@@ -885,18 +1233,18 @@ function InvoicesContent() {
                 </Card>
 
                 {/* STEP 2: Item Lines */}
-                <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
+                <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
                   <CardContent className="p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">২</span>
+                        <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">২</span>
                         পণ্যসমূহ (আইটেম লাইন)
                       </Label>
                       <Button 
                         type="button"
                         onClick={handleAddCartItem}
                         size="sm" 
-                        className="h-8 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs"
+                        className="h-8 px-3 rounded-md bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs"
                       >
                         <Plus className="w-3.5 h-3.5 mr-1" /> নতুন সারি যোগ
                       </Button>
@@ -922,7 +1270,7 @@ function InvoicesContent() {
                     />
 
                     {/* Table matching screenshot columns */}
-                    <div className="border border-slate-200 rounded-xl overflow-x-auto">
+                    <div className="border border-slate-200 rounded-md overflow-x-auto">
                       <Table>
                         <TableHeader className="bg-slate-50">
                           <TableRow className="text-[11px]">
@@ -951,15 +1299,15 @@ function InvoicesContent() {
                               <TableCell className="text-center text-slate-400">—</TableCell>
                               <TableCell className="text-center">
                                 <div className="inline-flex items-center gap-1.5">
-                                  <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity - 1)} className="w-6 h-6 rounded bg-slate-100 font-bold">-</button>
+                                  <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity - 1)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold">-</button>
                                   <span className="font-bold">{toBengaliDigits(item.quantity)} {item.unit}</span>
-                                  <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity + 1)} className="w-6 h-6 rounded bg-slate-100 font-bold">+</button>
+                                  <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity + 1)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold">+</button>
                                 </div>
                               </TableCell>
                               <TableCell className="text-right font-medium text-slate-600">৳{toBengaliDigits((item.price || 0).toLocaleString('en-IN'))}</TableCell>
                               <TableCell className="text-right font-black text-slate-900">৳{toBengaliDigits(((item.price || 0) * item.quantity).toLocaleString('en-IN'))}</TableCell>
                               <TableCell className="text-center">
-                                <button type="button" onClick={() => handleRemoveCartItem(item.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded">
+                                <button type="button" onClick={() => handleRemoveCartItem(item.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded-sm">
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </TableCell>
@@ -972,10 +1320,10 @@ function InvoicesContent() {
                 </Card>
 
                 {/* STEP 3: Transport & Delivery Details */}
-                <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
+                <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
                   <CardContent className="p-5 space-y-4">
                     <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">৩</span>
+                      <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">৩</span>
                       পরিবহন ও সাইটের তথ্য
                     </Label>
 
@@ -986,7 +1334,7 @@ function InvoicesContent() {
                           value={vehicleNo}
                           onChange={e => setVehicleNo(e.target.value)}
                           placeholder="ঢাকা মেট্রো-ট ১১-৫৪৩২"
-                          className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                          className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
                         />
                       </div>
 
@@ -996,7 +1344,7 @@ function InvoicesContent() {
                           value={driverName}
                           onChange={e => setDriverName(e.target.value)}
                           placeholder="মোঃ রফিক"
-                          className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                          className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
                         />
                       </div>
 
@@ -1006,7 +1354,7 @@ function InvoicesContent() {
                           value={driverPhone}
                           onChange={e => setDriverPhone(e.target.value)}
                           placeholder="০১৭XXXXXXXX"
-                          className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                          className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
                         />
                       </div>
 
@@ -1016,7 +1364,7 @@ function InvoicesContent() {
                           value={deliveryAddress}
                           onChange={e => setDeliveryAddress(e.target.value)}
                           placeholder="সাইট-২, উত্তরা, ঢাকা"
-                          className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                          className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
                         />
                       </div>
                     </div>
@@ -1027,10 +1375,10 @@ function InvoicesContent() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   
                   {/* STEP 4: Totals, Discount & Tax */}
-                  <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
+                  <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
                     <CardContent className="p-5 space-y-4">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">৪</span>
+                        <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">৪</span>
                         মোট বিল, ছাড় ও অতিরিক্ত খরচ
                       </Label>
 
@@ -1038,7 +1386,7 @@ function InvoicesContent() {
                         <div className="space-y-1">
                           <Label className="text-[11px] font-bold text-slate-600">ছাড়ের ধরণ</Label>
                           <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
-                            <SelectTrigger className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali">
+                            <SelectTrigger className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali">
                               <SelectValue>
                                 {discountType === 'percentage' ? 'শতকরা (%)' : 'ফ্ল্যাট (৳)'}
                               </SelectValue>
@@ -1061,7 +1409,7 @@ function InvoicesContent() {
                               else setDiscountFlat(val);
                             }}
                             placeholder="০"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali"
+                            className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali"
                           />
                         </div>
 
@@ -1070,7 +1418,7 @@ function InvoicesContent() {
                           <Input 
                             disabled
                             value={`৳ ${toBengaliDigits(computedDiscount.toLocaleString('en-IN'))}`}
-                            className="rounded-xl h-10 bg-slate-100 border-slate-200 text-xs font-black text-emerald-600 cursor-not-allowed font-bengali"
+                            className="rounded-md h-10 bg-slate-100 border-slate-200 text-xs font-black text-emerald-600 cursor-not-allowed font-bengali"
                           />
                         </div>
                       </div>
@@ -1082,7 +1430,7 @@ function InvoicesContent() {
                             <button
                               type="button"
                               onClick={() => handleSaveDefaultLabor(laborCost || 0)}
-                              className="text-[9px] font-black text-amber-700 bg-amber-100 hover:bg-amber-200 px-1.5 py-0.5 rounded border border-amber-300 transition-colors cursor-pointer font-bengali"
+                              className="text-[9px] font-black text-amber-700 bg-amber-100 hover:bg-amber-200 px-1.5 py-0.5 rounded-sm border border-amber-300 transition-colors cursor-pointer font-bengali"
                               title="বর্তমানে দেওয়া এই সংখ্যাটি সব সময় ডিফল্ট হিসেবে রাখতে এখানে ক্লিক করুন"
                             >
                               📌 ডিফল্ট সেভ করুন
@@ -1093,7 +1441,7 @@ function InvoicesContent() {
                             value={laborCost || ''}
                             onChange={e => setLaborCost(parseFloat(e.target.value) || 0)}
                             placeholder="০"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold text-amber-600 font-bengali"
+                            className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold text-amber-600 font-bengali"
                           />
                         </div>
 
@@ -1104,7 +1452,7 @@ function InvoicesContent() {
                             value={shippingCost || ''}
                             onChange={e => setShippingCost(parseFloat(e.target.value) || 0)}
                             placeholder="০"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali"
+                            className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali"
                           />
                         </div>
                       </div>
@@ -1112,10 +1460,10 @@ function InvoicesContent() {
                   </Card>
 
                   {/* STEP 5: Register Payment */}
-                  <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
+                  <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
                     <CardContent className="p-5 space-y-4">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5 font-bengali">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">৫</span>
+                        <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">৫</span>
                         পেমেন্ট এন্ট্রি বিবরণ
                       </Label>
 
@@ -1126,7 +1474,7 @@ function InvoicesContent() {
                             name="paymentOption" 
                             checked={paymentOption === 'now'}
                             onChange={() => setPaymentOption('now')}
-                            className="accent-orange-600"
+                            className="accent-emerald-600"
                           />
                           <span>● এখনই পেমেন্ট জমা নিবেন</span>
                         </label>
@@ -1137,7 +1485,7 @@ function InvoicesContent() {
                             name="paymentOption" 
                             checked={paymentOption === 'later'}
                             onChange={() => setPaymentOption('later')}
-                            className="accent-orange-600"
+                            className="accent-emerald-600"
                           />
                           <span>○ পরে পেমেন্ট রেকর্ড করবেন</span>
                         </label>
@@ -1150,7 +1498,7 @@ function InvoicesContent() {
                               <div className="space-y-1 sm:col-span-1">
                                 <Label className="text-[11px] font-bold text-slate-600">পেমেন্ট মাধ্যম</Label>
                                 <Select value={invoicePaymentMethod} onValueChange={(val: string | null) => setInvoicePaymentMethod(val || 'Cash')}>
-                                  <SelectTrigger className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali">
+                                  <SelectTrigger className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali">
                                     <SelectValue>
                                       {invoicePaymentMethod === 'Cash' ? '💵 নগদ (Cash)' :
                                        invoicePaymentMethod === 'Split' ? '💵+📄 নগদ ও চেক (স্প্লিট পেমেন্ট)' :
@@ -1178,7 +1526,7 @@ function InvoicesContent() {
                                       value={cashPaidAmount || ''}
                                       onChange={e => setCashPaidAmount(parseFloat(e.target.value) || 0)}
                                       placeholder="যেমন: ১০,০০০"
-                                      className="rounded-xl h-10 bg-emerald-50/70 border-emerald-300 text-xs font-black text-emerald-700 font-bengali"
+                                      className="rounded-md h-10 bg-emerald-50/70 border-emerald-300 text-xs font-black text-emerald-700 font-bengali"
                                     />
                                   </div>
                                   <div className="space-y-1">
@@ -1188,7 +1536,7 @@ function InvoicesContent() {
                                       value={chequePaidAmount || ''}
                                       onChange={e => setChequePaidAmount(parseFloat(e.target.value) || 0)}
                                       placeholder="যেমন: ৭০,০০০"
-                                      className="rounded-xl h-10 bg-purple-50/70 border-purple-300 text-xs font-black text-purple-700 font-bengali"
+                                      className="rounded-md h-10 bg-purple-50/70 border-purple-300 text-xs font-black text-purple-700 font-bengali"
                                     />
                                   </div>
                                 </>
@@ -1205,7 +1553,7 @@ function InvoicesContent() {
                                       if (invoicePaymentMethod === 'Cheque') setChequePaidAmount(val);
                                     }}
                                     placeholder="০.০০"
-                                    className="rounded-xl h-10 bg-emerald-50/60 border-emerald-200 text-xs font-black text-emerald-600 font-bengali"
+                                    className="rounded-md h-10 bg-emerald-50/60 border-emerald-200 text-xs font-black text-emerald-600 font-bengali"
                                   />
                                 </div>
                               )}
@@ -1213,7 +1561,7 @@ function InvoicesContent() {
 
                             {/* Total Paid Display Banner for Split */}
                             {invoicePaymentMethod === 'Split' && (
-                              <div className="p-2.5 bg-slate-100/80 rounded-xl border border-slate-200 flex items-center justify-between text-xs font-bold font-bengali">
+                              <div className="p-2.5 bg-slate-100/80 rounded-md border border-slate-200 flex items-center justify-between text-xs font-bold font-bengali">
                                 <span className="text-slate-600">মোট প্রাপ্তি (নগদ ৳{toBengaliDigits(cashPaidAmount.toLocaleString('en-IN'))} + চেক ৳{toBengaliDigits(chequePaidAmount.toLocaleString('en-IN'))}):</span>
                                 <span className="text-sm font-black text-emerald-700">৳{toBengaliDigits((cashPaidAmount + chequePaidAmount).toLocaleString('en-IN'))}</span>
                               </div>
@@ -1221,14 +1569,14 @@ function InvoicesContent() {
 
                             {/* BANK TRANSFER (SAVED BANK ACCOUNTS SELECTOR) */}
                             {invoicePaymentMethod === 'Bank' && (
-                              <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl space-y-2 font-bengali text-xs animate-in fade-in-0">
+                              <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-md space-y-2 font-bengali text-xs animate-in fade-in-0">
                                 <p className="font-bold text-blue-900 flex items-center gap-1">
                                   🏦 সেভ করা দোকান ব্যাংক অ্যাকাউন্ট
                                 </p>
                                 <div className="space-y-1">
                                   <Label className="text-[10px] font-bold text-slate-600">গ্রহীতার ব্যাংক অ্যাকাউন্ট (দোকান)</Label>
                                   <Select value={selectedShopBank} onValueChange={(val: string | null) => setSelectedShopBank(val || '')}>
-                                    <SelectTrigger className="h-8 rounded-lg bg-white text-xs font-bold border-slate-200">
+                                    <SelectTrigger className="h-8 rounded-md bg-white text-xs font-bold border-slate-200">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent className="font-bengali text-xs font-bold">
@@ -1255,7 +1603,7 @@ function InvoicesContent() {
                                     placeholder="Txn ID" 
                                     value={transactionRef} 
                                     onChange={e => setTransactionRef(e.target.value)}
-                                    className="h-8 rounded-lg bg-white text-xs font-mono"
+                                    className="h-8 rounded-md bg-white text-xs font-mono"
                                   />
                                 </div>
                               </div>
@@ -1263,7 +1611,7 @@ function InvoicesContent() {
 
                             {/* BANK TO BANK TRANSFER (RECEIVER SAVED SELECTOR + SENDER CUSTOMER INPUTS) */}
                             {invoicePaymentMethod === 'BankToBank' && (
-                              <div className="p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl space-y-3 font-bengali text-xs animate-in fade-in-0">
+                              <div className="p-3 bg-indigo-50/60 border border-indigo-100 rounded-md space-y-3 font-bengali text-xs animate-in fade-in-0">
                                 <p className="font-bold text-indigo-900 flex items-center gap-1">
                                   🔄 ব্যাংক-টু-ব্যাংক ট্রান্সফার বিস্তারিত
                                 </p>
@@ -1274,7 +1622,7 @@ function InvoicesContent() {
                                     ১. গ্রহীতার ব্যাংক অ্যাকাউন্ট (দোকানের সেভ করা অ্যাকাউন্ট)
                                   </Label>
                                   <Select value={selectedShopBank} onValueChange={(val: string | null) => setSelectedShopBank(val || '')}>
-                                    <SelectTrigger className="h-8 rounded-lg bg-white text-xs font-bold border-indigo-200">
+                                    <SelectTrigger className="h-8 rounded-md bg-white text-xs font-bold border-indigo-200">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent className="font-bengali text-xs font-bold">
@@ -1308,7 +1656,7 @@ function InvoicesContent() {
                                         placeholder="যেমন: ইবিএল / প্রাইম ব্যাংক" 
                                         value={senderBankName} 
                                         onChange={e => setSenderBankName(e.target.value)}
-                                        className="h-8 rounded-lg bg-white text-xs"
+                                        className="h-8 rounded-md bg-white text-xs"
                                       />
                                     </div>
                                     <div>
@@ -1317,7 +1665,7 @@ function InvoicesContent() {
                                         placeholder="A/C No or Name" 
                                         value={senderAccountNo} 
                                         onChange={e => setSenderAccountNo(e.target.value)}
-                                        className="h-8 rounded-lg bg-white text-xs font-mono"
+                                        className="h-8 rounded-md bg-white text-xs font-mono"
                                       />
                                     </div>
                                     <div className="col-span-2">
@@ -1326,7 +1674,7 @@ function InvoicesContent() {
                                         placeholder="Txn ID / Ref No" 
                                         value={senderTxnRef} 
                                         onChange={e => setSenderTxnRef(e.target.value)}
-                                        className="h-8 rounded-lg bg-white text-xs font-mono"
+                                        className="h-8 rounded-md bg-white text-xs font-mono"
                                       />
                                     </div>
                                   </div>
@@ -1336,7 +1684,7 @@ function InvoicesContent() {
 
                             {/* CHEQUE DETAILS (Show when method is Cheque or Split or chequePaidAmount > 0) */}
                             {(invoicePaymentMethod === 'Cheque' || invoicePaymentMethod === 'Split' || chequePaidAmount > 0) && (
-                              <div className="p-3 bg-purple-50/80 border border-purple-200 rounded-xl space-y-2 font-bengali text-xs animate-in fade-in-0 shadow-2xs">
+                              <div className="p-3 bg-purple-50/80 border border-purple-200 rounded-md space-y-2 font-bengali text-xs animate-in fade-in-0 shadow-2xs">
                                 <p className="font-bold text-purple-900 flex items-center gap-1.5">
                                   📄 অভাঙানো চেকের বিস্তারিত (পেন্ডিং চেকের তালিকায় যুক্ত হবে)
                                 </p>
@@ -1347,7 +1695,7 @@ function InvoicesContent() {
                                       placeholder="যেমন: ডাচ বাংলা ব্যাংক" 
                                       value={bankName} 
                                       onChange={e => setBankName(e.target.value)}
-                                      className="h-8 rounded-lg bg-white text-xs"
+                                      className="h-8 rounded-md bg-white text-xs"
                                     />
                                   </div>
                                   <div>
@@ -1356,7 +1704,7 @@ function InvoicesContent() {
                                       placeholder="CQ-10023" 
                                       value={chequeNo} 
                                       onChange={e => setChequeNo(e.target.value)}
-                                      className="h-8 rounded-lg bg-white text-xs font-mono"
+                                      className="h-8 rounded-md bg-white text-xs font-mono"
                                     />
                                   </div>
                                   <div>
@@ -1365,7 +1713,7 @@ function InvoicesContent() {
                                       type="date" 
                                       value={chequeDate} 
                                       onChange={e => setChequeDate(e.target.value)}
-                                      className="h-8 rounded-lg bg-white text-xs"
+                                      className="h-8 rounded-md bg-white text-xs"
                                     />
                                   </div>
                                 </div>
@@ -1383,10 +1731,10 @@ function InvoicesContent() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   
                   {/* STEP 6: Signatures & Handled By */}
-                  <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
+                  <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
                     <CardContent className="p-5 space-y-3">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">৬</span>
+                        <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">৬</span>
                         কর্মকর্তা ও গোডাউন নির্ধারণ
                       </Label>
 
@@ -1397,7 +1745,7 @@ function InvoicesContent() {
                             value={preparedBy}
                             onChange={e => setPreparedBy(e.target.value)}
                             placeholder="প্রস্তুতকারীর নাম"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                            className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
                           />
                         </div>
 
@@ -1407,7 +1755,7 @@ function InvoicesContent() {
                             value={authorizedBy}
                             onChange={e => setAuthorizedBy(e.target.value)}
                             placeholder="ম্যানেজারের নাম"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                            className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
                           />
                         </div>
 
@@ -1417,14 +1765,14 @@ function InvoicesContent() {
                             value={receivedBy}
                             onChange={e => setReceivedBy(e.target.value)}
                             placeholder="গ্রহীতার নাম"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                            className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
                           />
                         </div>
 
                         <div className="space-y-1">
                           <Label className="text-[11px] font-bold text-slate-600">গোডাউন / ওয়্যারহাউজ</Label>
                           <Select value={warehouse} onValueChange={(val: string | null) => setWarehouse(val || 'Main')}>
-                            <SelectTrigger className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold">
+                            <SelectTrigger className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent className="font-bengali text-xs font-bold">
@@ -1437,10 +1785,10 @@ function InvoicesContent() {
                   </Card>
 
                   {/* STEP 7: Notes (Optional) */}
-                  <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
+                  <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
                     <CardContent className="p-5 space-y-3">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">৭</span>
+                        <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">৭</span>
                         বিশেষ নির্দেশনার নোট (ঐচ্ছিক)
                       </Label>
 
@@ -1449,7 +1797,7 @@ function InvoicesContent() {
                         value={invoiceNote}
                         onChange={e => setInvoiceNote(e.target.value)}
                         placeholder="যে কোনো বিশেষ নির্দেশনার নোট লিখুন..."
-                        className="w-full rounded-xl p-3 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-orange-500"
+                        className="w-full rounded-md p-3 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-emerald-500"
                       />
                     </CardContent>
                   </Card>
@@ -1462,14 +1810,14 @@ function InvoicesContent() {
               <div className="lg:col-span-3 space-y-4">
                 
                 {/* CARD 1: INVOICE SUMMARY */}
-                <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+                <Card className="bg-white border-slate-200/80 rounded-md shadow-xs overflow-hidden">
                   <CardContent className="p-5 space-y-4 font-bengali">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                       <div className="flex items-center gap-2">
-                        <Receipt className="w-4 h-4 text-orange-600" />
+                        <Receipt className="w-4 h-4 text-emerald-600" />
                         <h3 className="text-sm font-black text-slate-900 tracking-tight">ইনভয়েস সারসংক্ষেপ</h3>
                       </div>
-                      <span className="bg-orange-50 text-orange-600 text-[10px] font-black px-2 py-0.5 rounded border border-orange-200 uppercase tracking-widest">
+                      <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-2 py-0.5 rounded-sm border border-emerald-200 uppercase tracking-widest">
                         ড্রাফট
                       </span>
                     </div>
@@ -1555,7 +1903,7 @@ function InvoicesContent() {
                 </Card>
 
                 {/* CARD 2: PAYMENT SUMMARY */}
-                <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+                <Card className="bg-white border-slate-200/80 rounded-md shadow-xs overflow-hidden">
                   <CardContent className="p-5 space-y-3 font-bengali">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                       <div className="flex items-center gap-2">
@@ -1564,7 +1912,7 @@ function InvoicesContent() {
                       </div>
                     </div>
 
-                    <div className="text-center py-2 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="text-center py-2 bg-slate-50 rounded-md border border-slate-100">
                       <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase block">
                         {invoicePaidAmount > 0 ? `জমা: ৳ ${toBengaliDigits(invoicePaidAmount.toLocaleString('en-IN'))}` : 'কোনো পেমেন্ট দেওয়া হয়নি'}
                       </span>
@@ -1580,12 +1928,10 @@ function InvoicesContent() {
               </div>
 
             </div>
-          </form>
-
-          {/* STICKY BOTTOM ACTION BAR */}
-          <div className="bg-white border-t border-slate-200 px-6 py-4 sticky bottom-0 z-50 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg font-bengali">
+          {/* STICKY BOTTOM ACTION BAR INSIDE FRAME */}
+          <div className="bg-white border-t border-slate-300 px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm font-bengali flex-shrink-0">
             <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold">
-              <Lightbulb className="w-4 h-4 text-orange-500 flex-shrink-0" />
+              <Lightbulb className="w-4 h-4 text-emerald-600 flex-shrink-0" />
               <span>সংরক্ষণের পূর্বে সব তথ্য পুনরায় পরীক্ষা করে নিন।</span>
             </div>
 
@@ -1594,34 +1940,27 @@ function InvoicesContent() {
                 type="button"
                 variant="outline" 
                 onClick={() => { setIsCreateInvoiceOpen(false); resetCreateForm(); }}
-                className="rounded-xl h-11 px-5 font-bold text-slate-600 border-slate-200"
+                className="rounded-md h-11 px-5 font-bold text-slate-600 border-slate-300 hover:bg-slate-50"
               >
                 বাতিল করুন
               </Button>
               <Button 
-                type="button"
-                variant="secondary"
-                onClick={handleCreateInvoiceSubmit}
-                className="rounded-xl h-11 px-5 font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200"
-              >
-                ড্রাফট সেভ করুন
-              </Button>
-              <Button 
                 type="submit" 
                 onClick={handleCreateInvoiceSubmit}
-                className="rounded-xl h-11 px-6 font-black text-white bg-orange-600 hover:bg-orange-700 shadow-md shadow-orange-600/20 active:scale-95 transition-all"
+                className="rounded-md h-11 px-6 font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
               >
                 চালান সম্পূর্ণ করুন ✓
               </Button>
             </div>
           </div>
-
+          </form>
         </div>
+      </div>
       )}
 
       {/* VIEW INVOICE DETAIL MODAL */}
       <Dialog open={!!selectedInvoice} onOpenChange={() => setSelectedInvoice(null)}>
-        <DialogContent className="max-w-3xl rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-3xl rounded-md p-0 overflow-hidden border-none shadow-2xl">
           <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
             <DialogHeader>
               <div className="flex items-center justify-between">
@@ -1629,7 +1968,7 @@ function InvoicesContent() {
                   <DialogTitle className="font-bengali text-2xl font-black">চালান (ইনভয়েস) বিস্তারিত</DialogTitle>
                   <p className="text-slate-400 font-mono text-sm mt-1">#{selectedInvoice?.id.toUpperCase()}</p>
                 </div>
-                <div className="w-12 h-12 bg-emerald-500/20 rounded-2xl flex items-center justify-center border border-emerald-500/30">
+                <div className="w-12 h-12 bg-emerald-500/20 rounded-md flex items-center justify-center border border-emerald-500/30">
                   <Receipt className="w-6 h-6 text-emerald-500" />
                 </div>
               </div>
@@ -1638,13 +1977,13 @@ function InvoicesContent() {
 
           {selectedInvoice && (
             <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar bg-white font-bengali">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5 bg-slate-50 rounded-2xl border border-slate-100">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5 bg-slate-50 rounded-md border border-slate-100">
                 <div><p className="text-slate-400 text-[11px] uppercase tracking-widest font-black mb-1">ক্রেতা</p><p className="font-black text-slate-800">{selectedInvoice.customerName}</p></div>
                 <div><p className="text-slate-400 text-[11px] uppercase tracking-widest font-black mb-1">তারিখ</p><p className="font-bold text-slate-700 text-sm">{formatDate(selectedInvoice.createdAt)}</p></div>
                 <div><p className="text-slate-400 text-[11px] uppercase tracking-widest font-black mb-1">ফোন</p><p className="font-bold text-slate-700 text-sm">{selectedInvoice.customerPhone || '—'}</p></div>
                 <div>
                   <p className="text-slate-400 text-[11px] uppercase tracking-widest font-black mb-1">স্ট্যাটাস</p>
-                  <span className={cn("px-2.5 py-1 rounded-lg text-[10px] font-black uppercase inline-block",
+                  <span className={cn("px-2.5 py-1 rounded-md text-[10px] font-black uppercase inline-block",
                     (selectedInvoice.dueAmount || 0) <= 0 || selectedInvoice.paymentStatus === 'পরিশোধিত' || selectedInvoice.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-800' :
                       (selectedInvoice.paidAmount || 0) > 0 || selectedInvoice.paymentStatus === 'আংশিক' || selectedInvoice.paymentStatus === 'partial' ? 'bg-amber-100 text-amber-800' :
                         'bg-rose-100 text-rose-800'
@@ -1655,7 +1994,7 @@ function InvoicesContent() {
                 </div>
               </div>
 
-              <div className="border border-slate-200 rounded-2xl overflow-hidden">
+              <div className="border border-slate-200 rounded-md overflow-hidden">
                 <table className="w-full text-sm border-collapse">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200">
@@ -1694,7 +2033,7 @@ function InvoicesContent() {
 
               {/* Transport & Site Details Box if available */}
               {(selectedInvoice.vehicleNo || selectedInvoice.driverName || selectedInvoice.deliveryAddress) && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-orange-50/60 border border-orange-200/80 rounded-2xl text-xs font-bengali">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-emerald-50/60 border border-emerald-200/80 rounded-md text-xs font-bengali">
                   <div>
                     <span className="text-[11px] font-bold text-slate-500 block">গাড়ি / ট্রাক নম্বর</span>
                     <span className="font-black text-slate-900">{selectedInvoice.vehicleNo || '—'}</span>
@@ -1712,14 +2051,14 @@ function InvoicesContent() {
 
               {/* Add Payment Form */}
               {(selectedInvoice.dueAmount || 0) > 0 && (
-                <div className="p-5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 rounded-2xl space-y-3 shadow-sm">
+                <div className="p-5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 rounded-md space-y-3 shadow-sm">
                   <div className="flex items-center gap-2 mb-2">
                     <Banknote className="w-5 h-5 text-emerald-600" />
                     <p className="font-black text-emerald-900">বকেয়া আদায় করুন</p>
                   </div>
                   <div className="flex gap-3">
-                    <Input type="number" value={addPayment} onChange={e => setAddPayment(parseFloat(e.target.value) || 0)} placeholder="পরিমাণ লিখুন" className="h-12 rounded-xl text-lg font-bold border-emerald-200 focus:border-emerald-500 bg-white" />
-                    <Button onClick={handleAddPayment} className="bg-emerald-600 hover:bg-emerald-700 font-bengali rounded-xl h-12 px-6 font-black text-base shadow-lg shadow-emerald-600/20 active:scale-95 transition-all">
+                    <Input type="number" value={addPayment} onChange={e => setAddPayment(parseFloat(e.target.value) || 0)} placeholder="পরিমাণ লিখুন" className="h-12 rounded-md text-lg font-bold border-emerald-200 focus:border-emerald-500 bg-white" />
+                    <Button onClick={handleAddPayment} className="bg-emerald-600 hover:bg-emerald-700 font-bengali rounded-md h-12 px-6 font-black text-base shadow-md shadow-emerald-600/20 active:scale-95 transition-all">
                       পেমেন্ট জমা দিন
                     </Button>
                   </div>
@@ -1732,7 +2071,7 @@ function InvoicesContent() {
               <Button 
                 variant="outline"
                 onClick={() => setIsGatePassOpen(true)}
-                className="font-bengali rounded-xl font-bold text-orange-600 border-orange-200 bg-orange-50 hover:bg-orange-100"
+                className="font-bengali rounded-md font-bold text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100"
               >
                 🚛 গেট পাস
               </Button>
@@ -1741,21 +2080,21 @@ function InvoicesContent() {
                   <Button
                     variant="outline"
                     onClick={() => handleEditInvoice(selectedInvoice)}
-                    className="font-bengali rounded-xl font-bold text-amber-700 border-amber-200 bg-amber-50 hover:bg-amber-100 flex items-center gap-1"
+                    className="font-bengali rounded-md font-bold text-amber-700 border-amber-200 bg-amber-50 hover:bg-amber-100 flex items-center gap-1"
                   >
                     <Edit2 className="w-4 h-4" /> এডিট করুন
                   </Button>
                   <Button
                     variant="outline"
                     onClick={() => { setDeletingInvoice(selectedInvoice); setIsDeleteDialogOpen(true); }}
-                    className="font-bengali rounded-xl font-bold text-rose-700 border-rose-200 bg-rose-50 hover:bg-rose-100 flex items-center gap-1"
+                    className="font-bengali rounded-md font-bold text-rose-700 border-rose-200 bg-rose-50 hover:bg-rose-100 flex items-center gap-1"
                   >
                     <Trash2 className="w-4 h-4" /> মুছে ফেলুন
                   </Button>
                 </>
               )}
             </div>
-            <Button variant="outline" onClick={() => setSelectedInvoice(null)} className="font-bengali rounded-xl font-bold text-slate-500 border-slate-200">
+            <Button variant="outline" onClick={() => setSelectedInvoice(null)} className="font-bengali rounded-md font-bold text-slate-500 border-slate-200">
               বন্ধ করুন
             </Button>
           </div>
@@ -1764,22 +2103,22 @@ function InvoicesContent() {
 
       {/* GATE PASS / DELIVERY CHALAN MODAL */}
       <Dialog open={isGatePassOpen} onOpenChange={setIsGatePassOpen}>
-        <DialogContent className="max-w-2xl rounded-[2rem] p-6 bg-white font-bengali">
+        <DialogContent className="max-w-2xl rounded-md p-6 bg-white font-bengali">
           <DialogHeader className="border-b border-slate-100 pb-4">
             <div className="flex items-center justify-between">
               <div>
                 <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2">
                   <span>মেসার্স রড & সিমেন্ট স্টোর</span>
                 </DialogTitle>
-                <p className="text-xs font-bold text-orange-600 tracking-wider uppercase mt-0.5">ডেলিভারি চালান / গেট পাস (Delivery Chalan & Gate Pass)</p>
+                <p className="text-xs font-bold text-emerald-600 tracking-wider uppercase mt-0.5">ডেলিভারি চালান / গেট পাস (Delivery Chalan & Gate Pass)</p>
               </div>
-              <span className="text-xs font-mono font-bold bg-slate-100 px-3 py-1 rounded-lg">#{selectedInvoice?.id.toUpperCase()}</span>
+              <span className="text-xs font-mono font-bold bg-slate-100 px-3 py-1 rounded-sm">#{selectedInvoice?.id.toUpperCase()}</span>
             </div>
           </DialogHeader>
 
           {selectedInvoice && (
             <div className="space-y-4 py-3 text-xs">
-              <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-md">
                 <div>
                   <span className="font-bold text-slate-400 text-[11px] block">কাস্টমার / দোকান</span>
                   <span className="font-black text-slate-900 text-sm">{selectedInvoice.customerName}</span>
@@ -1791,7 +2130,7 @@ function InvoicesContent() {
                 </div>
                 <div>
                   <span className="font-bold text-slate-400 text-[11px] block">গাড়ি / ট্রাক নম্বর</span>
-                  <span className="font-black text-orange-600">{selectedInvoice.vehicleNo || 'তথ্য দেওয়া হয়নি'}</span>
+                  <span className="font-black text-emerald-600">{selectedInvoice.vehicleNo || 'তথ্য দেওয়া হয়নি'}</span>
                 </div>
                 <div>
                   <span className="font-bold text-slate-400 text-[11px] block">ড্রাইভারের নাম ও মোবাইল</span>
@@ -1800,7 +2139,7 @@ function InvoicesContent() {
               </div>
 
               {/* Items Table for Gate Pass */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <div className="border border-slate-200 rounded-md overflow-hidden">
                 <Table>
                   <TableHeader className="bg-slate-100">
                     <TableRow className="text-[11px]">
@@ -1815,7 +2154,7 @@ function InvoicesContent() {
                       <TableRow key={idx} className="border-b border-slate-100">
                         <TableCell className="text-center font-bold text-slate-400">{idx + 1}</TableCell>
                         <TableCell className="font-black text-slate-800 text-sm">{item.name}</TableCell>
-                        <TableCell className="text-center font-black text-orange-600 text-base">{item.quantity}</TableCell>
+                        <TableCell className="text-center font-black text-emerald-600 text-base">{item.quantity}</TableCell>
                         <TableCell className="text-center font-bold text-slate-600">{item.unit}</TableCell>
                       </TableRow>
                     ))}
@@ -1832,10 +2171,10 @@ function InvoicesContent() {
           )}
 
           <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-            <Button variant="outline" onClick={() => setIsGatePassOpen(false)} className="rounded-xl font-bold">
+            <Button variant="outline" onClick={() => setIsGatePassOpen(false)} className="rounded-md font-bold">
               বন্ধ করুন
             </Button>
-            <Button onClick={() => window.print()} className="rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800">
+            <Button onClick={() => window.print()} className="rounded-md font-bold bg-slate-900 text-white hover:bg-slate-800">
               🖨️ গেট পাস প্রিন্ট করুন
             </Button>
           </div>
@@ -1844,9 +2183,9 @@ function InvoicesContent() {
 
       {/* DELETE INVOICE CONFIRMATION DIALOG */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent className="max-w-md rounded-3xl p-6 bg-white font-bengali">
+        <DialogContent className="max-w-md rounded-md p-6 bg-white font-bengali">
           <DialogHeader className="text-center sm:text-left">
-            <div className="mx-auto sm:mx-0 w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mb-3">
+            <div className="mx-auto sm:mx-0 w-12 h-12 rounded-md bg-rose-100 text-rose-600 flex items-center justify-center mb-3">
               <AlertCircle className="w-6 h-6" />
             </div>
             <DialogTitle className="text-lg font-black text-slate-900">
@@ -1864,7 +2203,7 @@ function InvoicesContent() {
             <Button 
               variant="outline" 
               onClick={() => { setIsDeleteDialogOpen(false); setDeletingInvoice(null); }} 
-              className="rounded-xl font-bold flex-1"
+              className="rounded-md font-bold flex-1"
               disabled={isDeleting}
             >
               বাতিল
@@ -1872,7 +2211,7 @@ function InvoicesContent() {
             <Button 
               onClick={handleDeleteInvoiceConfirm} 
               disabled={isDeleting}
-              className="rounded-xl font-black bg-rose-600 hover:bg-rose-700 text-white flex-1 shadow-md shadow-rose-600/20"
+              className="rounded-md font-black bg-rose-600 hover:bg-rose-700 text-white flex-1 shadow-md shadow-rose-600/20"
             >
               {isDeleting ? 'মুছে ফেলা হচ্ছে...' : 'হ্যাঁ, মুছে ফেলুন'}
             </Button>

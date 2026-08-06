@@ -21,7 +21,13 @@ import {
   MapPin,
   X,
   ShieldCheck,
-  Save
+  Save,
+  Calendar,
+  ChevronUp,
+  ChevronDown,
+  RotateCcw,
+  ArrowLeft,
+  Lightbulb
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -86,6 +92,24 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('সব');
   const [filterDue, setFilterDue] = useState('সব');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const [minDue, setMinDue] = useState('');
+  const [maxDue, setMaxDue] = useState('');
+  const [filterDivision, setFilterDivision] = useState('সব');
+
+  const handleResetFilters = () => {
+    setSearch('');
+    setStartDate('');
+    setEndDate('');
+    setFilterType('সব');
+    setFilterDue('সব');
+    setMinDue('');
+    setMaxDue('');
+    setFilterDivision('সব');
+  };
+
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editing, setEditing] = useState<Party | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -352,11 +376,13 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
   };
 
   const filtered = parties.filter((p) => {
-    const matchesSearch =
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.phone.includes(search) ||
-      (p.businessName && p.businessName.toLowerCase().includes(search.toLowerCase())) ||
-      (p.address && p.address.toLowerCase().includes(search.toLowerCase()));
+    const searchLower = search.toLowerCase();
+    const matchesSearch = !search ||
+      p.name?.toLowerCase().includes(searchLower) ||
+      p.phone?.includes(search) ||
+      (p.businessName && p.businessName.toLowerCase().includes(searchLower)) ||
+      (p.address && p.address.toLowerCase().includes(searchLower)) ||
+      (p.email && p.email.toLowerCase().includes(searchLower));
 
     const matchesType =
       filterType === 'সব' ||
@@ -369,14 +395,32 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
         ? (p.totalDue || 0) > 0
         : (p.totalDue || 0) <= 0;
 
-    return matchesSearch && matchesType && matchesDue;
+    let matchesDate = true;
+    if (startDate || endDate) {
+      const partyDate = p.joinedDate || '';
+      if (startDate && partyDate < startDate) matchesDate = false;
+      if (endDate && partyDate > endDate) matchesDate = false;
+    }
+
+    let matchesDueAmount = true;
+    const dueVal = p.totalDue || 0;
+    if (minDue && dueVal < parseFloat(minDue)) matchesDueAmount = false;
+    if (maxDue && dueVal > parseFloat(maxDue)) matchesDueAmount = false;
+
+    let matchesDivision = true;
+    if (filterDivision !== 'সব' && p.division !== filterDivision) {
+      matchesDivision = false;
+    }
+
+    return Boolean(matchesSearch) && matchesType && matchesDue && matchesDate && matchesDueAmount && matchesDivision;
   });
 
   const totalDue = parties.reduce((a, p) => a + (p.totalDue || 0), 0);
 
   return (
     <Shell>
-      <div className="space-y-5 font-bengali pb-10">
+      {!isAddOpen ? (
+        <div className="space-y-5 font-bengali pb-10">
         
         {/* 1. TOP TITLE, BREADCRUMB & HEADER ACTIONS */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -390,14 +434,14 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
           </div>
 
           <div className="flex items-center gap-2.5">
-            <Button variant="outline" className="h-9 px-3.5 border-slate-200 text-blue-600 bg-white hover:bg-slate-50 font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5">
+            <Button variant="outline" className="h-9 px-3.5 border-slate-200 text-blue-600 bg-white hover:bg-slate-50 font-bold text-xs rounded-md shadow-2xs flex items-center gap-1.5">
               <Receipt className="w-3.5 h-3.5 text-blue-600" />
               <span>রিপোর্ট এক্সপোর্ট</span>
             </Button>
 
             <Button
               onClick={handleOpenAdd}
-              className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5"
+              className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-md shadow-2xs flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
               <span>{isCustomer ? 'নতুন কাস্টমার' : 'নতুন সরবরাহকারী'}</span>
@@ -408,27 +452,27 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
         {/* 2. 4 TOP METRIC CARDS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           
-          {/* CARD 1: সর্বমোট কাস্টমার */}
-          <div className="bg-white border border-blue-100 rounded-2xl p-4 shadow-2xs flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+          {/* CARD 1: সর্বমোট কাস্টমার/সরবরাহকারী */}
+          <div className="bg-white border border-blue-100 rounded-md p-4 shadow-2xs flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
               <Users className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-500">সর্বমোট কাস্টমার</p>
+              <p className="text-xs font-semibold text-slate-500">{isCustomer ? 'সর্বমোট কাস্টমার' : 'সর্বমোট সরবরাহকারী'}</p>
               <p className="text-xl font-black text-slate-900 mt-0.5">
                 {toBnDigits(parties.length)} <span className="text-xs font-medium text-slate-500">জন</span>
               </p>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">সকল কাস্টমারের সংখ্যা</p>
+              <p className="text-[10px] text-slate-400 font-medium mt-0.5">{isCustomer ? 'সকল কাস্টমারের সংখ্যা' : 'সকল সরবরাহকারীর সংখ্যা'}</p>
             </div>
           </div>
 
-          {/* CARD 2: সক্রিয় কাস্টমার */}
-          <div className="bg-white border border-emerald-100 rounded-2xl p-4 shadow-2xs flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+          {/* CARD 2: সক্রিয় কাস্টমার/সরবরাহকারী */}
+          <div className="bg-white border border-emerald-100 rounded-md p-4 shadow-2xs flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-500">সক্রিয় কাস্টমার</p>
+              <p className="text-xs font-semibold text-slate-500">{isCustomer ? 'সক্রিয় কাস্টমার' : 'সক্রিয় সরবরাহকারী'}</p>
               <p className="text-xl font-black text-slate-900 mt-0.5">
                 {toBnDigits(parties.length)} <span className="text-xs font-medium text-slate-500">জন</span>
               </p>
@@ -437,8 +481,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
           </div>
 
           {/* CARD 3: মোট বাকি */}
-          <div className="bg-white border border-amber-100 rounded-2xl p-4 shadow-2xs flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 font-bold text-lg">
+          <div className="bg-white border border-amber-100 rounded-md p-4 shadow-2xs flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-md bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 font-bold text-lg">
               ৳
             </div>
             <div>
@@ -446,13 +490,13 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
               <p className="text-xl font-black text-slate-900 mt-0.5">
                 ৳ {toBnDigits(totalDue.toLocaleString('en-IN'))}
               </p>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">সকল কাস্টমারের বাকি</p>
+              <p className="text-[10px] text-slate-400 font-medium mt-0.5">{isCustomer ? 'সকল কাস্টমারের বাকি' : 'সকল পাওয়া পাওনা'}</p>
             </div>
           </div>
 
           {/* CARD 4: এই মাসে নতুন */}
-          <div className="bg-white border border-rose-100 rounded-2xl p-4 shadow-2xs flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center flex-shrink-0">
+          <div className="bg-white border border-rose-100 rounded-md p-4 shadow-2xs flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-md bg-rose-50 text-rose-500 flex items-center justify-center flex-shrink-0">
               <Users className="w-5 h-5" />
             </div>
             <div>
@@ -466,31 +510,120 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
         </div>
 
-        {/* 3. TABLE CONTAINER CARD */}
-        <Card className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
-          <CardContent className="p-4 sm:p-5 space-y-4">
+        {/* COMPACT & EFFICIENT FILTER CARD */}
+        <Card className="border border-slate-200/80 shadow-xs rounded-md bg-white p-4 font-bengali space-y-3">
+          {/* Top Row: Search + Date Range + Status Quick Pills + More Filter Toggle */}
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
             
-            {/* Filter Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2.5 flex-1">
-                
-                {/* Search Box */}
-                <div className="relative flex-1 min-w-[240px] max-w-md">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <Input
-                    placeholder={isCustomer ? "কাস্টমার নাম, মোবাইল, বা ইমেইল সার্চ করুন..." : "কোম্পানি বা সরবরাহকারীর নাম, মোবাইল সার্চ করুন..."}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="pl-9 h-9 text-xs rounded-xl bg-white border-slate-200"
-                  />
-                </div>
+            {/* Unified Search Box */}
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                placeholder={isCustomer ? "কাস্টমার নাম, মোবাইল, বা ইমেইল দিয়ে খুঁজুন..." : "কোম্পানি বা সরবরাহকারীর নাম, ফোন দিয়ে খুঁজুন..."}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-10 h-10 rounded-md bg-slate-50/80 border-slate-200 text-xs font-bold text-slate-900 focus:bg-white transition-all placeholder:text-slate-400"
+              />
+              {search && (
+                <button 
+                  onClick={() => setSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
 
-                {/* Group Selector */}
+            {/* Date Range (Start & End) in 1 Compact Block */}
+            <div className="flex items-center gap-2 bg-slate-50/80 p-1.5 rounded-md border border-slate-200/80">
+              <Calendar className="w-4 h-4 text-slate-400 ml-1 shrink-0" />
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
+                title="যোগদানের শুরুর তারিখ"
+              />
+              <span className="text-slate-300 text-xs font-bold">-</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
+                title="যোগদানের শেষের তারিখ"
+              />
+              {(startDate || endDate) && (
+                <button
+                  onClick={() => { setStartDate(''); setEndDate(''); }}
+                  className="text-slate-400 hover:text-rose-600 px-1"
+                  title="তারিখ ফিল্টার মুছুন"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Status/Due Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+              {[
+                { id: 'সব', label: isCustomer ? 'সব কাস্টমার' : 'সব সরবরাহকারী' },
+                { id: 'বকেয়া আছে', label: 'বকেয়া আছে' },
+                { id: 'পরিশোধিত', label: 'হিসাব পরিষ্কার' },
+              ].map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setFilterDue(p.id)}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-md text-xs font-bold transition-all border whitespace-nowrap",
+                    filterDue === p.id
+                      ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* More Filters Toggle */}
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+                className="h-10 px-3.5 rounded-md border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 flex items-center gap-1.5"
+              >
+                <Filter className="w-3.5 h-3.5 text-blue-600" />
+                <span>আরও ফিল্টার</span>
+                {isFilterExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </Button>
+
+              {(search || startDate || endDate || filterType !== 'সব' || filterDue !== 'সব' || minDue || maxDue || filterDivision !== 'সব') && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetFilters}
+                  className="h-10 px-2.5 rounded-md text-rose-600 hover:bg-rose-50 font-bold text-xs flex items-center gap-1"
+                  title="ফিল্টার রিসেট করুন"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Secondary Collapsible Drawer */}
+          {isFilterExpanded && (
+            <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in duration-200">
+              
+              {/* Type Selector */}
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-600">শ্রেণী / ধরন</Label>
                 <Select value={filterType} onValueChange={(val) => setFilterType(val || 'সব')}>
-                  <SelectTrigger className="w-36 h-9 bg-white border-slate-200 rounded-xl text-xs font-bold">
+                  <SelectTrigger className="w-full h-9 bg-slate-50/50 border-slate-200 rounded-md text-xs font-bold">
                     <SelectValue placeholder="সকল ধরন" />
                   </SelectTrigger>
-                  <SelectContent className="font-bengali text-xs">
+                  <SelectContent className="font-bengali text-xs font-bold">
                     <SelectItem value="সব">সকল ধরন</SelectItem>
                     {isCustomer ? (
                       <>
@@ -508,17 +641,53 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                     )}
                   </SelectContent>
                 </Select>
-
-                {/* More Filters */}
-                <Button variant="outline" className="h-9 px-3.5 border-slate-200 text-slate-700 font-bold text-xs rounded-xl bg-white hover:bg-slate-50 flex items-center gap-1.5">
-                  <Filter className="w-3.5 h-3.5 text-slate-500" />
-                  <span>আরো ফিল্টার</span>
-                </Button>
               </div>
-            </div>
 
+              {/* Division Selector */}
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-600">বিভাগ</Label>
+                <Select value={filterDivision} onValueChange={(val) => setFilterDivision(val || 'সব')}>
+                  <SelectTrigger className="w-full h-9 bg-slate-50/50 border-slate-200 rounded-md text-xs font-bold">
+                    <SelectValue placeholder="সকল বিভাগ" />
+                  </SelectTrigger>
+                  <SelectContent className="font-bengali text-xs font-bold">
+                    <SelectItem value="সব">সকল বিভাগ</SelectItem>
+                    {Object.keys(bdLocationData).map((div) => (
+                      <SelectItem key={div} value={div}>{div}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Due Range */}
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-600">বকেয়া পরিমাণ (৳)</Label>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    placeholder="সর্বনিম্ন"
+                    value={minDue}
+                    onChange={e => setMinDue(e.target.value)}
+                    className="rounded-md h-9 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                  />
+                  <span className="text-slate-300 text-xs">-</span>
+                  <Input
+                    placeholder="সর্বোচ্চ"
+                    value={maxDue}
+                    onChange={e => setMaxDue(e.target.value)}
+                    className="rounded-md h-9 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                  />
+                </div>
+              </div>
+
+            </div>
+          )}
+        </Card>
+
+        {/* 3. TABLE CONTAINER CARD */}
+        <Card className="bg-white border border-slate-200/80 rounded-md shadow-xs overflow-hidden">
+          <CardContent className="p-4 sm:p-5 space-y-4">
             {/* Table */}
-            <div className="border border-slate-200/80 rounded-xl overflow-hidden">
+            <div className="border border-slate-200/80 rounded-md overflow-hidden">
               <Table>
                 <TableHeader className="bg-slate-50/80 border-b border-slate-200">
                   <TableRow className="text-xs text-slate-700 font-black">
@@ -583,7 +752,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           <TableCell className="py-3.5 px-4 text-left">
                             {isCustomer ? (
                               <span className={cn(
-                                "inline-block font-bold text-[11px] px-3 py-0.5 rounded-full",
+                                "inline-block font-bold text-[11px] px-3 py-0.5 rounded-md",
                                 isContractor
                                   ? "bg-blue-100/80 text-blue-700"
                                   : isWholesale
@@ -594,7 +763,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                               </span>
                             ) : (
                               <span className={cn(
-                                "inline-block font-bold text-[11px] px-3 py-0.5 rounded-full",
+                                "inline-block font-bold text-[11px] px-3 py-0.5 rounded-md",
                                 suppType === 'সিমেন্ট'
                                   ? "bg-cyan-100/80 text-cyan-700"
                                   : suppType === 'রড ও সিমেন্ট'
@@ -618,7 +787,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           </TableCell>
 
                           <TableCell className="py-3.5 px-4 text-center">
-                            <span className="inline-flex items-center gap-1 bg-emerald-100/80 text-emerald-700 font-bold text-[11px] px-2.5 py-0.5 rounded-full">
+                            <span className="inline-flex items-center gap-1 bg-emerald-100/80 text-emerald-700 font-bold text-[11px] px-2.5 py-0.5 rounded-md">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                               সক্রিয়
                             </span>
@@ -629,7 +798,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                               {/* View Button */}
                               <button
                                 onClick={() => router.push(isCustomer ? `/customers/${p.id}` : `/suppliers/${p.id}`)}
-                                className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800 flex items-center justify-center transition-colors"
+                                className="w-7 h-7 rounded-md border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800 flex items-center justify-center transition-colors"
                                 title="প্রোফাইল দেখুন"
                               >
                                 👁️
@@ -691,51 +860,57 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
           </CardContent>
         </Card>
       </div>
-
-      {/* FULL 1:1 CUSTOMER REGISTRATION OVERLAY FORM */}
-      {isAddOpen && (
-        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-50 w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden border border-slate-200 my-auto font-bengali">
-            {/* FORM TOP TOOLBAR */}
-            <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-40">
+      ) : (
+        /* CREATE / EDIT CUSTOMER IN-PAGE VIEW (Direct Page View, Framed Container) */
+        <div className="space-y-4 animate-in fade-in duration-300 font-bengali">
+          <div className="w-full bg-slate-100 border-2 border-slate-300 shadow-xl rounded-md overflow-hidden flex flex-col min-h-[calc(100vh-100px)]">
+            
+            {/* FRAME TOP HEADER BAR */}
+            <div className="bg-white border-b border-slate-300 px-6 py-3.5 flex items-center justify-between shadow-xs flex-shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold">
-                  {isCustomer ? <Users className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
-                </div>
+                <Button 
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => { setIsAddOpen(false); resetForm(); }}
+                  className="w-9 h-9 rounded-md bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold shadow-xs flex-shrink-0 transition-colors"
+                  title="তালিকায় ফিরে যান"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
                 <div>
-                  <span className="text-[10px] font-black tracking-widest text-orange-600 uppercase">
-                    {isCustomer ? 'গ্রাহক ব্যবস্থাপনা (CUSTOMER MANAGEMENT)' : 'কোম্পানি / সরবরাহকারী ব্যবস্থাপনা (SUPPLIER MANAGEMENT)'}
+                  <span className="text-[10px] font-black tracking-widest text-blue-600 uppercase block">
+                    {isCustomer ? 'কাস্টমার ব্যবস্থাপনা' : 'সরবরাহকারী ব্যবস্থাপনা'}
                   </span>
-                  <h1 className="text-xl font-black text-slate-900 tracking-tight">
+                  <h1 className="text-lg font-black text-slate-900 tracking-tight leading-none">
                     {editing
-                      ? isCustomer
-                        ? 'গ্রাহকের তথ্য সম্পাদনা'
-                        : 'কোম্পানির তথ্য সম্পাদনা'
-                      : isCustomer
-                      ? 'নতুন গ্রাহক যোগ করুন'
-                      : 'নতুন কোম্পানি / সরবরাহকারী যোগ করুন'}
+                      ? isCustomer ? 'গ্রাহকের তথ্য সম্পাদনা করুন' : 'সরবরাহকারীর তথ্য সম্পাদনা করুন'
+                      : isCustomer ? 'নতুন গ্রাহক যোগ করুন' : 'নতুন কোম্পানি / সরবরাহকারী যোগ করুন'}
                   </h1>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setIsAddOpen(false)}
-                className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors"
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => { setIsAddOpen(false); resetForm(); }}
+                className="h-9 w-9 rounded-md hover:bg-rose-50 hover:text-rose-600 text-slate-500 transition-colors"
                 title="বন্ধ করুন"
               >
                 <X className="w-5 h-5" />
-              </button>
+              </Button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[82vh] overflow-y-auto custom-scrollbar">
+            {/* MAIN FORM GRID INSIDE FRAME */}
+            <form onSubmit={handleSubmit} className="p-4 md:p-6 w-full space-y-6 flex-1 overflow-y-auto">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
                 {/* --- LEFT COLUMN (WIDE ~75%) --- */}
                 <div className="lg:col-span-9 space-y-5">
+                  
                   {/* STEP 1: ❶ প্রাথমিক তথ্য */}
-                  <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                  <div className="bg-white p-5 sm:p-6 rounded-md border border-slate-200 shadow-xs space-y-4">
                     <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                      <span className="w-6 h-6 rounded-full bg-orange-500 text-white font-black text-xs flex items-center justify-center shadow-xs">
+                      <span className="w-6 h-6 rounded-md bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
                         ১
                       </span>
                       <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider">
@@ -827,7 +1002,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                               value={formData.phone}
                               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                               placeholder="০১৭XXXXXXXX"
-                              className="rounded-xl h-10 bg-white border-slate-200 pr-9"
+                              className="rounded-md h-10 bg-white border-slate-200 pr-9"
                             />
                           </div>
                           {formData.altPhone !== undefined && (
@@ -837,7 +1012,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                                 value={formData.altPhone}
                                 onChange={(e) => setFormData({ ...formData, altPhone: e.target.value })}
                                 placeholder="বিকল্প ফোন নম্বর"
-                                className="rounded-xl h-10 bg-white border-slate-200 pr-9"
+                                className="rounded-md h-10 bg-white border-slate-200 pr-9"
                               />
                             </div>
                           )}
@@ -911,21 +1086,21 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                             });
                           }}
                         >
-                          <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 font-bold">
+                          <SelectTrigger className="rounded-md h-10 bg-white border-slate-200">
                             <SelectValue placeholder="বিভাগ নির্বাচন করুন" />
                           </SelectTrigger>
-                          <SelectContent className="font-bengali text-xs max-h-56">
-                            {bdLocationData.map(d => (
-                              <SelectItem key={d.name} value={d.name}>{d.name}</SelectItem>
+                          <SelectContent className="font-bengali text-xs">
+                            {bdLocationData.map((d) => (
+                              <SelectItem key={d.name} value={d.name}>
+                                {d.name}
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">
-                          জেলা (ঐচ্ছিক)
-                        </Label>
+                        <Label className="text-xs font-bold text-slate-700">জেলা</Label>
                         <Select
                           value={formData.district}
                           onValueChange={(val: string | null) => {
@@ -939,119 +1114,108 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                             });
                           }}
                         >
-                          <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 font-bold">
+                          <SelectTrigger className="rounded-md h-10 bg-white border-slate-200">
                             <SelectValue placeholder="জেলা নির্বাচন করুন" />
                           </SelectTrigger>
-                          <SelectContent className="font-bengali text-xs max-h-56">
-                            {availableDistricts.map(dst => (
-                              <SelectItem key={dst.name} value={dst.name}>{dst.name}</SelectItem>
+                          <SelectContent className="font-bengali text-xs">
+                            {availableDistricts.map((dst) => (
+                              <SelectItem key={dst.name} value={dst.name}>
+                                {dst.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-bold text-slate-700">উপজেলা / থানা</Label>
+                        <Select
+                          value={formData.thana}
+                          onValueChange={(val: string | null) => setFormData({ ...formData, thana: val || '' })}
+                        >
+                          <SelectTrigger className="rounded-md h-10 bg-white border-slate-200">
+                            <SelectValue placeholder="থানা নির্বাচন করুন" />
+                          </SelectTrigger>
+                          <SelectContent className="font-bengali text-xs">
+                            {availableThanas.map((th) => (
+                              <SelectItem key={th} value={th}>
+                                {th}
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-bold text-slate-700 pt-1">
-                      <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">থানা / এলাকা (ঐচ্ছিক)</Label>
-                        {availableThanas.length > 0 ? (
-                          <Select
-                            value={formData.thana}
-                            onValueChange={(val: string | null) =>
-                              setFormData({ ...formData, thana: val || '' })
-                            }
-                          >
-                            <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 font-bold">
-                              <SelectValue placeholder="থানা নির্বাচন করুন" />
-                            </SelectTrigger>
-                            <SelectContent className="font-bengali text-xs max-h-56">
-                              {availableThanas.map(th => (
-                                <SelectItem key={th} value={th}>{th}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Input
-                            value={formData.thana}
-                            onChange={(e) => setFormData({ ...formData, thana: e.target.value })}
-                            placeholder="যেমন: মতিঝিল / তেজগাঁও"
-                            className="rounded-xl h-10 bg-white border-slate-200"
-                          />
-                        )}
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">
-                          প্রধান ঠিকানা (ঐচ্ছিক)
-                        </Label>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs font-bold text-slate-700">
+                      <div className="md:col-span-3 space-y-1">
+                        <Label className="text-xs font-bold text-slate-700">বিস্তারিত ঠিকানা (বিল্ডিং / রোড / এলাকা)</Label>
                         <Input
                           value={formData.address}
                           onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                          placeholder="যেমন: ৩১৮ দক্ষিণ যাত্রাবাড়ী, ঢাকা"
-                          className="rounded-xl h-10 bg-white border-slate-200"
+                          placeholder="যেমন: বাসা #৪৫, রোড #০২, সেক্টর #১০, উত্তরা"
+                          className="rounded-md h-10 bg-white border-slate-200"
                         />
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">পোস্টকোড (ঐচ্ছিক)</Label>
+                        <Label className="text-xs font-bold text-slate-700">পোস্ট কোড</Label>
                         <Input
                           value={formData.postcode}
                           onChange={(e) => setFormData({ ...formData, postcode: e.target.value })}
-                          placeholder="যেমন: ১২০৪"
-                          className="rounded-xl h-10 bg-white border-slate-200"
+                          placeholder="১২৩০"
+                          className="rounded-md h-10 bg-white border-slate-200"
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* STEP 3: ❸ অতিরিক্ত তথ্য */}
-                  <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                  {/* STEP 4: ❹ আর্থিক ও পলিসি নির্ধারণ */}
+                  <div className="bg-white p-5 sm:p-6 rounded-md border border-slate-200 shadow-xs space-y-4">
                     <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                      <span className="w-6 h-6 rounded-full bg-orange-500 text-white font-black text-xs flex items-center justify-center shadow-xs">
-                        ৩
+                      <span className="w-6 h-6 rounded-md bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
+                        ৪
                       </span>
                       <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider">
-                        অতিরিক্ত ও আর্থিক তথ্য (Financial & Info)
+                        আর্থিক পলিসি ও পরিচয়পত্র (Financial & Identification)
                       </h2>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-bold text-slate-700">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-bold text-slate-700">
                       <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">পরিচয়পত্রের ধরন (ঐচ্ছিক)</Label>
+                        <Label className="text-xs font-bold text-slate-700">পরিচয়পত্রের ধরন</Label>
                         <Select
                           value={formData.idType}
-                          onValueChange={(val: string | null) =>
-                            setFormData({ ...formData, idType: val || 'NID' })
-                          }
+                          onValueChange={(val: string | null) => setFormData({ ...formData, idType: val || 'NID' })}
                         >
-                          <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 font-bold">
+                          <SelectTrigger className="rounded-md h-10 bg-white border-slate-200">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="font-bengali text-xs">
                             <SelectItem value="NID">জাতীয় পরিচয়পত্র (NID)</SelectItem>
-                            <SelectItem value="Trade License">ট্রেড লাইসেন্স (Trade License)</SelectItem>
-                            <SelectItem value="TIN">টিন (TIN / Tax ID)</SelectItem>
+                            <SelectItem value="Passport">পাসপোর্ট</SelectItem>
+                            <SelectItem value="TradeLicense">ট্রেড লাইসেন্স</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">আইডি / রেজিস্ট্রেশন নম্বর</Label>
+                        <Label className="text-xs font-bold text-slate-700">আইডি নম্বর (NID / Trade License)</Label>
                         <Input
                           value={formData.nid}
                           onChange={(e) => setFormData({ ...formData, nid: e.target.value })}
-                          placeholder="আইডি / লাইসেন্স নম্বর লিখুন"
-                          className="rounded-xl h-10 bg-white border-slate-200"
+                          placeholder="১২৩৪৫৬৭৮৯০"
+                          className="rounded-md h-10 bg-white border-slate-200"
                         />
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">TIN / VAT নম্বর</Label>
+                        <Label className="text-xs font-bold text-slate-700">ই-টিন (e-TIN) নম্বর</Label>
                         <Input
                           value={formData.tinNumber}
                           onChange={(e) => setFormData({ ...formData, tinNumber: e.target.value })}
-                          placeholder="টিন / ভ্যাট নম্বর লিখুন"
-                          className="rounded-xl h-10 bg-white border-slate-200"
+                          placeholder="টিন নম্বর..."
+                          className="rounded-md h-10 bg-white border-slate-200"
                         />
                       </div>
                     </div>
@@ -1066,7 +1230,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                             setFormData({ ...formData, openingBalance: parseFloat(e.target.value) || 0 })
                           }
                           placeholder="৳ 0.00"
-                          className="rounded-xl h-10 bg-white border-slate-200 font-black text-rose-600"
+                          className="rounded-md h-10 bg-white border-slate-200 font-black text-rose-600"
                         />
                       </div>
 
@@ -1079,7 +1243,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                             setFormData({ ...formData, creditLimit: parseFloat(e.target.value) || 0 })
                           }
                           placeholder="৳ 0.00"
-                          className="rounded-xl h-10 bg-white border-slate-200 font-bold"
+                          className="rounded-md h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
 
@@ -1092,7 +1256,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                             setFormData({ ...formData, discountPercent: parseFloat(e.target.value) || 0 })
                           }
                           placeholder="% 0"
-                          className="rounded-xl h-10 bg-white border-slate-200 font-bold"
+                          className="rounded-md h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
 
@@ -1102,7 +1266,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           type="date"
                           value={formData.joinedDate}
                           onChange={(e) => setFormData({ ...formData, joinedDate: e.target.value })}
-                          className="rounded-xl h-10 bg-white border-slate-200"
+                          className="rounded-md h-10 bg-white border-slate-200"
                         />
                       </div>
                     </div>
@@ -1113,7 +1277,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         value={formData.note}
                         onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                         placeholder="গ্রাহক সম্পর্কিত যে কোনো বিশেষ নোট লিখুন..."
-                        className="rounded-xl h-10 bg-white border-slate-200"
+                        className="rounded-md h-10 bg-white border-slate-200"
                       />
                     </div>
                   </div>
@@ -1122,13 +1286,13 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                 {/* --- RIGHT COLUMN (NARROW SIDEBAR PANEL ~25%) --- */}
                 <div className="lg:col-span-3 space-y-4">
                   {/* CARD 1: LOGO / PHOTO UPLOAD */}
-                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3 text-center">
+                  <div className="bg-white p-4 rounded-md border border-slate-200 shadow-xs space-y-3 text-center">
                     <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">
                       {isCustomer ? 'গ্রাহকের ছবি / লোগো' : 'কোম্পানির লোগো / ছবি'}
                     </h2>
 
                     <div className="flex flex-col items-center gap-2.5">
-                      <div className="relative w-20 h-20 rounded-2xl overflow-hidden bg-slate-50 border-2 border-orange-200 flex items-center justify-center shadow-inner group">
+                      <div className="relative w-20 h-20 rounded-md overflow-hidden bg-slate-50 border-2 border-blue-200 flex items-center justify-center shadow-inner group">
                         {formData.photoUrl ? (
                           <img src={formData.photoUrl} alt="Logo / Photo" className="w-full h-full object-cover" />
                         ) : isCustomer ? (
@@ -1145,7 +1309,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           <span className="text-[8px] text-slate-300">জেপিজি, পিএনজি (সর্বোচ্চ ২এমবি)</span>
                         </p>
 
-                        <label className="cursor-pointer w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-[11px] font-bold transition-colors">
+                        <label className="cursor-pointer w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold transition-colors">
                           <Camera className="w-3.5 h-3.5" /> {formData.photoUrl ? 'ছবি পরিবর্তন' : 'ছবি আপলোড'}
                           <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                         </label>
@@ -1199,31 +1363,31 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                 </div>
               </div>
 
-              {/* STICKY ACTION FOOTER BAR */}
-              <div className="bg-white border-t border-slate-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-3 rounded-b-3xl sticky bottom-0 z-40 shadow-lg">
-                <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              {/* STICKY BOTTOM ACTION BAR INSIDE FRAME */}
+              <div className="bg-white border-t border-slate-300 px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm font-bengali flex-shrink-0 mt-6 rounded-b-md">
+                <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold">
+                  <Lightbulb className="w-4 h-4 text-blue-600 flex-shrink-0" />
                   <span>
                     💡 {isCustomer ? 'গ্রাহকের তথ্য সংরক্ষণের পূর্বে সঠিকতা যাচাই করে নিন।' : 'কোম্পানির তথ্য সংরক্ষণের পূর্বে যাচাই করে নিন।'}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 w-full sm:w-auto">
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setIsAddOpen(false)}
-                    className="rounded-xl h-11 px-6 font-bold text-slate-600 border-slate-300 hover:bg-slate-100"
+                    onClick={() => { setIsAddOpen(false); resetForm(); }}
+                    className="rounded-md h-11 px-5 font-bold text-slate-600 border-slate-300 hover:bg-slate-50"
                   >
-                    বাতিল
+                    বাতিল করুন
                   </Button>
 
                   <Button
                     type="submit"
-                    className="bg-orange-600 hover:bg-orange-700 text-white font-black px-8 h-11 rounded-xl shadow-md active:scale-95 transition-all text-base"
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-black px-6 h-11 rounded-md shadow-md shadow-blue-600/20 active:scale-95 transition-all text-sm"
                   >
-                    <Save className="w-4 h-4 mr-2 inline" />{' '}
-                    {isCustomer ? 'গ্রাহকের তথ্য সংরক্ষণ করুন' : 'কোম্পানি সংরক্ষণ করুন'}
+                    <Save className="w-4 h-4 mr-2 inline" />
+                    {isCustomer ? 'গ্রাহকের তথ্য সংরক্ষণ করুন' : 'সরবরাহকারী সংরক্ষণ করুন'}
                   </Button>
                 </div>
               </div>

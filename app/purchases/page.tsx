@@ -6,7 +6,8 @@ import { api } from '@/lib/api';
 import { 
   Plus, Search, Edit2, Trash2, Phone, Building2, DollarSign,
   Receipt, Banknote, Calendar, Lightbulb, AlertCircle, X,
-  Truck, Eye, Calculator, CheckCircle2, Package
+  Truck, Eye, Calculator, CheckCircle2, Package, Filter,
+  ChevronUp, ChevronDown, RotateCcw, ArrowLeft
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -82,6 +83,20 @@ export default function PurchasesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('সব');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const [minBill, setMinBill] = useState('');
+  const [maxBill, setMaxBill] = useState('');
+
+  const handleResetFilters = () => {
+    setSearch('');
+    setStartDate('');
+    setEndDate('');
+    setFilterStatus('সব');
+    setMinBill('');
+    setMaxBill('');
+  };
   const [selectedPurchase, setSelectedPurchase] = useState<PurchaseInvoice | null>(null);
 
   // Form & Modal States
@@ -382,9 +397,33 @@ export default function PurchasesPage() {
   };
 
   const filteredPurchases = purchases.filter(p => {
-    const matchSearch = p.supplierName.toLowerCase().includes(search.toLowerCase()) || p.id.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === 'সব' || p.paymentStatus === filterStatus;
-    return matchSearch && matchStatus;
+    const searchLower = search.toLowerCase();
+    const matchesSearch = !search ||
+      p.supplierName.toLowerCase().includes(searchLower) ||
+      p.id.toLowerCase().includes(searchLower) ||
+      (p.supplierPhone && p.supplierPhone.includes(search)) ||
+      (p.purchaseId && p.purchaseId.toLowerCase().includes(searchLower));
+
+    let matchesDate = true;
+    if (startDate || endDate) {
+      const pDateStr = p.createdAt ? new Date(p.createdAt.toDate ? p.createdAt.toDate() : p.createdAt).toISOString().split('T')[0] : '';
+      if (startDate && pDateStr < startDate) matchesDate = false;
+      if (endDate && pDateStr > endDate) matchesDate = false;
+    }
+
+    let matchesStatus = true;
+    if (filterStatus === 'পরিশোধিত') {
+      matchesStatus = p.paymentStatus === 'পরিশোধিত' || p.dueAmount === 0;
+    } else if (filterStatus === 'বকেয়া আছে' || filterStatus === 'বাকি') {
+      matchesStatus = p.dueAmount > 0;
+    }
+
+    let matchesAmount = true;
+    const bill = p.totalAmount || 0;
+    if (minBill && bill < parseFloat(minBill)) matchesAmount = false;
+    if (maxBill && bill > parseFloat(maxBill)) matchesAmount = false;
+
+    return Boolean(matchesSearch) && matchesDate && matchesStatus && matchesAmount;
   });
 
   const totalPurchaseAmount = purchases.reduce((a, p) => a + (p.totalAmount || 0), 0);
@@ -401,196 +440,302 @@ export default function PurchasesPage() {
 
   return (
     <Shell>
-      <div className="space-y-8 font-bengali">
-        
-        {/* HEADER TOOLBAR */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-              <Truck className="w-8 h-8 text-orange-500" /> ক্রয় ইনভয়েস (Purchases)
-            </h1>
-            <p className="text-slate-500 text-sm mt-1">রড ও সিমেন্ট ক্রয়ের হিসাব, চালান ও সরবরাহকারীর পাওনা ব্যবস্থাপনা</p>
-          </div>
-
-          <Button 
-            onClick={() => { resetForm(); setIsCreateOpen(true); }}
-            className="bg-orange-600 hover:bg-orange-700 text-white h-12 px-6 rounded-xl font-black text-base shadow-lg shadow-orange-600/20 active:scale-95 transition-all"
-          >
-            <Plus className="w-5 h-5 mr-2" /> নতুন ক্রয় ইনভয়েস
-          </Button>
-        </div>
-
-        {/* METRIC OVERVIEW CARDS */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          <Card className="border-2 border-indigo-100 bg-indigo-50/60 rounded-2xl shadow-xs">
-            <CardContent className="p-6 flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">মোট ক্রয় বিল</p>
-                <p className="text-2xl font-black text-indigo-700 mt-1">৳ {totalPurchaseAmount.toLocaleString()}</p>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
-                <Receipt className="w-6 h-6" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-2 border-emerald-100 bg-emerald-50/60 rounded-2xl shadow-xs">
-            <CardContent className="p-6 flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">পরিশোধিত</p>
-                <p className="text-2xl font-black text-emerald-700 mt-1">৳ {totalPaidAmount.toLocaleString()}</p>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">
-                <Banknote className="w-6 h-6" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-2 border-rose-100 bg-rose-50/60 rounded-2xl shadow-xs">
-            <CardContent className="p-6 flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">কোম্পানির মোট পাওনা</p>
-                <p className="text-2xl font-black text-rose-700 mt-1">৳ {totalDueAmount.toLocaleString()}</p>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
-                <DollarSign className="w-6 h-6" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* PURCHASES TABLE CARD */}
-        <Card className="border-slate-200/80 shadow-xs rounded-2xl bg-white overflow-hidden">
-          <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
-            
-            {/* Filter Tabs */}
-            <div className="flex items-center gap-1.5 bg-slate-200/60 p-1 rounded-xl w-full sm:w-auto">
-              {['সব', 'পরিশোধিত', 'আংশিক', 'বাকি'].map(st => (
-                <button
-                  key={st}
-                  onClick={() => setFilterStatus(st)}
-                  className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-                    filterStatus === st ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
-                  )}
-                >
-                  {st}
-                </button>
-              ))}
-            </div>
-
-            {/* Search */}
-            <div className="relative w-full sm:w-72">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <Input
-                placeholder="কোম্পানি বা চালান আইডি খুঁজুন..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="pl-9 rounded-xl h-10 bg-white border-slate-200 text-xs font-bold"
-              />
-            </div>
-
-          </div>
-
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader className="bg-slate-50">
-                <TableRow className="text-[11px] uppercase tracking-wider">
-                  <TableHead className="w-12 text-center font-black">#</TableHead>
-                  <TableHead className="font-black">কোম্পানি / সরবরাহকারী</TableHead>
-                  <TableHead className="text-center font-black">তারিখ</TableHead>
-                  <TableHead className="text-right font-black">মোট বিল</TableHead>
-                  <TableHead className="text-right font-black">পরিশোধিত</TableHead>
-                  <TableHead className="text-right font-black">কোম্পানির পাওনা</TableHead>
-                  <TableHead className="text-center font-black">স্ট্যাটাস</TableHead>
-                  <TableHead className="text-center font-black w-24">অ্যাকশন</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow><TableCell colSpan={8} className="text-center py-12 text-slate-400 font-bold">লোড হচ্ছে...</TableCell></TableRow>
-                ) : filteredPurchases.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center py-12 text-slate-400 font-bold">কোনো ক্রয় ইনভয়েস পাওয়া যায়নি</TableCell></TableRow>
-                ) : filteredPurchases.map((p, idx) => (
-                  <TableRow 
-                    key={p.id} 
-                    onClick={() => setSelectedPurchase(p)}
-                    className="border-b border-slate-100 hover:bg-orange-50/50 cursor-pointer transition-colors text-xs font-semibold"
-                  >
-                    <TableCell className="text-center font-bold text-slate-400">{idx + 1}</TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="font-black text-slate-900 text-sm">{p.supplierName}</p>
-                        <p className="text-[10px] text-slate-400 font-mono">#{p.id.slice(0, 8).toUpperCase()}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center text-slate-600">{formatDate(p.createdAt)}</TableCell>
-                    <TableCell className="text-right font-black text-slate-900">৳ {(p.totalAmount || 0).toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-bold text-emerald-600">৳ {(p.paidAmount || 0).toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-black text-rose-600">৳ {(p.dueAmount || 0).toLocaleString()}</TableCell>
-                    <TableCell className="text-center">
-                      <span className={cn("px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider inline-block",
-                        p.paymentStatus === 'পরিশোধিত' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                        p.paymentStatus === 'আংশিক' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                        'bg-rose-50 text-rose-700 border border-rose-200'
-                      )}>
-                        {p.paymentStatus}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setSelectedPurchase(p); }} 
-                          className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg"
-                          title="ইনভয়েস দেখুন"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleDeletePurchase(p); }} 
-                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
-                          title="মুছে ফেলুন"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-      </div>
-
-      {/* FULL 1:1 SALES-INVOICE STYLE 7-STEP PURCHASE INVOICE FORM OVERLAY */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 sm:left-[72px] z-[60] bg-slate-100 overflow-y-auto font-bengali flex flex-col justify-between">
+      {!isCreateOpen ? (
+        <div className="space-y-5 font-bengali pb-10">
           
-          {/* HEADER BAR */}
-          <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-50 shadow-xs">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold">
-                <Truck className="w-5 h-5" />
+          {/* HEADER TOOLBAR */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <Truck className="w-7 h-7 text-blue-600" /> ক্রয় ইনভয়েস (Purchases)
+              </h1>
+              <p className="text-slate-500 text-xs mt-0.5">রড ও সিমেন্ট ক্রয়ের হিসাব, চালান ও সরবরাহকারীর পাওনা ব্যবস্থাপনা</p>
+            </div>
+
+            <Button 
+              onClick={() => { resetForm(); setIsCreateOpen(true); }}
+              className="bg-blue-600 hover:bg-blue-700 text-white h-10 px-5 rounded-md font-bold text-xs shadow-md shadow-blue-600/20 active:scale-95 transition-all"
+            >
+              <Plus className="w-4 h-4 mr-1.5" /> নতুন ক্রয় ইনভয়েস
+            </Button>
+          </div>
+
+          {/* METRIC OVERVIEW CARDS */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card className="border border-slate-200/80 bg-white rounded-md shadow-2xs">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">মোট ক্রয় বিল</p>
+                  <p className="text-xl font-black text-slate-900 mt-0.5">৳ {totalPurchaseAmount.toLocaleString()}</p>
+                </div>
+                <div className="w-11 h-11 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center font-bold shrink-0">
+                  <Receipt className="w-5 h-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border border-slate-200/80 bg-white rounded-md shadow-2xs">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">পরিশোধিত</p>
+                  <p className="text-xl font-black text-emerald-600 mt-0.5">৳ {totalPaidAmount.toLocaleString()}</p>
+                </div>
+                <div className="w-11 h-11 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shrink-0">
+                  <Banknote className="w-5 h-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border border-slate-200/80 bg-white rounded-md shadow-2xs">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">কোম্পানির মোট পাওনা</p>
+                  <p className="text-xl font-black text-rose-600 mt-0.5">৳ {totalDueAmount.toLocaleString()}</p>
+                </div>
+                <div className="w-11 h-11 rounded-md bg-rose-50 text-rose-600 flex items-center justify-center font-bold shrink-0">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* COMPACT & EFFICIENT FILTER CARD */}
+          <Card className="border border-slate-200/80 shadow-2xs rounded-md bg-white p-4 font-bengali space-y-3">
+            {/* Top Row: Search + Date Range + Status Quick Pills + More Filter Toggle */}
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+              
+              {/* Unified Search Box */}
+              <div className="relative flex-1 min-w-[240px]">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input
+                  placeholder="কোম্পানির নাম, ইনভয়েস নম্বর বা ফোন দিয়ে খুঁজুন..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="pl-10 h-10 rounded-md bg-slate-50/80 border-slate-200 text-xs font-bold text-slate-900 focus:bg-white transition-all placeholder:text-slate-400"
+                />
+                {search && (
+                  <button 
+                    onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
-              <div>
-                <span className="text-[10px] font-black tracking-widest text-orange-600 uppercase">
-                  ক্রয় ইনভয়েস এন্ট্রি (NEW PURCHASE INVOICE)
-                </span>
-                <h1 className="text-xl font-black text-slate-900 tracking-tight">
-                  নতুন ক্রয় ইনভয়েস তৈরি করুন
-                </h1>
+
+              {/* Date Range (Start & End) in 1 Compact Block */}
+              <div className="flex items-center gap-2 bg-slate-50/80 p-1.5 rounded-md border border-slate-200/80">
+                <Calendar className="w-4 h-4 text-slate-400 ml-1 shrink-0" />
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={e => setStartDate(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
+                  title="ক্রয় শুরুর তারিখ"
+                />
+                <span className="text-slate-300 text-xs font-bold">-</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={e => setEndDate(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
+                  title="ক্রয় শেষের তারিখ"
+                />
+                {(startDate || endDate) && (
+                  <button
+                    onClick={() => { setStartDate(''); setEndDate(''); }}
+                    className="text-slate-400 hover:text-rose-600 px-1"
+                    title="তারিখ ফিল্টার মুছুন"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Quick Status Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+                {[
+                  { id: 'সব', label: 'সব ক্রয়' },
+                  { id: 'পরিশোধিত', label: 'পরিশোধিত' },
+                  { id: 'বকেয়া আছে', label: 'বকেয়া আছে' },
+                ].map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => setFilterStatus(p.id)}
+                    className={cn(
+                      "px-3.5 py-1.5 rounded-md text-xs font-bold transition-all border whitespace-nowrap",
+                      filterStatus === p.id
+                        ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                        : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                    )}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* More Filters Toggle */}
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+                  className="h-10 px-3.5 rounded-md border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 flex items-center gap-1.5"
+                >
+                  <Filter className="w-3.5 h-3.5 text-blue-600" />
+                  <span>আরও ফিল্টার</span>
+                  {isFilterExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </Button>
+
+                {(search || startDate || endDate || filterStatus !== 'সব' || minBill || maxBill) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleResetFilters}
+                    className="h-10 px-2.5 rounded-md text-rose-600 hover:bg-rose-50 font-bold text-xs flex items-center gap-1"
+                    title="ফিল্টার রিসেট করুন"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </Button>
+                )}
               </div>
             </div>
 
-            <button 
-              type="button" 
-              onClick={() => { setIsCreateOpen(false); resetForm(); }}
-              className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+            {/* Secondary Collapsible Drawer */}
+            {isFilterExpanded && (
+              <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in duration-200">
+                {/* Bill Amount Range */}
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-slate-600">মোট বিল রেঞ্জ (৳)</Label>
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      placeholder="সর্বনিম্ন (৳)"
+                      value={minBill}
+                      onChange={e => setMinBill(e.target.value)}
+                      className="rounded-md h-9 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                    />
+                    <span className="text-slate-300 text-xs">-</span>
+                    <Input
+                      placeholder="সর্বোচ্চ (৳)"
+                      value={maxBill}
+                      onChange={e => setMaxBill(e.target.value)}
+                      className="rounded-md h-9 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {/* PURCHASES TABLE CARD */}
+          <Card className="border border-slate-200/80 shadow-2xs rounded-md bg-white overflow-hidden">
+            <CardContent className="p-0 overflow-x-auto custom-scrollbar">
+              <Table>
+                <TableHeader className="bg-slate-50 border-b border-slate-200">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-12 text-center font-bengali text-slate-900 text-xs font-black uppercase py-3">#</TableHead>
+                    <TableHead className="font-bengali text-slate-900 text-xs font-black uppercase">কোম্পানি / সরবরাহকারী</TableHead>
+                    <TableHead className="text-center font-bengali text-slate-900 text-xs font-black uppercase">তারিখ</TableHead>
+                    <TableHead className="text-right font-bengali text-slate-900 text-xs font-black uppercase">মোট বিল</TableHead>
+                    <TableHead className="text-right font-bengali text-slate-900 text-xs font-black uppercase">পরিশোধিত</TableHead>
+                    <TableHead className="text-right font-bengali text-slate-900 text-xs font-black uppercase">কোম্পানির পাওনা</TableHead>
+                    <TableHead className="text-center font-bengali text-slate-900 text-xs font-black uppercase">স্ট্যাটাস</TableHead>
+                    <TableHead className="text-center font-bengali text-slate-900 text-xs font-black w-24 uppercase">অ্যাকশন</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-16 text-slate-400 font-bold text-sm">লোড হচ্ছে...</TableCell></TableRow>
+                  ) : filteredPurchases.length === 0 ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-16 text-slate-400 font-bold text-sm">কোনো ক্রয় ইনভয়েস পাওয়া যায়নি</TableCell></TableRow>
+                  ) : filteredPurchases.map((p, idx) => (
+                    <TableRow 
+                      key={p.id} 
+                      onClick={() => setSelectedPurchase(p)}
+                      className="border-b border-slate-100 hover:bg-slate-50/80 cursor-pointer transition-colors text-xs font-medium"
+                    >
+                      <TableCell className="text-center font-bold text-slate-400">{idx + 1}</TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="font-black text-slate-900 text-xs">{p.supplierName}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">#{p.id.slice(0, 8).toUpperCase()}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center text-slate-600">{formatDate(p.createdAt)}</TableCell>
+                      <TableCell className="text-right font-black text-slate-900">৳ {(p.totalAmount || 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-bold text-emerald-600">৳ {(p.paidAmount || 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-black text-rose-600">৳ {(p.dueAmount || 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-center">
+                        <span className={cn("px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider inline-block border",
+                          p.paymentStatus === 'পরিশোধিত' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                          p.paymentStatus === 'আংশিক' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                          'bg-rose-50 text-rose-700 border-rose-200'
+                        )}>
+                          {p.paymentStatus}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); setSelectedPurchase(p); }} 
+                            className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md"
+                            title="ইনভয়েস দেখুন"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDeletePurchase(p); }} 
+                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-md"
+                            title="মুছে ফেলুন"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        /* CREATE / EDIT PURCHASE INVOICE IN-PAGE VIEW (Direct Page View, Framed Container) */
+        <div className="space-y-4 animate-in fade-in duration-300 font-bengali">
+          <div className="w-full bg-slate-100 border-2 border-slate-300 shadow-xl rounded-md overflow-hidden flex flex-col min-h-[calc(100vh-100px)]">
+            
+            {/* FRAME TOP HEADER BAR */}
+            <div className="bg-white border-b border-slate-300 px-6 py-3.5 flex items-center justify-between shadow-xs flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => { setIsCreateOpen(false); resetForm(); }}
+                  className="w-9 h-9 rounded-md bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold shadow-xs flex-shrink-0 transition-colors"
+                  title="তালিকায় ফিরে যান"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+                <div>
+                  <span className="text-[10px] font-black tracking-widest text-blue-600 uppercase block">
+                    PURCHASE INVOICE FORM (ক্রয় ইনভয়েস)
+                  </span>
+                  <h1 className="text-lg font-black text-slate-900 tracking-tight leading-none">
+                    {editingPurchaseId ? 'ক্রয় ইনভয়েস সম্পাদনা' : 'নতুন ক্রয় ইনভয়েস এন্ট্রি'}
+                  </h1>
+                </div>
+              </div>
+
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => { setIsCreateOpen(false); resetForm(); }}
+                className="h-9 w-9 rounded-md hover:bg-rose-50 hover:text-rose-600 text-slate-500 transition-colors"
+                title="বন্ধ করুন"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
 
           {/* MAIN FORM GRID */}
           <form onSubmit={handlePurchaseSubmit} className="p-4 md:p-6 w-full space-y-6 flex-1">
@@ -1397,42 +1542,32 @@ export default function PurchasesPage() {
               </div>
 
             </div>
-          </form>
+              {/* STICKY BOTTOM ACTION BAR INSIDE FRAME */}
+              <div className="bg-white border-t border-slate-300 px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm font-bengali flex-shrink-0 mt-6 rounded-b-md">
+                <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold">
+                  <Lightbulb className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                  <span>💡 ফর্ম জমা দেওয়ার আগে তথ্য যাচাই করুন। ক্রয়ের মালামাল সরাসরি গুদামের স্টকে যোগ হবে।</span>
+                </div>
 
-          {/* STICKY BOTTOM ACTION BAR */}
-          <div className="bg-white border-t border-slate-200 px-6 py-4 sticky bottom-0 z-50 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
-            <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold">
-              <Lightbulb className="w-4 h-4 text-orange-500 flex-shrink-0" />
-              <span>Review purchase details before completing. Products stock will update automatically.</span>
-            </div>
-
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              <Button 
-                type="button"
-                variant="outline" 
-                onClick={() => { setIsCreateOpen(false); resetForm(); }}
-                className="rounded-xl h-11 px-5 font-bold text-slate-600 border-slate-200"
-              >
-                Cancel
-              </Button>
-              <Button 
-                type="button"
-                variant="secondary"
-                onClick={handlePurchaseSubmit}
-                className="rounded-xl h-11 px-5 font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200"
-              >
-                Save Draft
-              </Button>
-              <Button 
-                type="submit" 
-                onClick={handlePurchaseSubmit}
-                className="rounded-xl h-11 px-6 font-black text-white bg-orange-600 hover:bg-orange-700 shadow-md shadow-orange-600/20 active:scale-95 transition-all"
-              >
-                Complete Purchase Invoice ✓
-              </Button>
-            </div>
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <Button 
+                    type="button"
+                    variant="outline" 
+                    onClick={() => { setIsCreateOpen(false); resetForm(); }}
+                    className="rounded-md h-11 px-5 font-bold text-slate-600 border-slate-300 hover:bg-slate-50"
+                  >
+                    বাতিল করুন
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    className="bg-blue-600 hover:bg-blue-700 text-white rounded-md h-11 px-6 font-black shadow-md shadow-blue-600/20 active:scale-95 transition-all text-sm"
+                  >
+                    💾 ক্রয় চালান সম্পূর্ণ করুন ✓
+                  </Button>
+                </div>
+              </div>
+            </form>
           </div>
-
         </div>
       )}
 

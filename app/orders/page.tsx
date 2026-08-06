@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { 
   Search, Eye, Printer, X, FileText, Receipt, Banknote, AlertCircle, Trash2, CheckCircle2, Plus, 
   ShoppingCart, User, Tag, ArrowRight, ShieldAlert, Clock, Truck, HardHat, Calendar, MapPin, PhoneCall, Building,
-  Paperclip, HelpCircle, Bell, Info, Save, Package, MoreVertical, Pencil
+  Paperclip, HelpCircle, Bell, Info, Save, Package, MoreVertical, Pencil, Filter, ChevronUp, ChevronDown, RotateCcw, ArrowLeft, Lightbulb
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -92,7 +92,21 @@ export default function OrdersPage() {
   const [search, setSearch] = useState('');
   const [filterStage, setFilterStage] = useState('সব');
   const [filterStatus, setFilterStatus] = useState('সব');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const [minBill, setMinBill] = useState('');
+  const [maxBill, setMaxBill] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+
+  const handleResetFilters = () => {
+    setSearch('');
+    setStartDate('');
+    setEndDate('');
+    setFilterStatus('সব');
+    setMinBill('');
+    setMaxBill('');
+  };
 
   // Invoice & Print Modal States
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
@@ -513,12 +527,31 @@ export default function OrdersPage() {
 
   // Filter list
   const filtered = orders.filter(o => {
-    const matchesSearch = o.customerName.toLowerCase().includes(search.toLowerCase()) || 
-                          o.id.toLowerCase().includes(search.toLowerCase());
-    if (filterStatus === 'সব') return matchesSearch;
-    if (filterStatus === 'অপেক্ষমাণ') return matchesSearch && !o.invoiced;
-    if (filterStatus === 'সম্পন্ন') return matchesSearch && o.invoiced;
-    return matchesSearch;
+    const searchLower = search.toLowerCase();
+    const matchesSearch = Boolean(
+      !search || 
+      (o.customerName && o.customerName.toLowerCase().includes(searchLower)) || 
+      (o.customerPhone && o.customerPhone.includes(search)) || 
+      (o.id && o.id.toLowerCase().includes(searchLower)) ||
+      (o.orderId && o.orderId.toLowerCase().includes(searchLower))
+    );
+
+    let matchesStatus = true;
+    if (filterStatus === 'অপেক্ষমাণ') matchesStatus = !o.invoiced;
+    if (filterStatus === 'সম্পন্ন') matchesStatus = Boolean(o.invoiced);
+
+    let matchesDate = true;
+    if (startDate || endDate) {
+      const orderDateStr = format(new Date(o.createdAt), 'yyyy-MM-dd');
+      if (startDate && orderDateStr < startDate) matchesDate = false;
+      if (endDate && orderDateStr > endDate) matchesDate = false;
+    }
+
+    let matchesBill = true;
+    if (minBill && o.totalAmount < parseFloat(minBill)) matchesBill = false;
+    if (maxBill && o.totalAmount > parseFloat(maxBill)) matchesBill = false;
+
+    return Boolean(matchesSearch) && matchesStatus && matchesDate && matchesBill;
   });
 
   const pendingOrdersCount = orders.filter(o => !o.invoiced).length;
@@ -526,7 +559,8 @@ export default function OrdersPage() {
 
   return (
     <Shell>
-      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {!isCreateOrderOpen ? (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
         {/* Top Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -538,7 +572,7 @@ export default function OrdersPage() {
           
           <Button 
             onClick={handleOpenCreateModal}
-            className="bg-orange-600 hover:bg-orange-700 text-white font-bengali h-12 px-6 rounded-2xl font-bold shadow-lg shadow-orange-600/20 active:scale-95 transition-all"
+            className="bg-orange-600 hover:bg-orange-700 text-white font-bengali h-12 px-6 rounded-md font-bold shadow-md shadow-orange-600/20 active:scale-95 transition-all"
           >
             <Plus className="w-5 h-5 mr-2" />নতুন অর্ডার তৈরি করুন
           </Button>
@@ -546,9 +580,9 @@ export default function OrdersPage() {
 
         {/* Summary Widgets */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="border-2 border-orange-100 bg-orange-50/50 shadow-sm rounded-2xl">
+          <Card className="border-2 border-orange-100 bg-orange-50/50 shadow-sm rounded-md">
             <CardContent className="p-6 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-orange-600 text-white shadow-md">
+              <div className="w-12 h-12 rounded-md flex items-center justify-center bg-orange-600 text-white shadow-xs">
                 <Clock className="w-6 h-6" />
               </div>
               <div>
@@ -558,9 +592,9 @@ export default function OrdersPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-2 border-emerald-100 bg-emerald-50/50 shadow-sm rounded-2xl">
+          <Card className="border-2 border-emerald-100 bg-emerald-50/50 shadow-sm rounded-md">
             <CardContent className="p-6 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-emerald-600 text-white shadow-md">
+              <div className="w-12 h-12 rounded-md flex items-center justify-center bg-emerald-600 text-white shadow-xs">
                 <CheckCircle2 className="w-6 h-6" />
               </div>
               <div>
@@ -570,50 +604,148 @@ export default function OrdersPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-2 border-slate-100 bg-white shadow-sm rounded-2xl">
+          <Card className="border-2 border-slate-100 bg-white shadow-sm rounded-md">
             <CardContent className="p-6 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-slate-900 text-white shadow-md">
+              <div className="w-12 h-12 rounded-md flex items-center justify-center bg-slate-900 text-white shadow-xs">
                 <Receipt className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-[11px] uppercase tracking-widest font-black text-slate-500 font-bengali">সর্বমোট অর্ডার রেকার্ড</p>
+                <p className="text-[11px] uppercase tracking-widest font-black text-slate-500 font-bengali">সর্বমোট অর্ডার রেকর্ড</p>
                 <p className="text-2xl font-black font-bengali text-slate-900 mt-0.5">{toBengaliDigits(orders.length)} টি</p>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Search & Tabs */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex gap-2 bg-slate-100/50 p-1.5 rounded-2xl w-fit border border-slate-100">
-            {['সব', 'অপেক্ষমাণ', 'সম্পন্ন'].map(s => (
-              <button
-                key={s}
-                onClick={() => setFilterStatus(s)}
-                className={cn("px-5 py-2 rounded-xl text-[13px] font-black font-bengali transition-all",
-                  filterStatus === s
-                    ? 'bg-white text-orange-600 shadow-sm border border-slate-200/50'
-                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                )}
+        {/* COMPACT & EFFICIENT FILTER CARD */}
+        <Card className="border border-slate-200/80 shadow-xs rounded-md bg-white p-4 font-bengali space-y-3">
+          {/* Top Row: Search + Date Range + Status Quick Pills + More Filter Toggle */}
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+            
+            {/* Unified Search Box (Order No, Customer Name, Phone) */}
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                placeholder="অর্ডার নং, কাস্টমার নাম বা নম্বর..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-10 h-10 rounded-md bg-slate-50/80 border-slate-200 text-xs font-bold text-slate-900 focus:bg-white transition-all placeholder:text-slate-400"
+              />
+              {search && (
+                <button 
+                  onClick={() => setSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Date Range (Start & End) in 1 Compact Block */}
+            <div className="flex items-center gap-2 bg-slate-50/80 p-1.5 rounded-md border border-slate-200/80">
+              <Calendar className="w-4 h-4 text-slate-400 ml-1 shrink-0" />
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
+                title="শুরুর তারিখ"
+              />
+              <span className="text-slate-300 text-xs font-bold">-</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
+                title="শেষের তারিখ"
+              />
+              {(startDate || endDate) && (
+                <button
+                  onClick={() => { setStartDate(''); setEndDate(''); }}
+                  className="text-slate-400 hover:text-rose-600 px-1"
+                  title="তারিখ ফিল্টার মুছুন"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Status Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+              {[
+                { id: 'সব', label: 'সব অর্ডার' },
+                { id: 'অপেক্ষমাণ', label: 'চালান অপেক্ষমাণ' },
+                { id: 'সম্পন্ন', label: 'চালান সম্পন্ন' },
+              ].map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setFilterStatus(p.id)}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-md text-xs font-bold transition-all border whitespace-nowrap",
+                    filterStatus === p.id
+                      ? "bg-orange-600 text-white border-orange-600 shadow-xs"
+                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* More Filters Toggle */}
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+                className="h-10 px-3.5 rounded-md border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 flex items-center gap-1.5"
               >
-                {s === 'সব' ? 'সব অর্ডার' : s === 'অপেক্ষমাণ' ? 'চালান অপেক্ষমাণ' : 'চালান সম্পন্ন'}
-              </button>
-            ))}
+                <Filter className="w-3.5 h-3.5 text-orange-600" />
+                <span>আরও ফিল্টার</span>
+                {isFilterExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </Button>
+
+              {(search || startDate || endDate || filterStatus !== 'সব' || minBill || maxBill) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetFilters}
+                  className="h-10 px-2.5 rounded-md text-rose-600 hover:bg-rose-50 font-bold text-xs flex items-center gap-1"
+                  title="ফিল্টার রিসেট করুন"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
 
-          <div className="relative w-full md:w-80">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
-              placeholder="ক্রেতার নাম বা আইডি..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-11 bg-white border-slate-200 focus:border-orange-500 focus:ring-orange-500/20 font-bengali rounded-xl h-11 shadow-sm"
-            />
-          </div>
-        </div>
+          {/* Secondary Collapsible Drawer: Bill Range */}
+          {isFilterExpanded && (
+            <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in duration-200">
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-600">মোট বিল (৳)</Label>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    placeholder="সর্বনিম্ন"
+                    value={minBill}
+                    onChange={e => setMinBill(e.target.value)}
+                    className="rounded-md h-9 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                  />
+                  <span className="text-slate-300 text-xs">-</span>
+                  <Input
+                    placeholder="সর্বোচ্চ"
+                    value={maxBill}
+                    onChange={e => setMaxBill(e.target.value)}
+                    className="rounded-md h-9 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
 
         {/* Order History Table */}
-        <Card className="border-slate-100 shadow-xl shadow-slate-200/40 rounded-3xl bg-white overflow-hidden">
+        <Card className="border-slate-100 shadow-md rounded-md bg-white overflow-hidden">
           <CardContent className="p-0">
             <Table>
               <TableHeader className="bg-slate-50 border-b border-slate-100">
@@ -653,7 +785,7 @@ export default function OrdersPage() {
                     <TableCell className="text-center font-bengali text-xs font-bold text-slate-600">{toBengaliDigits(o.items?.length || 0)} টি পণ্য</TableCell>
                     <TableCell className="text-right font-bengali font-black text-slate-900 text-base">৳{toBengaliDigits((o.totalAmount || 0).toLocaleString('en-IN'))}</TableCell>
                     <TableCell className="text-center">
-                      <span className={cn("px-3 py-1 rounded-lg text-[11px] font-black font-bengali uppercase tracking-wider inline-block",
+                      <span className={cn("px-3 py-1 rounded-md text-[11px] font-black font-bengali uppercase tracking-wider inline-block",
                         o.invoiced 
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
                           : 'bg-amber-50 text-amber-700 border border-amber-200'
@@ -666,7 +798,7 @@ export default function OrdersPage() {
                         size="icon"
                         variant="ghost"
                         onClick={(e) => toggleMenu(e, o.id)}
-                        className="h-9 w-9 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl"
+                        className="h-9 w-9 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md"
                       >
                         <MoreVertical className="w-4 h-4" />
                       </Button>
@@ -678,403 +810,428 @@ export default function OrdersPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* FULL SCREEN CREATE NEW SALES ORDER PAGE OVERLAY (1:1 REPLICA OF USER REFERENCE IMAGE) */}
-      {isCreateOrderOpen && (
-        <div className="fixed inset-0 sm:left-[72px] z-[60] bg-[#f8fafc] overflow-y-auto font-bengali p-6 sm:p-8">
-          <form onSubmit={handleCreateOrderSubmit} className="max-w-7xl mx-auto space-y-6 pb-16">
+      ) : (
+        /* CREATE / EDIT SALES ORDER IN-PAGE VIEW (Direct Page View, Framed Container) */
+        <div className="space-y-4 animate-in fade-in duration-300 font-bengali">
+          <div className="w-full bg-slate-100 border-2 border-slate-300 shadow-xl rounded-md overflow-hidden flex flex-col min-h-[calc(100vh-100px)]">
             
-            {/* TOP HEADER BAR */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-[#F97316] flex items-center justify-center shadow-lg shadow-orange-500/20 text-white">
-                  <ShoppingCart className="w-7 h-7" />
-                </div>
+            {/* FRAME TOP HEADER BAR */}
+            <div className="bg-white border-b border-slate-300 px-6 py-3.5 flex items-center justify-between shadow-xs flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => { setIsCreateOrderOpen(false); resetCreateForm(); }}
+                  className="w-9 h-9 rounded-md bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold shadow-xs flex-shrink-0 transition-colors"
+                  title="তালিকায় ফিরে যান"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
                 <div>
-                  <h1 className="text-2xl font-black text-slate-900 tracking-tight">নতুন বিক্রয় অর্ডার</h1>
-                  <p className="text-xs text-slate-500 font-bold mt-0.5">অর্ডার তৈরি করুন ও সংরক্ষণ করুন</p>
+                  <span className="text-[10px] font-black tracking-widest text-orange-600 uppercase block">
+                    অর্ডার ব্যবস্থাপনা
+                  </span>
+                  <h1 className="text-lg font-black text-slate-900 tracking-tight leading-none">
+                    {editingOrderId ? 'বিক্রয় অর্ডার সম্পাদনা করুন' : 'নতুন বিক্রয় অর্ডার তৈরি করুন'}
+                  </h1>
                 </div>
               </div>
 
-              <div className="bg-orange-50/70 border border-orange-200/80 rounded-2xl px-5 py-3 flex items-center gap-3 shadow-xs">
-                <div className="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center text-orange-600">
-                  <FileText className="w-5 h-5" />
+              <div className="flex items-center gap-3">
+                <div className="bg-orange-50 border border-orange-200 rounded-md px-3 py-1.5 flex items-center gap-2">
+                  <span className="text-[11px] text-orange-800 font-bold">অর্ডার নং:</span>
+                  <span className="text-xs font-mono font-black text-rose-600">#{toBengaliDigits(autoOrderId || 'SO-২০২৬-০০০১৫৬')}</span>
                 </div>
-                <div>
-                  <p className="text-[11px] text-orange-800 font-bold">অর্ডার আইডি (স্বয়ংক্রিয়)</p>
-                  <p className="text-sm font-mono font-black text-rose-600">{toBengaliDigits(autoOrderId || 'SO-২০২৬-০০০১৫৬')}</p>
-                </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => { setIsCreateOrderOpen(false); resetCreateForm(); }}
+                  className="h-9 w-9 rounded-md hover:bg-rose-50 hover:text-rose-600 text-slate-500 transition-colors"
+                  title="বন্ধ করুন"
+                >
+                  <X className="w-5 h-5" />
+                </Button>
               </div>
             </div>
 
-            {/* MAIN TWO-COLUMN GRID */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* MAIN FORM GRID INSIDE FRAME */}
+            <form onSubmit={handleCreateOrderSubmit} className="p-4 md:p-6 w-full space-y-6 flex-1 overflow-y-auto">
+              
+              {/* MAIN TWO-COLUMN GRID */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-              {/* --- LEFT COLUMN (WIDE ~70%) --- */}
-              <div className="lg:col-span-8 space-y-5">
+                {/* --- LEFT COLUMN (WIDE ~70%) --- */}
+                <div className="lg:col-span-8 space-y-5">
 
-                {/* 1. TOP BAR FILTERS ROW */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-slate-600">• অর্ডার তারিখ</Label>
-                    <Input 
-                      type="text"
-                      value={orderDate} 
-                      onChange={e => setOrderDate(e.target.value)} 
-                      className="rounded-xl h-10 border-slate-200 bg-white text-xs font-bold text-slate-800" 
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-slate-600">• ডেলিভারি তারিখ</Label>
-                    <Input 
-                      type="text"
-                      value={deliveryDate} 
-                      onChange={e => setDeliveryDate(e.target.value)} 
-                      className="rounded-xl h-10 border-slate-200 bg-white text-xs font-bold text-slate-800" 
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-slate-600">• অর্ডার স্ট্যাটাস</Label>
-                    <Select value={orderStatus} onValueChange={(v: string | null) => setOrderStatus(v || 'পেন্ডিং')}>
-                      <SelectTrigger className="rounded-xl h-10 border-slate-200 bg-white text-xs font-bold">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="font-bengali">
-                        <SelectItem value="পেন্ডিং">
-                          <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-full">পেন্ডিং</span>
-                        </SelectItem>
-                        <SelectItem value="প্রসেসিং">
-                          <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full">প্রসেসিং</span>
-                        </SelectItem>
-                        <SelectItem value="সম্পন্ন">
-                          <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded-full">সম্পন্ন</span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-slate-600">• প্রয়োজনীয় ডেলিভারি</Label>
-                    <Select value={requiredDelivery} onValueChange={(v: string | null) => setRequiredDelivery(v || 'না')}>
-                      <SelectTrigger className="rounded-xl h-10 border-slate-200 bg-white text-xs font-bold">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="font-bengali">
-                        <SelectItem value="না">না</SelectItem>
-                        <SelectItem value="হ্যাঁ">হ্যাঁ</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* 2. CUSTOMER SELECTION CARD */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                      <User className="w-4 h-4 text-slate-600" /> কাস্টমার নির্বাচন করুন
-                    </h2>
-                    <Button 
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setIsNewCustomer(!isNewCustomer);
-                        if (isNewCustomer) setSelectedCustomer(null);
-                      }}
-                      className="rounded-xl h-9 text-xs font-bold text-emerald-600 border-emerald-300 hover:bg-emerald-50"
-                    >
-                      + নতুন কাস্টমার
-                    </Button>
-                  </div>
-
-                  {!isNewCustomer ? (
-                    <CustomerSearchSelect
-                      customers={customers}
-                      selectedCustomer={selectedCustomer}
-                      onSelectCustomer={(cust) => setSelectedCustomer(cust)}
-                      onAddNewClick={() => setIsNewCustomer(true)}
-                      placeholder="কাস্টমারের নাম বা মোবাইল নম্বর দিয়ে খুঁজুন..."
-                    />
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* 1. TOP BAR FILTERS ROW */}
+                  <div className="bg-white p-5 rounded-md border border-slate-200/80 shadow-xs grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-slate-600">• অর্ডার তারিখ</Label>
                       <Input 
-                        value={newCustomerData.name} 
-                        onChange={e => setNewCustomerData(prev => ({ ...prev, name: e.target.value }))} 
-                        placeholder="কাস্টমার নাম *" 
-                        className="rounded-xl h-11 border-slate-200 text-xs bg-white" 
-                      />
-                      <Input 
-                        value={newCustomerData.phone} 
-                        onChange={e => setNewCustomerData(prev => ({ ...prev, phone: e.target.value }))} 
-                        placeholder="মোবাইল নম্বর" 
-                        className="rounded-xl h-11 border-slate-200 text-xs bg-white" 
+                        type="text"
+                        value={orderDate} 
+                        onChange={e => setOrderDate(e.target.value)} 
+                        className="rounded-md h-10 border-slate-200 bg-white text-xs font-bold text-slate-800" 
                       />
                     </div>
-                  )}
-
-                  {/* Selected Customer Stats Row */}
-                  <div className="p-3.5 bg-slate-50/70 border border-slate-200/70 rounded-xl grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-bengali">
-                    <div>
-                      <p className="text-slate-500 font-semibold text-[11px] flex items-center gap-1">
-                        <PhoneCall className="w-3 h-3 text-slate-400" /> মোবাইল নম্বর
-                      </p>
-                      <p className="font-bold text-slate-900 mt-0.5">{selectedCustomer?.phone ? toBengaliDigits(selectedCustomer.phone) : '—'}</p>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-slate-600">• ডেলিভারি তারিখ</Label>
+                      <Input 
+                        type="text"
+                        value={deliveryDate} 
+                        onChange={e => setDeliveryDate(e.target.value)} 
+                        className="rounded-md h-10 border-slate-200 bg-white text-xs font-bold text-slate-800" 
+                      />
                     </div>
-                    <div>
-                      <p className="text-slate-500 font-semibold text-[11px] flex items-center gap-1">
-                        <MapPin className="w-3 h-3 text-slate-400" /> ঠিকানা
-                      </p>
-                      <p className="font-bold text-slate-900 mt-0.5">{selectedCustomer?.address || '—'}</p>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-slate-600">• অর্ডার স্ট্যাটাস</Label>
+                      <Select value={orderStatus} onValueChange={(v: string | null) => setOrderStatus(v || 'পেন্ডিং')}>
+                        <SelectTrigger className="rounded-md h-10 border-slate-200 bg-white text-xs font-bold">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="font-bengali">
+                          <SelectItem value="পেন্ডিং">
+                            <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-md">পেন্ডিং</span>
+                          </SelectItem>
+                          <SelectItem value="প্রসেসিং">
+                            <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-md">প্রসেসিং</span>
+                          </SelectItem>
+                          <SelectItem value="সম্পন্ন">
+                            <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded-md">সম্পন্ন</span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div>
-                      <p className="text-slate-500 font-semibold text-[11px]">ধরন</p>
-                      {selectedCustomer ? (
-                        <span className="inline-block bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full mt-0.5">
-                          নিয়মিত কাস্টমার
-                        </span>
-                      ) : (
-                        <p className="font-bold text-slate-400 mt-0.5">—</p>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-slate-500 font-semibold text-[11px]">বকেয়া</p>
-                      <p className="font-black text-rose-600 mt-0.5">
-                        {selectedCustomer ? `৳ ${toBengaliDigits(((selectedCustomer as any)?.totalDue || 0).toLocaleString('en-IN'))}` : '—'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. PRODUCT ADDING CARD */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
-                  <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                    <ShoppingCart className="w-4 h-4 text-emerald-600" /> পণ্য যোগ করুন
-                  </h2>
-
-                  {/* Step-by-Step Cascading Product Selector (Rod, Cement, Ring) without Price Field */}
-                  <CascadingProductSelector
-                    products={products}
-                    onlyInStock={true}
-                    onProductChange={(selected) => {
-                      setSelectedCascadingProduct(selected);
-                      if (selected && selected.productId) {
-                        setSelectedProductId(selected.productId);
-                      }
-                    }}
-                    showPriceField={false}
-                    itemQty={itemQty}
-                    onQtyChange={setItemQty}
-                    itemPrice={itemPrice}
-                    onPriceChange={setItemPrice}
-                    onAddCartItem={handleAddCartItem}
-                  />
-
-                  {/* 4. CART ITEMS TABLE */}
-                  <div className="space-y-3 pt-2">
-                    <h3 className="text-xs font-bold text-slate-800">অর্ডারে যোগ করা পণ্যসমূহ</h3>
-                    
-                    <div className="border border-slate-200/80 rounded-xl overflow-hidden bg-white">
-                      <Table>
-                        <TableHeader className="bg-slate-50 border-b border-slate-200">
-                          <TableRow>
-                            <TableHead className="w-10 text-center font-bold text-slate-700 text-[11px]">#</TableHead>
-                            <TableHead className="font-bold text-slate-700 text-[11px]">পণ্যের নাম</TableHead>
-                            <TableHead className="text-center font-bold text-slate-700 text-[11px]">ইউনিট</TableHead>
-                            <TableHead className="text-center font-bold text-slate-700 text-[11px]">পরিমাণ</TableHead>
-                            <TableHead className="text-center font-bold text-slate-700 text-[11px]">স্টক উপলব্ধ</TableHead>
-                            <TableHead className="text-center font-bold text-slate-700 text-[11px]">মন্তব্য</TableHead>
-                            <TableHead className="w-16 text-center font-bold text-slate-700 text-[11px]">অ্যাকশন</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody className="text-xs font-bengali">
-                          {cart.length > 0 ? (
-                            cart.map((item, idx) => (
-                              <TableRow key={item.id || idx} className="border-b border-slate-100">
-                                <TableCell className="text-center font-semibold text-slate-500">{toBengaliDigits(idx + 1)}</TableCell>
-                                <TableCell className="font-bold text-slate-900">
-                                  <span className="flex items-center gap-2">
-                                    <span className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-600 text-[10px]">
-                                      {item.unit === 'কেজি' ? '🥢' : '🛢️'}
-                                    </span>
-                                    {item.name}
-                                  </span>
-                                </TableCell>
-                                <TableCell className="text-center text-slate-600">{item.unit || 'বস্তা'}</TableCell>
-                                <TableCell className="text-center font-bold text-slate-900">{toBengaliDigits(item.quantity)}</TableCell>
-                                <TableCell className="text-center">
-                                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                    {toBengaliDigits((item as any).stock || 0)} {item.unit || 'বস্তা'}
-                                  </span>
-                                </TableCell>
-                                <TableCell className="text-center text-slate-400">—</TableCell>
-                                <TableCell className="text-center">
-                                  <button 
-                                    type="button"
-                                    onClick={() => handleRemoveCartItem(item.id)}
-                                    className="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-500 flex items-center justify-center mx-auto transition-colors"
-                                    title="সরিয়ে ফেলুন"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          ) : (
-                            <TableRow>
-                              <TableCell colSpan={7} className="text-center py-8 text-slate-400 font-semibold">
-                                কোনো পণ্য যোগ করা হয়নি। উপর থেকে পণ্য নির্বাচন করে &quot;+ যোগ করুন&quot; বাটনে ক্লিক করুন।
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
-
-                    {/* Notice Info Box */}
-                    <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-xl text-blue-800 text-xs flex items-center gap-2">
-                      <Info className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                      <span className="font-medium">পণ্য তালিকা থেকে কোনো আইটেম অপসারণ করতে ডিলিট বাটনে ক্লিক করুন।</span>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-slate-600">• প্রয়োজনীয় ডেলিভারি</Label>
+                      <Select value={requiredDelivery} onValueChange={(v: string | null) => setRequiredDelivery(v || 'না')}>
+                        <SelectTrigger className="rounded-md h-10 border-slate-200 bg-white text-xs font-bold">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="font-bengali">
+                          <SelectItem value="না">না</SelectItem>
+                          <SelectItem value="হ্যাঁ">হ্যাঁ</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
-                </div>
 
-                {/* 5. NOTES & ATTACHMENT CARD */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-2">
-                    <Label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                      ✏️ অর্ডার নোট (ঐচ্ছিক)
-                    </Label>
-                    <textarea 
-                      value={orderNote}
-                      onChange={e => setOrderNote(e.target.value)}
-                      placeholder="অর্ডার সম্পর্কে কোনো বিশেষ নোট..." 
-                      className="w-full h-24 p-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/20 font-bengali resize-none"
-                    />
-                  </div>
+                  {/* 2. CUSTOMER SELECTION CARD */}
+                  <div className="bg-white p-5 rounded-md border border-slate-200/80 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                        <User className="w-4 h-4 text-slate-600" /> কাস্টমার নির্বাচন করুন
+                      </h2>
+                      <Button 
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setIsNewCustomer(!isNewCustomer);
+                          if (isNewCustomer) setSelectedCustomer(null);
+                        }}
+                        className="rounded-md h-9 text-xs font-bold text-emerald-600 border-emerald-300 hover:bg-emerald-50"
+                      >
+                        + নতুন কাস্টমার
+                      </Button>
+                    </div>
 
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-2">
-                    <Label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                      📑 সংযুক্তি (ঐচ্ছিক)
-                    </Label>
-                    <div className="border-2 border-dashed border-slate-200 rounded-xl h-24 flex flex-col items-center justify-center p-3 text-center bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-colors">
-                      <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-1">
-                        <Paperclip className="w-4 h-4" />
+                    {!isNewCustomer ? (
+                      <CustomerSearchSelect
+                        customers={customers}
+                        selectedCustomer={selectedCustomer}
+                        onSelectCustomer={(cust) => setSelectedCustomer(cust)}
+                        onAddNewClick={() => setIsNewCustomer(true)}
+                        placeholder="কাস্টমারের নাম বা মোবাইল নম্বর দিয়ে খুঁজুন..."
+                      />
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <Input 
+                          value={newCustomerData.name} 
+                          onChange={e => setNewCustomerData(prev => ({ ...prev, name: e.target.value }))} 
+                          placeholder="কাস্টমার নাম *" 
+                          className="rounded-md h-11 border-slate-200 text-xs bg-white" 
+                        />
+                        <Input 
+                          value={newCustomerData.phone} 
+                          onChange={e => setNewCustomerData(prev => ({ ...prev, phone: e.target.value }))} 
+                          placeholder="মোবাইল নম্বর" 
+                          className="rounded-md h-11 border-slate-200 text-xs bg-white" 
+                        />
                       </div>
-                      <p className="text-xs font-bold text-slate-700">ফাইল সংযুক্ত করুন</p>
-                      <p className="text-[10px] text-slate-400">বা এখানে ড্রপ করুন</p>
-                    </div>
-                  </div>
-                </div>
+                    )}
 
-              </div>
-
-              {/* --- RIGHT SIDEBAR (~30% ORDER SUMMARY) --- */}
-              <div className="lg:col-span-4 space-y-5">
-                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4 font-bengali">
-                  <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                    📑 অর্ডার সারসংক্ষেপ
-                  </h2>
-
-                  <div className="space-y-3 text-xs">
-                    {/* Stat 1 */}
-                    <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
-                        <User className="w-4 h-4" />
-                      </div>
+                    {/* Selected Customer Stats Row */}
+                    <div className="p-3.5 bg-slate-50/70 border border-slate-200/70 rounded-md grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-bengali">
                       <div>
-                        <p className="text-[11px] text-slate-500 font-semibold">মোট আইটেম</p>
-                        <p className="text-base font-black text-slate-900">{toBengaliDigits(cart.length)}</p>
-                      </div>
-                    </div>
-
-                    {/* Stat 2 */}
-                    <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
-                        <ShoppingCart className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-[11px] text-slate-500 font-semibold">মোট পরিমাণ</p>
-                        <p className="text-base font-black text-slate-900">
-                          {toBengaliDigits(cart.reduce((a, i) => a + i.quantity, 0))}
+                        <p className="text-slate-500 font-semibold text-[11px] flex items-center gap-1">
+                          <PhoneCall className="w-3 h-3 text-slate-400" /> মোবাইল নম্বর
                         </p>
-                        {cart.length > 0 && (
-                          <p className="text-[10px] text-slate-400 font-semibold">
-                            ( {cart.map(i => `${toBengaliDigits(i.quantity)} ${i.unit || ''}`).join(', ')} )
-                          </p>
+                        <p className="font-bold text-slate-900 mt-0.5">{selectedCustomer?.phone ? toBengaliDigits(selectedCustomer.phone) : '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500 font-semibold text-[11px] flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-slate-400" /> ঠিকানা
+                        </p>
+                        <p className="font-bold text-slate-900 mt-0.5">{selectedCustomer?.address || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500 font-semibold text-[11px]">ধরন</p>
+                        {selectedCustomer ? (
+                          <span className="inline-block bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-md mt-0.5">
+                            নিয়মিত কাস্টমার
+                          </span>
+                        ) : (
+                          <p className="font-bold text-slate-400 mt-0.5">—</p>
                         )}
                       </div>
-                    </div>
-
-                    {/* Stat 3 */}
-                    <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
-                        <Paperclip className="w-4 h-4" />
-                      </div>
                       <div>
-                        <p className="text-[11px] text-slate-500 font-semibold">মোট ওজন (রড)</p>
-                        <p className="text-base font-black text-slate-900">
-                          {toBengaliDigits(cart.filter(i => i.unit?.includes('কেজি') || i.name?.includes('রড')).reduce((a, i) => a + i.quantity, 0))} কেজি
+                        <p className="text-slate-500 font-semibold text-[11px]">বকেয়া</p>
+                        <p className="font-black text-rose-600 mt-0.5">
+                          {selectedCustomer ? `৳ ${toBengaliDigits(((selectedCustomer as any)?.totalDue || 0).toLocaleString('en-IN'))}` : '—'}
                         </p>
                       </div>
                     </div>
+                  </div>
 
-                    {/* Stat 4 */}
-                    <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
-                        <Calendar className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-[11px] text-slate-500 font-semibold">ডেলিভারি তারিখ</p>
-                        <p className="text-sm font-bold text-slate-900">{toBengaliDigits(deliveryDate) || '—'}</p>
-                      </div>
-                    </div>
+                  {/* 3. PRODUCT ADDING CARD */}
+                  <div className="bg-white p-5 rounded-md border border-slate-200/80 shadow-xs space-y-4">
+                    <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                      <ShoppingCart className="w-4 h-4 text-emerald-600" /> পণ্য যোগ করুন
+                    </h2>
 
-                    {/* Stat 5 */}
-                    <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                        <CheckCircle2 className="w-4 h-4" />
+                    {/* Step-by-Step Cascading Product Selector */}
+                    <CascadingProductSelector
+                      products={products}
+                      onlyInStock={true}
+                      onProductChange={(selected) => {
+                        setSelectedCascadingProduct(selected);
+                        if (selected && selected.productId) {
+                          setSelectedProductId(selected.productId);
+                        }
+                      }}
+                      showPriceField={false}
+                      itemQty={itemQty}
+                      onQtyChange={setItemQty}
+                      itemPrice={itemPrice}
+                      onPriceChange={setItemPrice}
+                      onAddCartItem={handleAddCartItem}
+                    />
+
+                    {/* 4. CART ITEMS TABLE */}
+                    <div className="space-y-3 pt-2">
+                      <h3 className="text-xs font-bold text-slate-800">অর্ডারে যোগ করা পণ্যসমূহ</h3>
+                      
+                      <div className="border border-slate-200/80 rounded-md overflow-hidden bg-white">
+                        <Table>
+                          <TableHeader className="bg-slate-50 border-b border-slate-200">
+                            <TableRow>
+                              <TableHead className="w-10 text-center font-bold text-slate-700 text-[11px]">#</TableHead>
+                              <TableHead className="font-bold text-slate-700 text-[11px]">পণ্যের নাম</TableHead>
+                              <TableHead className="text-center font-bold text-slate-700 text-[11px]">ইউনিট</TableHead>
+                              <TableHead className="text-center font-bold text-slate-700 text-[11px]">পরিমাণ</TableHead>
+                              <TableHead className="text-center font-bold text-slate-700 text-[11px]">স্টক উপলব্ধ</TableHead>
+                              <TableHead className="text-center font-bold text-slate-700 text-[11px]">মন্তব্য</TableHead>
+                              <TableHead className="w-16 text-center font-bold text-slate-700 text-[11px]">অ্যাকশন</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody className="text-xs font-bengali">
+                            {cart.length > 0 ? (
+                              cart.map((item, idx) => (
+                                <TableRow key={item.id || idx} className="border-b border-slate-100">
+                                  <TableCell className="text-center font-semibold text-slate-500">{toBengaliDigits(idx + 1)}</TableCell>
+                                  <TableCell className="font-bold text-slate-900">
+                                    <span className="flex items-center gap-2">
+                                      <span className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center text-slate-600 text-[10px]">
+                                        {item.unit === 'কেজি' ? '🥢' : '🛢️'}
+                                      </span>
+                                      {item.name}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell className="text-center text-slate-600">{item.unit || 'বস্তা'}</TableCell>
+                                  <TableCell className="text-center font-bold text-slate-900">{toBengaliDigits(item.quantity)}</TableCell>
+                                  <TableCell className="text-center">
+                                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                                      {toBengaliDigits((item as any).stock || 0)} {item.unit || 'বস্তা'}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell className="text-center text-slate-400">—</TableCell>
+                                  <TableCell className="text-center">
+                                    <button 
+                                      type="button"
+                                      onClick={() => handleRemoveCartItem(item.id)}
+                                      className="w-7 h-7 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-500 flex items-center justify-center mx-auto transition-colors"
+                                      title="সরিয়ে ফেলুন"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            ) : (
+                              <TableRow>
+                                <TableCell colSpan={7} className="text-center py-8 text-slate-400 font-semibold">
+                                  কোনো পণ্য যোগ করা হয়নি। উপর থেকে পণ্য নির্বাচন করে &quot;+ যোগ করুন&quot; বাটনে ক্লিক করুন।
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
                       </div>
-                      <div>
-                        <p className="text-[11px] text-slate-500 font-semibold">অর্ডার স্ট্যাটাস</p>
-                        <span className="inline-block bg-orange-100 text-orange-700 text-xs font-bold px-2.5 py-0.5 rounded-full mt-0.5">
-                          {orderStatus || 'পেন্ডিং'}
-                        </span>
+
+                      {/* Notice Info Box */}
+                      <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-md text-blue-800 text-xs flex items-center gap-2">
+                        <Info className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                        <span className="font-medium">পণ্য তালিকা থেকে কোনো আইটেম অপসারণ করতে ডিলিট বাটনে ক্লিক করুন।</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Yellow Tip Card */}
-                  <div className="p-4 bg-amber-50/80 border border-amber-200/80 rounded-xl text-amber-900 text-xs space-y-1">
-                    <p className="font-bold flex items-center gap-1 text-amber-800">
-                      💡 অর্ডার সংরক্ষণ করলে এটি পেন্ডিং থাকবে।
-                    </p>
-                    <p className="text-[11px] text-amber-700 font-medium leading-relaxed">
-                      অনুমোদন করার পরেই ইনভয়েসে এবং হিসাব খাতায় হিট হবে।
-                    </p>
+                  {/* 5. NOTES & ATTACHMENT CARD */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-white p-5 rounded-md border border-slate-200/80 shadow-xs space-y-2">
+                      <Label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        ✏️ অর্ডার নোট (ঐচ্ছিক)
+                      </Label>
+                      <textarea 
+                        value={orderNote}
+                        onChange={e => setOrderNote(e.target.value)}
+                        placeholder="অর্ডার সম্পর্কে কোনো বিশেষ নোট..." 
+                        className="w-full h-24 p-3 rounded-md border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/20 font-bengali resize-none"
+                      />
+                    </div>
+
+                    <div className="bg-white p-5 rounded-md border border-slate-200/80 shadow-xs space-y-2">
+                      <Label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        📑 সংযুক্তি (ঐচ্ছিক)
+                      </Label>
+                      <div className="border-2 border-dashed border-slate-200 rounded-md h-24 flex flex-col items-center justify-center p-3 text-center bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-colors">
+                        <div className="w-8 h-8 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center mb-1">
+                          <Paperclip className="w-4 h-4" />
+                        </div>
+                        <p className="text-xs font-bold text-slate-700">ফাইল সংযুক্ত করুন</p>
+                        <p className="text-[10px] text-slate-400">বা এখানে ড্রপ করুন</p>
+                      </div>
+                    </div>
                   </div>
+
+                </div>
+
+                {/* --- RIGHT SIDEBAR (~30% ORDER SUMMARY) --- */}
+                <div className="lg:col-span-4 space-y-5">
+                  <div className="bg-white p-5 rounded-md border border-slate-200/80 shadow-xs space-y-4 font-bengali">
+                    <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                      📑 অর্ডার সারসংক্ষেপ
+                    </h2>
+
+                    <div className="space-y-3 text-xs">
+                      {/* Stat 1 */}
+                      <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-md flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-md bg-blue-100 text-blue-600 flex items-center justify-center">
+                          <User className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-slate-500 font-semibold">মোট আইটেম</p>
+                          <p className="text-base font-black text-slate-900">{toBengaliDigits(cart.length)}</p>
+                        </div>
+                      </div>
+
+                      {/* Stat 2 */}
+                      <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-md flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-md bg-blue-100 text-blue-600 flex items-center justify-center">
+                          <ShoppingCart className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-slate-500 font-semibold">মোট পরিমাণ</p>
+                          <p className="text-base font-black text-slate-900">
+                            {toBengaliDigits(cart.reduce((a, i) => a + i.quantity, 0))}
+                          </p>
+                          {cart.length > 0 && (
+                            <p className="text-[10px] text-slate-400 font-semibold">
+                              ( {cart.map(i => `${toBengaliDigits(i.quantity)} ${i.unit || ''}`).join(', ')} )
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Stat 3 */}
+                      <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-md flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-md bg-blue-100 text-blue-600 flex items-center justify-center">
+                          <Paperclip className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-slate-500 font-semibold">মোট ওজন (রড)</p>
+                          <p className="text-base font-black text-slate-900">
+                            {toBengaliDigits(cart.filter(i => i.unit?.includes('কেজি') || i.name?.includes('রড')).reduce((a, i) => a + i.quantity, 0))} কেজি
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Stat 4 */}
+                      <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-md flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-md bg-blue-100 text-blue-600 flex items-center justify-center">
+                          <Calendar className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-slate-500 font-semibold">ডেলিভারি তারিখ</p>
+                          <p className="text-sm font-bold text-slate-900">{toBengaliDigits(deliveryDate) || '—'}</p>
+                        </div>
+                      </div>
+
+                      {/* Stat 5 */}
+                      <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-md flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-md bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-slate-500 font-semibold">অর্ডার স্ট্যাটাস</p>
+                          <span className="inline-block bg-orange-100 text-orange-700 text-xs font-bold px-2.5 py-0.5 rounded-md mt-0.5">
+                            {orderStatus || 'পেন্ডিং'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tip Card */}
+                    <div className="p-4 bg-amber-50/80 border border-amber-200/80 rounded-md text-amber-900 text-xs space-y-1">
+                      <p className="font-bold flex items-center gap-1 text-amber-800">
+                        💡 অর্ডার সংরক্ষণ করলে এটি পেন্ডিং থাকবে।
+                      </p>
+                      <p className="text-[11px] text-amber-700 font-medium leading-relaxed">
+                        অনুমোদন করার পরেই ইনভয়েসে এবং হিসাব খাতায় হিট হবে।
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* STICKY BOTTOM ACTION BAR INSIDE FRAME */}
+              <div className="bg-white border-t border-slate-300 px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm font-bengali flex-shrink-0 mt-6">
+                <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold">
+                  <Lightbulb className="w-4 h-4 text-orange-600 flex-shrink-0" />
+                  <span>সংরক্ষণের পূর্বে সব তথ্য পুনরায় পরীক্ষা করে নিন।</span>
+                </div>
+
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <Button 
+                    type="button"
+                    variant="outline" 
+                    onClick={() => { setIsCreateOrderOpen(false); resetCreateForm(); }}
+                    className="rounded-md h-11 px-5 font-bold text-slate-600 border-slate-300 hover:bg-slate-50"
+                  >
+                    বাতিল করুন
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    className="rounded-md h-11 px-6 font-black text-white bg-orange-600 hover:bg-orange-700 shadow-md shadow-orange-600/20 active:scale-95 transition-all"
+                  >
+                    অর্ডার সম্পূর্ণ করুন ✓
+                  </Button>
                 </div>
               </div>
 
-            </div>
-
-            {/* BOTTOM ACTION FOOTER BAR */}
-            <div className="mt-8 pt-4 border-t border-slate-200 flex flex-wrap items-center justify-end gap-3">
-              <Button 
-                type="button" 
-                variant="outline"
-                onClick={() => setIsCreateOrderOpen(false)}
-                className="rounded-xl h-11 px-6 font-bold text-slate-700 border-slate-300 hover:bg-slate-100"
-              >
-                ✕ বাতিল
-              </Button>
-
-              <Button 
-                type="submit" 
-                className="bg-[#059669] hover:bg-[#047857] text-white font-bold h-11 px-8 rounded-xl shadow-md transition-all flex items-center gap-2"
-              >
-                ✓ অর্ডার সম্পন্ন করুন
-              </Button>
-            </div>
-
-          </form>
+            </form>
+          </div>
         </div>
       )}
 
