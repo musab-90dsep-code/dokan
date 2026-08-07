@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -59,6 +59,8 @@ interface CascadingProductSelectorProps {
   onUnitChange?: (unit: string) => void;
   buttonLabel?: string;
   className?: string;
+  purchaseType?: 'rod' | 'cement';
+  allowedCategories?: ('রড' | 'সিমেন্ট' | 'রিং' | 'অন্যান্য')[];
 }
 
 const ROD_MM_OPTIONS = [
@@ -129,12 +131,54 @@ export function CascadingProductSelector({
   onUnitChange,
   buttonLabel = '+ যোগ করুন',
   className,
+  purchaseType,
+  allowedCategories,
 }: CascadingProductSelectorProps) {
-  const [category, setCategory] = useState<'রড' | 'সিমেন্ট' | 'রিং' | 'অন্যান্য'>('রড');
+  const categoriesToDisplay = useMemo<('রড' | 'সিমেন্ট' | 'রিং' | 'অন্যান্য')[]>(() => {
+    if (allowedCategories && allowedCategories.length > 0) return allowedCategories;
+    if (purchaseType === 'rod') return ['রড', 'রিং'];
+    if (purchaseType === 'cement') return ['সিমেন্ট'];
+    return ['রড', 'সিমেন্ট', 'রিং', 'অন্যান্য'];
+  }, [allowedCategories, purchaseType]);
+
+  const [categoryState, setCategoryState] = useState<'রড' | 'সিমেন্ট' | 'রিং' | 'অন্যান্য'>(
+    categoriesToDisplay[0] || 'রড'
+  );
+
+  const category = categoriesToDisplay.includes(categoryState)
+    ? categoryState
+    : (categoriesToDisplay[0] || 'রড');
+
   const [selectedMm, setSelectedMm] = useState<string>('১০ মিলি');
   const [selectedBrand, setSelectedBrand] = useState<string>('BSRM');
   const [otherProductId, setOtherProductId] = useState<string>('');
   const [customName, setCustomName] = useState<string>('');
+
+  // Handle Category Switch & defaults
+  const handleCategorySelect = useCallback((cat: 'রড' | 'সিমেন্ট' | 'রিং' | 'অন্যান্য') => {
+    setCategoryState(cat);
+    if (cat === 'রড') {
+      setSelectedMm('১০ মিলি');
+      setSelectedBrand('BSRM');
+      if (onUnitChange) onUnitChange('কেজি');
+      if (onAlertLimitChange) onAlertLimitChange(200);
+    } else if (cat === 'সিমেন্ট') {
+      setSelectedMm('');
+      setSelectedBrand('শাহ সিমেন্ট');
+      if (onUnitChange) onUnitChange('বস্তা');
+      if (onAlertLimitChange) onAlertLimitChange(50);
+    } else if (cat === 'রিং') {
+      setSelectedMm('৭″ × ৭″');
+      setSelectedBrand('৮ মিলি রিং');
+      if (onUnitChange) onUnitChange('পিস');
+      if (onAlertLimitChange) onAlertLimitChange(100);
+    } else {
+      setSelectedMm('');
+      setSelectedBrand('');
+      setOtherProductId('');
+      if (onUnitChange) onUnitChange('পিস');
+    }
+  }, [onUnitChange, onAlertLimitChange]);
 
   // Products with positive stock
   const inStockProducts = useMemo(() => {
@@ -267,43 +311,23 @@ export function CascadingProductSelector({
     return selectedMm;
   }, [onlyInStock, category, availableRodMms, availableRingSizes, selectedMm]);
 
-  // Handle Category Switch & defaults
-  const handleCategorySelect = (cat: 'রড' | 'সিমেন্ট' | 'রিং' | 'অন্যান্য') => {
-    setCategory(cat);
-    if (cat === 'রড') {
-      setSelectedMm('১০ মিলি');
-      setSelectedBrand('BSRM');
-      if (onUnitChange) onUnitChange('কেজি');
-      if (onAlertLimitChange) onAlertLimitChange(200);
-    } else if (cat === 'সিমেন্ট') {
-      setSelectedMm('');
-      setSelectedBrand('শাহ সিমেন্ট');
-      if (onUnitChange) onUnitChange('বস্তা');
-      if (onAlertLimitChange) onAlertLimitChange(50);
-    } else if (cat === 'রিং') {
-      setSelectedMm('৭″ × ৭″');
-      setSelectedBrand('৮ মিলি রিং');
-      if (onUnitChange) onUnitChange('পিস');
-      if (onAlertLimitChange) onAlertLimitChange(100);
-    } else {
-      setSelectedMm('');
-      setSelectedBrand('');
-      setOtherProductId('');
-      if (onUnitChange) onUnitChange('পিস');
-    }
-  };
+
 
   // Derive constructed product name & match inventory product
   const matchedProductInfo = useMemo(() => {
+    const isPurchaseMode = showSellPriceField;
+
     if (category === 'অন্যান্য') {
       if (otherProductId) {
         const found = products.find(p => p.id === otherProductId);
         if (found) {
+          const buyP = Number(found.buyPrice || 0);
+          const sellP = Number(found.sellPrice || 0);
           return {
             productId: found.id,
             name: found.name,
-            price: found.buyPrice || found.sellPrice || 0,
-            sellPrice: found.sellPrice || 0,
+            price: isPurchaseMode ? (buyP || sellP) : (sellP || buyP),
+            sellPrice: sellP,
             unit: found.unit || 'পিস',
             stock: found.stock || 0,
           };
@@ -340,11 +364,13 @@ export function CascadingProductSelector({
       p.name.toLowerCase() === `${activeBrand} ${activeMm} রড`.toLowerCase()
     );
     if (exact) {
+      const buyP = Number(exact.buyPrice || 0);
+      const sellP = Number(exact.sellPrice || 0);
       return {
         productId: exact.id,
         name: exact.name,
-        price: exact.buyPrice || exact.sellPrice || 0,
-        sellPrice: exact.sellPrice || 0,
+        price: isPurchaseMode ? (buyP || sellP) : (sellP || buyP),
+        sellPrice: sellP,
         unit: exact.unit || defaultUnit,
         stock: exact.stock || 0,
       };
@@ -366,11 +392,13 @@ export function CascadingProductSelector({
     });
 
     if (partial) {
+      const buyP = Number(partial.buyPrice || 0);
+      const sellP = Number(partial.sellPrice || 0);
       return {
         productId: partial.id,
         name: partial.name,
-        price: partial.buyPrice || partial.sellPrice || 0,
-        sellPrice: partial.sellPrice || 0,
+        price: isPurchaseMode ? (buyP || sellP) : (sellP || buyP),
+        sellPrice: sellP,
         unit: partial.unit || defaultUnit,
         stock: partial.stock || 0,
       };
@@ -384,7 +412,7 @@ export function CascadingProductSelector({
       unit: defaultUnit,
       stock: 0,
     };
-  }, [category, activeMm, activeBrand, otherProductId, customName, products]);
+  }, [category, activeMm, activeBrand, otherProductId, customName, products, showSellPriceField]);
 
   // Sync state up to parent when selection changes
   useEffect(() => {
@@ -400,10 +428,10 @@ export function CascadingProductSelector({
       stock: matchedProductInfo.stock,
     });
 
-    if (matchedProductInfo.price > 0 && itemPrice === 0) {
+    if (matchedProductInfo.price >= 0) {
       onPriceChange(matchedProductInfo.price);
     }
-    if (matchedProductInfo.sellPrice && matchedProductInfo.sellPrice > 0 && itemSellPrice === 0 && onSellPriceChange) {
+    if (matchedProductInfo.sellPrice !== undefined && onSellPriceChange) {
       onSellPriceChange(matchedProductInfo.sellPrice);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -426,8 +454,12 @@ export function CascadingProductSelector({
           )}
         </Label>
         
-        <div className="grid grid-cols-4 gap-2">
-          {(['রড', 'সিমেন্ট', 'রিং', 'অন্যান্য'] as const).map((cat) => {
+        <div className={cn("grid gap-2", 
+          categoriesToDisplay.length === 1 ? "grid-cols-1 sm:grid-cols-2" :
+          categoriesToDisplay.length === 2 ? "grid-cols-2" :
+          "grid-cols-4"
+        )}>
+          {categoriesToDisplay.map((cat) => {
             const isSelected = category === cat;
             return (
               <button
@@ -435,7 +467,7 @@ export function CascadingProductSelector({
                 type="button"
                 onClick={() => handleCategorySelect(cat)}
                 className={cn(
-                  'py-2 px-3 rounded-xl font-black text-xs transition-all border flex items-center justify-center gap-1.5',
+                  'py-2.5 px-3 rounded-xl font-black text-xs transition-all border flex items-center justify-center gap-1.5',
                   isSelected
                     ? 'bg-orange-600 text-white border-orange-600 shadow-md shadow-orange-500/20 scale-[1.02]'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -596,8 +628,17 @@ export function CascadingProductSelector({
           <Input
             type="number"
             min="1"
-            value={isNaN(itemQty) ? '' : itemQty}
-            onChange={(e) => onQtyChange(parseFloat(e.target.value) || 1)}
+            value={!itemQty && itemQty !== 0 ? '' : itemQty}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === '') {
+                onQtyChange('' as any);
+              } else {
+                const parsed = parseFloat(val);
+                onQtyChange(isNaN(parsed) ? ('' as any) : parsed);
+              }
+            }}
+            onFocus={(e) => e.target.select()}
             className="rounded-xl h-10 bg-white text-center font-bold text-xs"
           />
         </div>
@@ -609,8 +650,17 @@ export function CascadingProductSelector({
             <Input
               type="number"
               min="0"
-              value={!itemPrice || isNaN(itemPrice) ? '' : itemPrice}
-              onChange={(e) => onPriceChange(parseFloat(e.target.value) || 0)}
+              value={!itemPrice && itemPrice !== 0 ? '' : itemPrice}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '') {
+                  onPriceChange('' as any);
+                } else {
+                  const parsed = parseFloat(val);
+                  onPriceChange(isNaN(parsed) ? ('' as any) : parsed);
+                }
+              }}
+              onFocus={(e) => e.target.select()}
               placeholder="0"
               className="rounded-xl h-10 bg-white text-center font-bold text-xs text-orange-600"
             />
@@ -624,8 +674,17 @@ export function CascadingProductSelector({
             <Input
               type="number"
               min="0"
-              value={!itemSellPrice || isNaN(itemSellPrice) ? '' : itemSellPrice}
-              onChange={(e) => onSellPriceChange(parseFloat(e.target.value) || 0)}
+              value={!itemSellPrice && itemSellPrice !== 0 ? '' : itemSellPrice}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '') {
+                  onSellPriceChange('' as any);
+                } else {
+                  const parsed = parseFloat(val);
+                  onSellPriceChange(isNaN(parsed) ? ('' as any) : parsed);
+                }
+              }}
+              onFocus={(e) => e.target.select()}
               placeholder="0"
               className="rounded-xl h-10 bg-white text-center font-bold text-xs text-emerald-600"
             />
@@ -639,8 +698,17 @@ export function CascadingProductSelector({
             <Input
               type="number"
               min="0"
-              value={!itemAlertLimit || isNaN(itemAlertLimit) ? '' : itemAlertLimit}
-              onChange={(e) => onAlertLimitChange(parseFloat(e.target.value) || 0)}
+              value={!itemAlertLimit && itemAlertLimit !== 0 ? '' : itemAlertLimit}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '') {
+                  onAlertLimitChange('' as any);
+                } else {
+                  const parsed = parseFloat(val);
+                  onAlertLimitChange(isNaN(parsed) ? ('' as any) : parsed);
+                }
+              }}
+              onFocus={(e) => e.target.select()}
               placeholder="0"
               className="rounded-xl h-10 bg-white text-center font-bold text-xs text-purple-600"
             />

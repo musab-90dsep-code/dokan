@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { 
   Search, Eye, Printer, X, FileText, Receipt, Banknote, AlertCircle, Trash2, CheckCircle2, Plus, 
   ShoppingCart, User, Tag, ArrowRight, ShieldAlert, Clock, Truck, HardHat, Calendar, MapPin, PhoneCall, Building,
-  Paperclip, HelpCircle, Bell, Info, Save, Package, MoreVertical, Pencil, Filter, ChevronUp, ChevronDown, RotateCcw, ArrowLeft, Lightbulb
+  Paperclip, HelpCircle, Bell, Info, Save, Package, MoreVertical, Pencil, Filter, ChevronUp, ChevronDown, RotateCcw, ArrowLeft, Lightbulb, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { InvoiceMemo } from '@/components/InvoiceMemo';
+import { printElement } from '@/lib/printUtils';
 import { toBengaliDigits } from '@/lib/bengaliUtils';
 import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
 import { ProductSearchSelect } from '@/components/ProductSearchSelect';
@@ -173,6 +174,10 @@ export default function OrdersPage() {
   const [internalNoteText, setInternalNoteText] = useState('');
   const [deliveryNoteText, setDeliveryNoteText] = useState('');
   const [vatRate, setVatRate] = useState(0);
+
+  // Pagination States
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
   const [paymentMethodSelect, setPaymentMethodSelect] = useState('ক্যাশ');
   const [paymentReferenceNo, setPaymentReferenceNo] = useState('—');
   const [cashBankAccount, setCashBankAccount] = useState('নগদ ব্যাংক');
@@ -462,7 +467,7 @@ export default function OrdersPage() {
         total_amount: cartGrandTotal,
         paid_amount: advancePaid,
         due_amount: cartDueAmount,
-        payment_method: advanceMethod.toLowerCase(),
+        payment_method: (advanceMethod.toLowerCase().includes('bank') ? 'bank' : advanceMethod.toLowerCase().includes('cheque') ? 'cheque' : advanceMethod.toLowerCase()),
         items: cart.map(i => ({
           product_name: i.name,
           quantity: i.quantity,
@@ -497,7 +502,7 @@ export default function OrdersPage() {
         status: 'completed',
         paid_amount: invoicePaid,
         due_amount: Math.max(0, orderToInvoice.totalAmount - invoicePaid),
-        payment_method: invoiceMethod.toLowerCase()
+        payment_method: (invoiceMethod.toLowerCase().includes('bank') ? 'bank' : invoiceMethod.toLowerCase().includes('cheque') ? 'cheque' : invoiceMethod.toLowerCase())
       });
 
       if (typeof window !== 'undefined') {
@@ -553,6 +558,12 @@ export default function OrdersPage() {
 
     return Boolean(matchesSearch) && matchesStatus && matchesDate && matchesBill;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (validCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, filtered.length);
+  const paginatedOrders = filtered.slice(startIndex, endIndex);
 
   const pendingOrdersCount = orders.filter(o => !o.invoiced).length;
   const invoicedOrdersCount = orders.filter(o => o.invoiced).length;
@@ -771,7 +782,7 @@ export default function OrdersPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ) : filtered.map(o => (
+                ) : paginatedOrders.map(o => (
                   <TableRow 
                     key={o.id} 
                     onClick={() => setSelectedOrder(o)} 
@@ -808,6 +819,83 @@ export default function OrdersPage() {
               </TableBody>
             </Table>
           </CardContent>
+
+          {/* PAGINATION FOOTER NAVBAR */}
+          {filtered.length > 0 && (
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4 font-bengali text-xs font-semibold">
+              <div className="text-slate-600 flex items-center gap-2">
+                <span>
+                  মোট <strong className="text-slate-900 font-bold">{toBengaliDigits(filtered.length)}</strong> টি অর্ডারের মধ্যে <strong className="text-slate-900 font-bold">{toBengaliDigits(startIndex + 1)}</strong> - <strong className="text-slate-900 font-bold">{toBengaliDigits(endIndex)}</strong> টি দেখানো হচ্ছে
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5 text-slate-500">
+                  <span>প্রতি পেজে:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="h-8 rounded-md bg-white border border-slate-200 px-2 font-bold text-xs text-slate-800 outline-none cursor-pointer"
+                  >
+                    <option value={10}>১০ টি</option>
+                    <option value={20}>২০ টি</option>
+                    <option value={50}>৫০ টি</option>
+                    <option value={100}>১০০ টি</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    className="h-8 px-2.5 rounded-md text-xs font-bold bg-white text-slate-700 border-slate-200 hover:bg-slate-100 disabled:opacity-40"
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-0.5" /> আগের পেজ
+                  </Button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                      .map((page, idx, arr) => {
+                        const prev = arr[idx - 1];
+                        const showEllipsis = prev && page - prev > 1;
+                        return (
+                          <div key={page} className="flex items-center gap-1">
+                            {showEllipsis && <span className="px-1 text-slate-400">...</span>}
+                            <button
+                              onClick={() => setCurrentPage(page)}
+                              className={cn(
+                                "w-8 h-8 rounded-md text-xs font-bold transition-all border",
+                                currentPage === page
+                                  ? "bg-orange-600 text-white border-orange-600 shadow-xs"
+                                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                              )}
+                            >
+                              {toBengaliDigits(page)}
+                            </button>
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    className="h-8 px-2.5 rounded-md text-xs font-bold bg-white text-slate-700 border-slate-200 hover:bg-slate-100 disabled:opacity-40"
+                  >
+                    পরের পেজ <ChevronRight className="w-4 h-4 ml-0.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </Card>
       </div>
       ) : (
@@ -1957,7 +2045,7 @@ export default function OrdersPage() {
             </DialogHeader>
             <div className="flex gap-2">
               <Button 
-                onClick={() => window.print()}
+                onClick={() => printElement('printable-memo-wrapper')}
                 className="bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl px-4 h-10 shadow-md"
               >
                 <Printer className="w-4 h-4 mr-2" /> প্রিন্ট মেমো

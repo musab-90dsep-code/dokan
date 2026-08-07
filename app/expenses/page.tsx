@@ -177,7 +177,7 @@ export default function ExpensePage() {
         category_name: categoriesList.find(c => c.id === newExpense.category)?.name || newExpense.category,
         amount: newExpense.amount,
         date: newExpense.date,
-        payment_method: newExpense.paymentMethod.toLowerCase(),
+        payment_method: (newExpense.paymentMethod.toLowerCase().includes('bank') ? 'bank' : newExpense.paymentMethod.toLowerCase().includes('cheque') ? 'cheque' : newExpense.paymentMethod.toLowerCase()),
         reference_no: newExpense.billNo || newExpense.vendor || '',
         notes: newExpense.note
       });

@@ -1,82 +1,72 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { toBengaliDigits, formatBengaliTaka, numberToBengaliWords } from '@/lib/bengaliUtils';
+import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { Printer, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toBengaliDigits, numberToBengaliWords } from '@/lib/bengaliUtils';
 import { printElement } from '@/lib/printUtils';
 
-export interface OrderItem {
+export interface PurchaseItem {
   id?: string;
   name: string;
+  unit: string;
   price: number;
   quantity: number;
-  unit?: string;
   discount?: number;
   bundle?: number | string;
   pieces?: number | string;
-  weightKg?: number;
 }
 
-export interface InvoiceMemoProps {
+export interface PurchaseInvoiceMemoProps {
   invoice: {
     id: string;
-    customerName: string;
-    customerPhone?: string;
-    customerAddress?: string;
-    siteAddress?: string;
-    siteContact?: string;
-    totalAmount: number;
-    paidAmount?: number;
-    dueAmount?: number;
-    previousBalance?: number;
+    purchaseId?: string;
+    supplierName: string;
+    supplierPhone?: string;
+    supplierAddress?: string;
+    businessName?: string;
+    supplierId?: string;
+    items: PurchaseItem[];
+    subtotal?: number;
+    discount?: number;
+    shippingCost?: number;
     transportCost?: number;
     laborCost?: number;
-    discount?: number;
-    subtotal?: number;
+    totalAmount: number;
+    paidAmount: number;
+    dueAmount: number;
+    paymentStatus: string;
+    paymentMethod?: string;
+    chequeNo?: string;
+    chequeDate?: string;
+    note?: string;
+    createdAt: any;
     vehicleNo?: string;
-    driverInfo?: string;
     driverName?: string;
     driverPhone?: string;
     deliveryAddress?: string;
-    items: OrderItem[];
-    createdAt: any;
-    note?: string;
-    paymentStatus?: string;
-    paymentMethod?: string;
-    paymentMethodName?: string;
-    bankName?: string;
-    accountNo?: string;
-    transactionRef?: string;
-    receiverShopBank?: string;
-    senderBankName?: string;
-    senderAccountNo?: string;
-    senderTxnRef?: string;
-    chequeNo?: string;
-    chequeDate?: string;
-    cashPaidAmount?: number;
-    chequePaidAmount?: number;
+    purchaseType?: 'rod' | 'cement' | string;
     operatorName?: string;
   };
   shopInfo?: {
     name?: string;
-    proprietor?: string;
+    tagline?: string;
     address?: string;
-    description?: string;
-    dealership?: string;
     phone?: string;
-    terms?: string;
-    logoUrl?: string;
     email?: string;
+    terms?: string;
+    proprietor?: string;
   };
+  type?: 'purchase' | 'sales';
   showPrintButton?: boolean;
   onClose?: () => void;
 }
 
-export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({ 
-  invoice, 
+export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
+  invoice,
   shopInfo: propShopInfo,
+  type = 'purchase',
   showPrintButton = true
 }) => {
   const handleTriggerPrint = () => {
@@ -87,12 +77,11 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
     const defaultShop = {
       name: 'মেসার্স দেলোয়ার এন্ড ব্রাদার্স',
       proprietor: 'প্রোঃ- মোঃ মিকাইল শেখ',
+      tagline: 'রড, সিমেন্ট ও বিল্ডিং সামগ্রী পাইকারী ও খুচরা সরবরাহ কেন্দ্র',
       address: '৩১০, চৌধুরী নিউ সুপার মার্কেট, বঙ্গবন্ধু সড়ক, গোপালগঞ্জ',
-      description: 'রড, সিমেন্ট ও বিল্ডিং সামগ্রী পাইকারী ও খুচরা সরবরাহ কেন্দ্র',
-      dealership: 'ডিলারঃ BSRM • KSRM • AKS • শাহ সিমেন্ট • সেভেন রিংস',
       phone: '০১৭১২-০১৪২২৫, ০১৭০১-২৯৫৩৩০',
       email: 'delowarteraders@gmail.com',
-      terms: 'বিঃ দ্রঃ— ১. বিক্রিত মালামাল সাইটে হস্তান্তরের পর ফেরত বা বদল করা হয় না। ২. সাইটে শতভাগ মালামাল গণন পূর্বক বুঝে নিন।',
+      terms: 'বিঃ দ্রঃ— ১. এটি একটি সিস্টেম-জেনারেটেড অফিশিয়াল ক্রয় চালান। ২. ডেলিভারি সাইটে মালামাল গণন পূর্বক বুঝে নেওয়ার অনুরোধ করা যাচ্ছে।',
       software: 'Hasanah Tech Solution',
       softwareCompany: 'Hasanah Tech Solution',
       softwarePhone: '01349345353',
@@ -119,9 +108,8 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
           return {
             name: parsed.name || defaultShop.name,
             proprietor: parsed.proprietor || defaultShop.proprietor,
+            tagline: parsed.type ? `${parsed.type} - পাইকারী ও খুচরা সরবরাহ কেন্দ্র` : defaultShop.tagline,
             address: parsed.address || defaultShop.address,
-            description: parsed.type ? `${parsed.type} - পাইকারী ও খুচরা বিক্রয় কেন্দ্র` : defaultShop.description,
-            dealership: parsed.dealership || defaultShop.dealership,
             phone: parsed.phone ? `মোবাইলঃ ${parsed.phone}` : defaultShop.phone,
             email: parsed.email || defaultShop.email,
             terms: parsed.terms || defaultShop.terms,
@@ -132,7 +120,7 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
           };
         }
       } catch (e) {
-        console.error('Error reading shopInfo', e);
+        console.error(e);
       }
     }
     return { ...defaultShop, ...customPromo };
@@ -151,23 +139,23 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
     timeStr = toBengaliDigits(format(new Date(), 'hh:mm a'));
   }
 
-  const productTotal = (invoice.items || []).reduce((sum, item) => sum + ((item.price - (item.discount || 0)) * item.quantity), 0);
-  const transportCost = invoice.transportCost || (invoice as any).shippingCost || 0;
+  const items = invoice.items || [];
+  const subtotal = invoice.subtotal || items.reduce((sum, i) => sum + ((i.price - (i.discount || 0)) * i.quantity), 0);
+  const discount = invoice.discount || 0;
+  const transportCost = invoice.transportCost || invoice.shippingCost || 0;
   const laborCost = invoice.laborCost || 0;
-  const subtotal = invoice.subtotal || productTotal;
-  
-  const total = invoice.totalAmount || (subtotal + transportCost + laborCost);
-  const paid = invoice.paidAmount || 0;
-  const due = invoice.dueAmount !== undefined ? invoice.dueAmount : Math.max(0, total - paid);
-  const prevBal = invoice.previousBalance || 0;
-  const grandTotal = total + prevBal;
+  const totalAmount = invoice.totalAmount || (subtotal - discount + transportCost + laborCost);
+  const paidAmount = invoice.paidAmount || 0;
+  const dueAmount = invoice.dueAmount !== undefined ? invoice.dueAmount : Math.max(0, totalAmount - paidAmount);
 
-  const invoiceNo = invoice.id 
-    ? (invoice.id.startsWith('INV') ? invoice.id : `INV-${invoice.id.slice(-6).toUpperCase()}`)
-    : 'INV-2026-0042';
+  // Memo number format
+  const isPurchase = type === 'purchase';
+  const prefix = isPurchase ? 'PUR' : 'INV';
+  const memoNo = invoice.id 
+    ? (invoice.id.startsWith('INV') || invoice.id.startsWith('PUR') ? invoice.id : `${prefix}-${invoice.id.slice(-6).toUpperCase()}`)
+    : `${prefix}-2026-0042`;
 
   // Aggregate quantity by unit
-  const items = invoice.items || [];
   const aggregatedUnits = items.reduce((acc: Record<string, number>, item) => {
     const u = item.unit || 'পিস';
     acc[u] = (acc[u] || 0) + item.quantity;
@@ -178,11 +166,32 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
     .map(([unit, qty]) => `${toBengaliDigits(qty.toLocaleString('en-IN'))} ${unit}`)
     .join(' • ');
 
-  const isPaid = due <= 0 || invoice.paymentStatus === 'paid' || invoice.paymentStatus === 'পরিশোধিত';
+  const isPaid = dueAmount <= 0 || invoice.paymentStatus === 'paid' || invoice.paymentStatus === 'পরিশোধিত';
+
+  const partyTitle = isPurchase ? 'সাপ্লাইয়ার / কোম্পানি' : 'গ্রাহক / কাস্টমার';
+  const memoTitle = isPurchase ? 'অফিসিয়াল ক্রয় ইনভয়েস' : 'অফিসিয়াল বিক্রয় ক্যাশ মেমো';
+
+  // Try parsing meta notes if stored as JSON
+  let meta: any = {};
+  let cleanUserNote = invoice.note || (invoice as any).notes || '';
+  if (cleanUserNote && cleanUserNote.startsWith('{')) {
+    try {
+      const firstLine = cleanUserNote.split('\n')[0];
+      meta = JSON.parse(firstLine);
+      cleanUserNote = cleanUserNote.substring(firstLine.length).trim();
+    } catch {
+      // not json
+    }
+  }
+
+  const effectiveVehicleNo = invoice.vehicleNo || meta.vehicleNo || '';
+  const effectiveDriverName = invoice.driverName || meta.driverName || '';
+  const effectiveDeliveryAddress = invoice.deliveryAddress || meta.deliveryAddress || '';
+  const effectivePaymentMethodName = meta.paymentMethodName || invoice.paymentMethod || 'Cash';
 
   return (
     <div className="w-full font-bengali">
-      {/* Top Action Bar for Web Preview */}
+      {/* Top bar preview button */}
       {showPrintButton && (
         <div className="flex items-center justify-between bg-black text-white p-3.5 px-6 rounded-t-2xl print:hidden shadow-md">
           <div className="flex items-center gap-2 text-xs font-bold">
@@ -215,21 +224,16 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
               {shop.name}
             </h1>
             <p className="text-xs font-bold text-slate-700">
-              {shop.description}
+              {shop.tagline}
             </p>
-            {shop.dealership && (
-              <p className="text-[11px] font-bold text-slate-700">
-                {shop.dealership}
-              </p>
-            )}
             <p className="text-xs font-bold text-slate-800 pt-1">
               📍 {shop.address} • 📞 {shop.phone}
             </p>
           </div>
 
           <div className="text-right text-xs font-bold space-y-1 shrink-0">
-            <h2 className="text-xl font-black text-black uppercase tracking-wider">ক্যাশ মেমো</h2>
-            <p className="pt-1">মেমো নং: <span className="font-mono font-black text-sm">{invoiceNo}</span></p>
+            <h2 className="text-xl font-black text-black uppercase tracking-wider">{memoTitle}</h2>
+            <p className="pt-1">আইডি: <span className="font-mono font-black text-sm">{memoNo}</span></p>
             <p>তারিখ: <span>{dateStr}</span></p>
             <p>সময়: <span className="font-mono">{timeStr}</span></p>
             <p className="font-black text-sm pt-1">
@@ -238,29 +242,27 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
           </div>
         </div>
 
-        {/* --- 2. CUSTOMER & SITE INFO (CLEAN WITHOUT BOXES) --- */}
+        {/* --- 2. PARTY INFO (CLEAN WITHOUT BOXES) --- */}
         <div className="grid grid-cols-12 gap-4 text-xs font-bold text-black border-b border-slate-300 pb-4">
           <div className="col-span-7 space-y-1.5">
             <div className="flex items-baseline gap-2">
-              <span className="w-20 shrink-0 font-black text-slate-600">ক্রেতার নাম:</span>
-              <span className="font-black text-sm">{invoice.customerName || 'খুচরা গ্রাহক'}</span>
+              <span className="w-24 shrink-0 font-black text-slate-600">{partyTitle}:</span>
+              <span className="font-black text-sm">{invoice.supplierName || invoice.businessName || 'নগদ সরবরাহকারী'}</span>
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="w-20 shrink-0 font-black text-slate-600">মোবাইল:</span>
-              <span className="font-mono">{invoice.customerPhone || '—'}</span>
+              <span className="w-24 shrink-0 font-black text-slate-600">মোবাইল:</span>
+              <span className="font-mono">{invoice.supplierPhone || '—'}</span>
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="w-20 shrink-0 font-black text-slate-600">ঠিকানা:</span>
-              <span>{invoice.customerAddress || '—'}</span>
+              <span className="w-24 shrink-0 font-black text-slate-600">ঠিকানা:</span>
+              <span>{invoice.supplierAddress || '—'}</span>
             </div>
           </div>
 
           <div className="col-span-5 space-y-1.5 text-right">
-            {(invoice.siteAddress || invoice.deliveryAddress) && (
-              <div><span className="text-slate-600 font-black">সাইট: </span>{invoice.siteAddress || invoice.deliveryAddress}</div>
-            )}
-            {invoice.vehicleNo && <div><span className="text-slate-600 font-black">গাড়ি নং: </span><span className="font-mono">{invoice.vehicleNo}</span></div>}
-            {(invoice.driverInfo || invoice.driverName) && <div><span className="text-slate-600 font-black">ড্রাইভার: </span>{invoice.driverName || invoice.driverInfo}</div>}
+            {effectiveVehicleNo && <div><span className="text-slate-600 font-black">গাড়ি নং: </span><span className="font-mono">{effectiveVehicleNo}</span></div>}
+            {effectiveDriverName && <div><span className="text-slate-600 font-black">ড্রাইভার: </span>{effectiveDriverName}</div>}
+            {effectiveDeliveryAddress && <div><span className="text-slate-600 font-black">সাইট: </span>{effectiveDeliveryAddress}</div>}
           </div>
         </div>
 
@@ -300,13 +302,35 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                   </tr>
                 );
               })}
+
+              {/* Labor Row */}
+              {laborCost > 0 && (
+                <tr className="border-t border-slate-200">
+                  <td className="py-2 px-1 text-center font-bold text-slate-500">-</td>
+                  <td className="py-2 px-2 text-left font-bold">নামানো / লেবার খরচ</td>
+                  <td className="py-2 px-2 text-center font-bold">-</td>
+                  <td className="py-2 px-2 text-right font-bold">-</td>
+                  <td className="py-2 px-2 text-right font-black">৳ {toBengaliDigits(laborCost.toLocaleString('en-IN'))}</td>
+                </tr>
+              )}
+
+              {/* Transport Row */}
+              {transportCost > 0 && (
+                <tr className="border-t border-slate-200">
+                  <td className="py-2 px-1 text-center font-bold text-slate-500">-</td>
+                  <td className="py-2 px-2 text-left font-bold">গাড়ি ভাড়া / পরিবহন খরচ</td>
+                  <td className="py-2 px-2 text-center font-bold">-</td>
+                  <td className="py-2 px-2 text-right font-bold">-</td>
+                  <td className="py-2 px-2 text-right font-black">৳ {toBengaliDigits(transportCost.toLocaleString('en-IN'))}</td>
+                </tr>
+              )}
             </tbody>
           </table>
 
           {/* Subtotal Summary Bar */}
           <div className="flex justify-between items-center border-t-2 border-black pt-2 font-black text-xs text-black">
             <span>মোট মালামাল পরিমাণ: {totalQuantitySummary || '০ পিস'}</span>
-            <span className="text-sm">মোট ইনভয়েস বিল: ৳ {toBengaliDigits(total.toLocaleString('en-IN'))}</span>
+            <span className="text-sm">মোট ইনভয়েস বিল: ৳ {toBengaliDigits(totalAmount.toLocaleString('en-IN'))}</span>
           </div>
         </div>
 
@@ -317,30 +341,30 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
             <div>
               <p className="font-black text-[11px] text-slate-600">টাকা (কথায়):</p>
               <p className="font-black text-sm pt-0.5">
-                {numberToBengaliWords(grandTotal)} টাকা মাত্র।
+                {numberToBengaliWords(totalAmount)} টাকা মাত্র।
               </p>
             </div>
 
             <div className="pt-2 text-slate-700 text-xs space-y-1">
               {(() => {
-                const pmRaw = invoice.paymentMethodName || invoice.paymentMethod || 'Cash';
+                const pmRaw = effectivePaymentMethodName || 'Cash';
                 const pmLower = pmRaw.toLowerCase();
                 const isBankToBank = pmLower.includes('banktobank') || pmLower.includes('ব্যাংক-টু-ব্যাংক');
                 const isBank = pmLower.includes('bank') || pmLower.includes('ব্যাংক');
                 const isCheque = pmLower.includes('cheque') || pmLower.includes('check') || pmLower.includes('চেক');
-                const isSplit = pmLower.includes('split') || pmLower.includes('স্প্লিট');
 
                 let displayMethod = '💵 নগদ (Cash)';
-                if (isSplit) displayMethod = '💵+📄 নগদ ও চেক (স্প্লিট পেমেন্ট)';
-                else if (isBankToBank) displayMethod = '🔄 ব্যাংক-টু-ব্যাংক ট্রান্সফার (Bank-to-Bank)';
+                if (isBankToBank) displayMethod = '🔄 ব্যাংক-টু-ব্যাংক ট্রান্সফার (Bank-to-Bank)';
                 else if (isBank) displayMethod = '🏦 ব্যাংক ট্রান্সফার (Bank Transfer)';
                 else if (isCheque) displayMethod = '📄 চেক (Cheque)';
                 else if (pmLower.includes('mobile')) displayMethod = '📱 মোবাইল ব্যাংকিং';
 
-                const receiverAcc = invoice.receiverShopBank || invoice.bankName || '';
-                const senderBank = invoice.senderBankName || '';
-                const senderAcc = invoice.senderAccountNo || invoice.accountNo || '';
-                const txnRef = invoice.senderTxnRef || invoice.transactionRef || '';
+                const shopBank = meta.selectedShopBank || meta.bankName || invoice.chequeNo ? '' : '';
+                const suppBank = meta.supplierBankName || '';
+                const suppAcc = meta.supplierAccountNo || '';
+                const txnRef = meta.transactionRef || meta.supplierTxnRef || '';
+                const chqNo = invoice.chequeNo || meta.chequeNo || '';
+                const chqDate = invoice.chequeDate || meta.chequeDate || '';
 
                 return (
                   <div className="space-y-1 border-t border-slate-200 pt-2 mt-2">
@@ -349,102 +373,65 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                     </p>
 
                     {isBankToBank && (
-                      <div className="mt-1 p-2 bg-indigo-50/60 border border-indigo-200 rounded-md text-[11px] font-bold space-y-1 text-slate-800">
-                        {receiverAcc && (
-                          <p>📥 <strong className="text-indigo-950">গ্রহীতা / রিসিভিং ব্যাংক (দোকানের A/C):</strong> <span className="font-black text-black">{receiverAcc}</span></p>
-                        )}
-                        {(senderBank || senderAcc) && (
-                          <p>📤 <strong className="text-slate-900">প্রেরক ব্যাংক (কাস্টমারের A/C):</strong> <span className="font-black text-black">{senderBank}</span> {senderAcc ? `(A/C: ${senderAcc})` : ''}</p>
-                        )}
-                        {txnRef && <p>🔖 <strong className="text-slate-900">ট্রানজাকশন / রিফ আইডি:</strong> <span className="font-mono text-black">{txnRef}</span></p>}
+                      <div className="bg-slate-50 p-2 rounded border border-slate-200 text-[11px] space-y-0.5 mt-1 font-mono">
+                        {meta.selectedShopBank && <p>• প্রেরক (দোকান ব্যাংক): {meta.selectedShopBank}</p>}
+                        {suppBank && <p>• গ্রহীতা ব্যাংক: {suppBank} {suppAcc ? `(A/C: ${suppAcc})` : ''}</p>}
+                        {txnRef && <p>• Txn/Ref ID: {txnRef}</p>}
                       </div>
                     )}
 
-                    {!isBankToBank && isBank && (
-                      <div className="mt-1 p-2 bg-blue-50/60 border border-blue-200 rounded-md text-[11px] font-bold space-y-0.5 text-slate-800">
-                        <p>📥 <strong className="text-blue-950">গ্রহীতার রিসিভিং ব্যাংক (দোকানের A/C):</strong> <span className="font-black text-black">{receiverAcc || invoice.bankName || 'দোকান ব্যাংক'}</span></p>
-                        {invoice.accountNo && <p>💳 অ্যাকাউন্ট নম্বর: <span className="font-mono text-black">{invoice.accountNo}</span></p>}
-                        {txnRef && <p>🔖 ট্রানজাকশন / রিফ নম্বর: <span className="font-mono text-black">{txnRef}</span></p>}
+                    {isBank && !isBankToBank && (
+                      <div className="bg-slate-50 p-2 rounded border border-slate-200 text-[11px] space-y-0.5 mt-1 font-mono">
+                        {meta.selectedShopBank && <p>• ব্যাংক A/C: {meta.selectedShopBank}</p>}
+                        {txnRef && <p>• Txn ID: {txnRef}</p>}
                       </div>
                     )}
 
                     {isCheque && (
-                      <div className="mt-1 p-2 bg-slate-50 border border-slate-300 rounded-md text-[11px] font-bold space-y-0.5 text-slate-800">
-                        {invoice.chequeNo && <p>📄 চেক নম্বর: <span className="font-mono font-black text-black">{invoice.chequeNo}</span></p>}
-                        {invoice.bankName && <p>🏦 ইসু প্রদানকারী ব্যাংক: <span className="font-black text-black">{invoice.bankName}</span></p>}
-                        {invoice.chequeDate && <p>📅 চেক তারিখ: <span className="font-mono text-black">{invoice.chequeDate}</span></p>}
+                      <div className="bg-slate-50 p-2 rounded border border-slate-200 text-[11px] space-y-0.5 mt-1 font-mono">
+                        {chqNo && <p>• চেক নম্বর: {chqNo}</p>}
+                        {chqDate && <p>• তারিখ: {chqDate}</p>}
                       </div>
                     )}
 
-                    {isSplit && (
-                      <div className="mt-1 p-2 bg-slate-50 border border-slate-300 rounded-md text-[11px] font-bold space-y-0.5 text-slate-800">
-                        <p>💵 ক্যাশ জমা: <span className="font-black text-emerald-700">৳ {toBengaliDigits((invoice.cashPaidAmount || 0).toLocaleString('en-IN'))}</span></p>
-                        <p>📄 চেক পেমেন্ট: <span className="font-black text-indigo-700">৳ {toBengaliDigits((invoice.chequePaidAmount || 0).toLocaleString('en-IN'))}</span> {invoice.chequeNo ? `(চেক নং: ${invoice.chequeNo})` : ''}</p>
-                        {invoice.bankName && <p>🏦 ব্যাংক: <span className="font-black text-black">{invoice.bankName}</span></p>}
-                      </div>
+                    {cleanUserNote && (
+                      <p className="pt-1 text-[11px] font-medium text-slate-700">
+                        <strong className="text-black">নোট:</strong> {cleanUserNote}
+                      </p>
                     )}
                   </div>
                 );
               })()}
-
-              {invoice.note && <p className="pt-1"><strong className="text-black">নোট / নির্দেশনা: </strong>{invoice.note}</p>}
             </div>
           </div>
 
           {/* Right Column (Calculation Alignment) */}
           <div className="col-span-5 space-y-1.5 text-xs font-bold border-t border-b border-black py-2">
             <div className="flex justify-between items-center">
-              <span className="text-slate-700">মালামাল মূল্য:</span>
+              <span className="text-slate-700">চালান মূল্য:</span>
               <span className="font-black">৳ {toBengaliDigits(subtotal.toLocaleString('en-IN'))}</span>
             </div>
 
-            {(invoice.discount || 0) > 0 && (
-              <div className="flex justify-between items-center text-rose-600">
-                <span>বিশেষ ছাড়:</span>
-                <span className="font-black">- ৳ {toBengaliDigits((invoice.discount || 0).toLocaleString('en-IN'))}</span>
+            {discount > 0 && (
+              <div className="flex justify-between items-center">
+                <span className="text-slate-700">বিশেষ ছাড় (Discount):</span>
+                <span className="font-black">- ৳ {toBengaliDigits(discount.toLocaleString('en-IN'))}</span>
               </div>
             )}
 
-            {laborCost > 0 && (
-              <div className="flex justify-between items-center text-slate-700">
-                <span>লেবার / নামানো খরচ:</span>
-                <span className="font-black">+ ৳ {toBengaliDigits(laborCost.toLocaleString('en-IN'))}</span>
-              </div>
-            )}
-
-            {transportCost > 0 && (
-              <div className="flex justify-between items-center text-slate-700">
-                <span>গাড়ি ভাড়া / পরিবহন:</span>
-                <span className="font-black">+ ৳ {toBengaliDigits(transportCost.toLocaleString('en-IN'))}</span>
-              </div>
-            )}
-
-            <div className="flex justify-between items-center font-black">
-              <span className="text-slate-900">চালান মোট বিল:</span>
-              <span className="font-black text-black">৳ {toBengaliDigits(total.toLocaleString('en-IN'))}</span>
+            <div className="flex justify-between items-center font-black text-sm pt-1 border-t border-slate-300">
+              <span>সর্বমোট পাওনা:</span>
+              <span>৳ {toBengaliDigits(totalAmount.toLocaleString('en-IN'))}</span>
             </div>
 
-            {prevBal > 0 && (
-              <>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-700">পূর্বের জের/বকেয়া:</span>
-                  <span className="font-black">৳ {toBengaliDigits(prevBal.toLocaleString('en-IN'))}</span>
-                </div>
-                <div className="flex justify-between items-center font-black text-sm pt-1 border-t border-slate-300">
-                  <span>সর্বমোট পাওনা:</span>
-                  <span>৳ {toBengaliDigits(grandTotal.toLocaleString('en-IN'))}</span>
-                </div>
-              </>
-            )}
-
             <div className="flex justify-between items-center">
-              <span className="text-slate-700">জমা / পরিশোধিত:</span>
-              <span className="font-black">৳ {toBengaliDigits(paid.toLocaleString('en-IN'))}</span>
+              <span className="text-slate-700">পরিশোধিত / জমা:</span>
+              <span className="font-black">৳ {toBengaliDigits(paidAmount.toLocaleString('en-IN'))}</span>
             </div>
 
             <div className="flex justify-between items-center font-black text-sm pt-1 border-t border-slate-300">
               <span>অবশিষ্ট বকেয়া:</span>
-              <span>৳ {toBengaliDigits(due.toLocaleString('en-IN'))}</span>
+              <span>৳ {toBengaliDigits(dueAmount.toLocaleString('en-IN'))}</span>
             </div>
           </div>
         </div>
@@ -454,12 +441,12 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
           <div className="grid grid-cols-3 gap-4 text-center text-xs font-bold">
             <div>
               <div className="w-36 mx-auto border-t border-black pt-1 font-black">
-                ক্রেতা/গ্রহীতার স্বাক্ষর
+                {partyTitle}র স্বাক্ষর
               </div>
             </div>
             <div>
               <div className="w-36 mx-auto border-t border-black pt-1 font-black">
-                প্রস্তুতকারী (ক্যাশিয়ার)
+                প্রস্তুতকারী (অপারেটর)
               </div>
             </div>
             <div>
@@ -471,7 +458,7 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
 
           {/* System Generated Invoice Notice */}
           <div className="pt-3 border-t border-slate-300 text-center text-[10px] font-bold text-slate-600">
-            বিঃ দ্রঃ— এটি একটি কম্পিউটারাইজড অটো-জেনারেটেড অফিশিয়াল ক্যাশ মেমো চালান।
+            বিঃ দ্রঃ— এটি একটি কম্পিউটারাইজড অটো-জেনারেটেড অফিশিয়াল ক্রয় ইনভয়েস চালান।
           </div>
 
           {/* Software Company Branding & Promotion Footer */}

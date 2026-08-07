@@ -7,7 +7,7 @@ import {
   Plus, Search, Edit2, Trash2, Phone, Building2, DollarSign,
   Receipt, Banknote, Calendar, Lightbulb, AlertCircle, X,
   Truck, Eye, Calculator, CheckCircle2, Package, Filter,
-  ChevronUp, ChevronDown, RotateCcw, ArrowLeft
+  ChevronUp, ChevronDown, RotateCcw, ArrowLeft, Printer
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -21,6 +21,8 @@ import { format } from 'date-fns';
 import { cn, formatDualStock } from '@/lib/utils';
 import { SupplierSearchSelect } from '@/components/SupplierSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
+import { PurchaseInvoiceMemo } from '@/components/PurchaseInvoiceMemo';
+import { printElement } from '@/lib/printUtils';
 
 export interface PurchaseItem {
   id?: string;
@@ -35,6 +37,7 @@ export interface Supplier {
   id: string;
   name: string;
   businessName?: string;
+  supplyType?: string;
   phone?: string;
   address?: string;
   totalDue?: number;
@@ -98,10 +101,13 @@ export default function PurchasesPage() {
     setMaxBill('');
   };
   const [selectedPurchase, setSelectedPurchase] = useState<PurchaseInvoice | null>(null);
+  const [isPrintMemoOpen, setIsPrintMemoOpen] = useState<boolean>(false);
 
   // Form & Modal States
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
+  const [purchaseType, setPurchaseType] = useState<'rod' | 'cement'>('rod');
   const [editingPurchaseId, setEditingPurchaseId] = useState<string | null>(null);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [isNewSupplier, setIsNewSupplier] = useState(false);
@@ -212,6 +218,7 @@ export default function PurchasesPage() {
         phone: p.phone,
         address: p.address || '',
         businessName: p.business_name || '',
+        supplyType: p.supply_type || '',
         totalDue: Number(p.total_due || 0)
       })));
 
@@ -227,6 +234,13 @@ export default function PurchasesPage() {
         unit: p.unit || 'পিস',
         alertThreshold: Number(p.min_stock || 10)
       })));
+
+      const bankList = await api.banks.list();
+      setSavedBanks(bankList.map(b => ({
+        id: String(b.id),
+        name: b.name || b.bank_name || 'ব্যাংক',
+        accNo: b.account_number || ''
+      })));
     } catch (err) {
       console.error('Error loading purchases page:', err);
     } finally {
@@ -241,6 +255,39 @@ export default function PurchasesPage() {
     })();
     return () => { ignore = true; };
   }, []);
+
+  // Filtered suppliers based on selected Purchase Type (Rod vs Cement)
+  const filteredSuppliersByPurchaseType = useMemo(() => {
+    if (!purchaseType) return suppliers;
+
+    const rodKeywords = ['rod', 'রড', 'bsrm', 'ksrm', 'aks', 'gph', 'baizid', 'anwar', 'metrocem', 'rsrm', 'ispat', 'steel', 'ইস্পাত', 'স্টীল'];
+    const cementKeywords = ['cement', 'সিমেন্ট', 'shah', 'শাহ', 'seven rings', 'সেভেন রিংস', 'bashundhara', 'বসুন্ধরা', 'fresh', 'ফ্রেশ', 'crown', 'ক্রাউন', 'premier', 'প্রিমিয়ার', 'holcim', 'হোলসিম', 'akij', 'আকিজ'];
+
+    return suppliers.filter(s => {
+      const sType = (s.supplyType || '').toLowerCase();
+      const bName = (s.businessName || '').toLowerCase();
+      const sName = (s.name || '').toLowerCase();
+      const fullText = `${sType} ${bName} ${sName}`;
+
+      if (purchaseType === 'rod') {
+        const isExplicitCementOnly = (sType === 'cement' || sType === 'সিমেন্ট' || cementKeywords.some(k => fullText.includes(k))) && 
+                                    !rodKeywords.some(k => fullText.includes(k)) && 
+                                    sType !== 'both' && sType !== 'উভয়' && sType !== 'উভয়';
+        if (isExplicitCementOnly) return false;
+        return true;
+      }
+
+      if (purchaseType === 'cement') {
+        const isExplicitRodOnly = (sType === 'rod' || sType === 'রড' || rodKeywords.some(k => fullText.includes(k))) && 
+                                  !cementKeywords.some(k => fullText.includes(k)) && 
+                                  sType !== 'both' && sType !== 'উভয়' && sType !== 'উভয়';
+        if (isExplicitRodOnly) return false;
+        return true;
+      }
+
+      return true;
+    });
+  }, [suppliers, purchaseType]);
 
   // Cart Calculations
   const cartSubtotal = cart.reduce((a, i) => a + (i.price * i.quantity), 0);
@@ -344,6 +391,7 @@ export default function PurchasesPage() {
         const suppName = newSupplierData.name.trim() || newSupplierData.businessName.trim();
         const createdParty = await api.parties.create({
           party_type: 'supplier',
+          supply_type: purchaseType === 'rod' ? 'রড' : 'সিমেন্ট',
           name: suppName,
           business_name: suppName,
           phone: newSupplierData.phone.trim(),
@@ -352,13 +400,36 @@ export default function PurchasesPage() {
         finalSuppId = String(createdParty.id);
       }
 
+      const pmLower = (paymentMethod || 'cash').toLowerCase();
+      let effectivePaymentMethod = 'cash';
+      if (pmLower.includes('split')) effectivePaymentMethod = 'split';
+      else if (pmLower.includes('bank')) effectivePaymentMethod = 'bank';
+      else if (pmLower.includes('cheque') || pmLower.includes('check')) effectivePaymentMethod = 'cheque';
+      else if (pmLower.includes('mobile') || pmLower.includes('bkash') || pmLower.includes('nagad')) effectivePaymentMethod = 'mobile_banking';
+
+      const purchaseMeta = {
+        paymentMethodName: paymentMethod,
+        bankName: bankName || supplierBankName || selectedShopBank || '',
+        accountNo: accountNo || supplierAccountNo || '',
+        transactionRef: transactionRef || supplierTxnRef || '',
+        selectedShopBank: selectedShopBank || '',
+        supplierBankName: supplierBankName || '',
+        supplierAccountNo: supplierAccountNo || '',
+        supplierTxnRef: supplierTxnRef || '',
+        chequeNo: chequeNo || '',
+        chequeDate: chequeDate || '',
+        userNote: purchaseNote || ''
+      };
+
+      const finalNotesPayload = JSON.stringify(purchaseMeta) + (purchaseNote ? `\n${purchaseNote}` : '');
+
       await api.transactions.create({
         party: finalSuppId ? Number(finalSuppId) : null,
         transaction_type: 'purchase',
         total_amount: cartTotalAmount,
         paid_amount: paidAmount,
         due_amount: cartDueAmount,
-        payment_method: paymentMethod.toLowerCase(),
+        payment_method: effectivePaymentMethod,
         items: cart.map(i => {
           const extraCharges = (shippingCost || 0) + (laborCost || 0);
           const landedUnitPrice = (isLandedCostAuto && cartSubtotal > 0 && extraCharges > 0 && i.quantity > 0)
@@ -373,7 +444,7 @@ export default function PurchasesPage() {
             total: Math.round(finalUnitPrice * i.quantity * 100) / 100
           };
         }),
-        notes: purchaseNote
+        notes: finalNotesPayload
       });
 
       toast.success('ক্রয় ইনভয়েস সফলভাবে সংরক্ষিত হয়েছে!');
@@ -453,7 +524,7 @@ export default function PurchasesPage() {
             </div>
 
             <Button 
-              onClick={() => { resetForm(); setIsCreateOpen(true); }}
+              onClick={() => setIsTypeModalOpen(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white h-10 px-5 rounded-md font-bold text-xs shadow-md shadow-blue-600/20 active:scale-95 transition-all"
             >
               <Plus className="w-4 h-4 mr-1.5" /> নতুন ক্রয় ইনভয়েস
@@ -717,11 +788,28 @@ export default function PurchasesPage() {
                   <ArrowLeft className="w-5 h-5" />
                 </Button>
                 <div>
-                  <span className="text-[10px] font-black tracking-widest text-blue-600 uppercase block">
-                    PURCHASE INVOICE FORM (ক্রয় ইনভয়েস)
-                  </span>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={cn(
+                      "text-[10px] font-black tracking-widest uppercase px-2.5 py-0.5 rounded-md border flex items-center gap-1",
+                      purchaseType === 'rod' ? "bg-orange-50 text-orange-700 border-orange-200" : "bg-blue-50 text-blue-700 border-blue-200"
+                    )}>
+                      {purchaseType === 'rod' ? '🏗️ রড ইনভয়েস (ROD)' : '🧱 সিমেন্ট ইনভয়েস (CEMENT)'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newType = purchaseType === 'rod' ? 'cement' : 'rod';
+                        setPurchaseType(newType);
+                        setSelectedSupplier(null);
+                        toast.info(`ইনভয়েস টাইপ "${newType === 'rod' ? 'রড' : 'সিমেন্ট'}" এ পরিবর্তন করা হয়েছে`);
+                      }}
+                      className="text-[11px] font-bold text-blue-600 hover:underline cursor-pointer"
+                    >
+                      (টাইপ পরিবর্তন করুন)
+                    </button>
+                  </div>
                   <h1 className="text-lg font-black text-slate-900 tracking-tight leading-none">
-                    {editingPurchaseId ? 'ক্রয় ইনভয়েস সম্পাদনা' : 'নতুন ক্রয় ইনভয়েস এন্ট্রি'}
+                    {editingPurchaseId ? 'ক্রয় ইনভয়েস সম্পাদনা' : `নতুন ${purchaseType === 'rod' ? 'রড' : 'সিমেন্ট'} ক্রয় ইনভয়েস এন্ট্রি`}
                   </h1>
                 </div>
               </div>
@@ -767,14 +855,16 @@ export default function PurchasesPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       {/* Select Company / Supplier */}
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-bold text-slate-600">Company / Supplier <span className="text-rose-500">*</span></Label>
+                        <Label className="text-xs font-bold text-slate-600">
+                          Company / Supplier ({purchaseType === 'rod' ? 'রড সরবরাহকারী' : 'সিমেন্ট সরবরাহকারী'}) <span className="text-rose-500">*</span>
+                        </Label>
                         {!isNewSupplier ? (
                           <SupplierSearchSelect
-                            suppliers={suppliers}
+                            suppliers={filteredSuppliersByPurchaseType}
                             selectedSupplier={selectedSupplier}
                             onSelectSupplier={(supp) => setSelectedSupplier(supp)}
                             onAddNewClick={() => setIsNewSupplier(true)}
-                            placeholder="কোম্পানি বা সরবরাহকারী খুঁজুন..."
+                            placeholder={purchaseType === 'rod' ? "রড সরবরাহকারী কোম্পানি খুঁজুন..." : "সিমেন্ট সরবরাহকারী কোম্পানি খুঁজুন..."}
                           />
                         ) : (
                           <Input
@@ -847,6 +937,7 @@ export default function PurchasesPage() {
                     {/* Step-by-Step Cascading Product Selector (Rod, Cement, Ring) */}
                     <CascadingProductSelector
                       products={products}
+                      purchaseType={purchaseType}
                       onProductChange={(selected) => {
                         setSelectedCascadingProduct(selected);
                         if (selected) {
@@ -1661,10 +1752,118 @@ export default function PurchasesPage() {
             </div>
           )}
 
-          <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+          <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
+            <Button
+              onClick={() => setIsPrintMemoOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl px-5 h-10 shadow-md flex items-center gap-2"
+            >
+              <Printer className="w-4 h-4" /> 🖨️ ইনভয়েস মেমো প্রিন্ট করুন
+            </Button>
             <Button variant="outline" onClick={() => setSelectedPurchase(null)} className="rounded-xl font-bold text-slate-500 border-slate-200">
               বন্ধ করুন
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* PURCHASE INVOICE PRINT MEMO MODAL (MATCHING THE EXACT IMAGE DESIGN) */}
+      <Dialog open={isPrintMemoOpen} onOpenChange={setIsPrintMemoOpen}>
+        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[92vh] overflow-y-auto rounded-2xl p-0 border-none shadow-2xl custom-scrollbar font-bengali">
+          <div className="bg-slate-900 p-5 text-white flex justify-between items-center print:hidden rounded-t-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-black flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-blue-400" /> ক্রয় ইনভয়েস ক্যাশ মেমো
+              </DialogTitle>
+              <p className="text-slate-400 font-mono text-xs mt-0.5">মেমো নং: #{selectedPurchase?.id?.toUpperCase()}</p>
+            </DialogHeader>
+            <div className="flex gap-2">
+              <Button 
+                onClick={() => printElement('printable-memo-wrapper')}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl px-5 h-10 shadow-md flex items-center gap-2"
+              >
+                <Printer className="w-4 h-4" /> মেমো প্রিন্ট করুন
+              </Button>
+            </div>
+          </div>
+
+          {selectedPurchase && (
+            <div className="p-6 bg-slate-100 max-h-[80vh] overflow-y-auto custom-scrollbar print:max-h-none print:overflow-visible print:p-0 print:bg-white">
+              <PurchaseInvoiceMemo invoice={selectedPurchase as any} type="purchase" showPrintButton={false} />
+            </div>
+          )}
+          <div className="p-4 bg-white border-t border-slate-200 flex justify-between items-center print:hidden rounded-b-2xl">
+            <div className="text-xs text-slate-500 font-bold">
+              * ক্রয় চালান ও মেমো রেকর্ড কপি।
+            </div>
+            <Button variant="outline" onClick={() => setIsPrintMemoOpen(false)} className="rounded-xl font-bold text-slate-600 border-slate-200">
+              বন্ধ করুন
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* PURCHASE TYPE SELECTOR MODAL (ROD vs CEMENT) */}
+      <Dialog open={isTypeModalOpen} onOpenChange={setIsTypeModalOpen}>
+        <DialogContent className="max-w-md bg-white rounded-2xl p-6 font-bengali shadow-2xl">
+          <DialogHeader className="text-center pb-2 border-b border-slate-100">
+            <DialogTitle className="text-lg font-black text-slate-900 flex items-center justify-center gap-2">
+              <Truck className="w-5 h-5 text-blue-600" /> ক্রয় ইনভয়েস টাইপ নির্বাচন করুন
+            </DialogTitle>
+            <p className="text-slate-500 text-xs mt-1">
+              আপনি কোন ধরনের পণ্য ক্রয়ের জন্য ইনভয়েস তৈরি করতে চান?
+            </p>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 gap-3.5 py-4">
+            {/* ROD OPTION */}
+            <button
+              type="button"
+              onClick={() => {
+                setPurchaseType('rod');
+                resetForm();
+                setIsTypeModalOpen(false);
+                setIsCreateOpen(true);
+              }}
+              className="p-4 rounded-2xl border-2 border-orange-200 bg-orange-50/50 hover:bg-orange-100/70 hover:border-orange-500 transition-all text-left group flex items-center gap-4 shadow-2xs active:scale-[0.98]"
+            >
+              <div className="w-12 h-12 rounded-xl bg-orange-600 text-white flex items-center justify-center text-2xl font-black shrink-0 shadow-md group-hover:scale-105 transition-transform">
+                🏗️
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-black text-slate-900 text-sm group-hover:text-orange-700">রড ক্রয় ইনভয়েস (Rod)</h3>
+                  <span className="text-[10px] font-black text-orange-700 bg-orange-100 border border-orange-300 px-2 py-0.5 rounded-md">রড + রিং</span>
+                </div>
+                <p className="text-[11px] font-semibold text-slate-500 mt-1 leading-snug">
+                  বিএসআরএম, কেএসআরএম ইত্যাদি। শুধুমাত্র <strong className="text-slate-700">রড সরবরাহকারী</strong> এবং আইটেমে <strong className="text-slate-700">রড ও রিং</strong> দেখাবে।
+                </p>
+              </div>
+            </button>
+
+            {/* CEMENT OPTION */}
+            <button
+              type="button"
+              onClick={() => {
+                setPurchaseType('cement');
+                resetForm();
+                setIsTypeModalOpen(false);
+                setIsCreateOpen(true);
+              }}
+              className="p-4 rounded-2xl border-2 border-blue-200 bg-blue-50/50 hover:bg-blue-100/70 hover:border-blue-500 transition-all text-left group flex items-center gap-4 shadow-2xs active:scale-[0.98]"
+            >
+              <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center text-2xl font-black shrink-0 shadow-md group-hover:scale-105 transition-transform">
+                🧱
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-black text-slate-900 text-sm group-hover:text-blue-700">সিমেন্ট ক্রয় ইনভয়েস (Cement)</h3>
+                  <span className="text-[10px] font-black text-blue-700 bg-blue-100 border border-blue-300 px-2 py-0.5 rounded-md">সিমেন্ট</span>
+                </div>
+                <p className="text-[11px] font-semibold text-slate-500 mt-1 leading-snug">
+                  শাহ, সেভেন রিংস ইত্যাদি। শুধুমাত্র <strong className="text-slate-700">সিমেন্ট সরবরাহকারী</strong> এবং আইটেমে শুধুমাত্র <strong className="text-slate-700">সিমেন্ট</strong> দেখাবে।
+                </p>
+              </div>
+            </button>
           </div>
         </DialogContent>
       </Dialog>

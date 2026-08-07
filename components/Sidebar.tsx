@@ -142,7 +142,7 @@ export function Sidebar() {
 
   return (
     <div 
-      className="relative z-[70] flex-shrink-0"
+      className="relative z-[70] flex-shrink-0 print:hidden"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >

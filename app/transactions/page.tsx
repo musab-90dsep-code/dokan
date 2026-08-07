@@ -300,7 +300,7 @@ function TransactionsContent() {
         total_amount: addMoneyAmount,
         paid_amount: addMoneyAmount,
         due_amount: 0,
-        payment_method: addMoneyMethod.toLowerCase(),
+        payment_method: (addMoneyMethod.toLowerCase().includes('bank') ? 'bank' : addMoneyMethod.toLowerCase().includes('cheque') ? 'cheque' : addMoneyMethod.toLowerCase()),
         cheque_bank: addMoneyMethod === 'Bank' ? banks.find(b => b.id === addMoneyBankId)?.name : '',
         notes: `[টাকা যোগ - ${addMoneyCategory}] ${addMoneyNote}`
       });
@@ -398,7 +398,7 @@ function TransactionsContent() {
         total_amount: paidAmount,
         paid_amount: paidAmount,
         due_amount: 0,
-        payment_method: paymentMethod.toLowerCase(),
+        payment_method: (paymentMethod.toLowerCase().includes('bank') ? 'bank' : paymentMethod.toLowerCase().includes('cheque') ? 'cheque' : paymentMethod.toLowerCase()),
         notes: paymentNote || referenceNo || ''
       });
 

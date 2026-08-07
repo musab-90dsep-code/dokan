@@ -135,7 +135,30 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
   };
 
   // Form State
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    businessName: string;
+    name: string;
+    customerType: string;
+    phone: string;
+    altPhone: string;
+    email: string;
+    country: string;
+    division: string;
+    district: string;
+    thana: string;
+    address: string;
+    postcode: string;
+    idType: string;
+    nid: string;
+    tinNumber: string;
+    openingBalance: number | string;
+    creditLimit: number | string;
+    creditDays: number | string;
+    discountPercent: number | string;
+    joinedDate: string;
+    note: string;
+    photoUrl: string;
+  }>({
     businessName: '',
     name: '',
     customerType: isCustomer ? 'খুচরা গ্রাহক' : 'রড',
@@ -151,10 +174,10 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
     idType: 'NID',
     nid: '',
     tinNumber: '',
-    openingBalance: 0,
-    creditLimit: 0,
+    openingBalance: '',
+    creditLimit: '',
     creditDays: 30,
-    discountPercent: 0,
+    discountPercent: '',
     joinedDate: new Date().toISOString().split('T')[0],
     note: '',
     photoUrl: ''
@@ -184,10 +207,10 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       idType: p.idType || (isCustomer ? 'NID' : 'TIN'),
       nid: p.nid || '',
       tinNumber: p.tinNumber || '',
-      openingBalance: p.openingBalance || 0,
-      creditLimit: p.creditLimit || 0,
+      openingBalance: p.openingBalance ? String(p.openingBalance) : '',
+      creditLimit: p.creditLimit ? String(p.creditLimit) : '',
       creditDays: p.creditDays || 30,
-      discountPercent: p.discountPercent || 0,
+      discountPercent: p.discountPercent ? String(p.discountPercent) : '',
       joinedDate: p.joinedDate || new Date().toISOString().split('T')[0],
       note: p.note || '',
       photoUrl: p.photoUrl || ''
@@ -273,10 +296,10 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       idType: isCustomer ? 'NID' : 'TIN',
       nid: '',
       tinNumber: '',
-      openingBalance: 0,
-      creditLimit: 0,
+      openingBalance: '',
+      creditLimit: '',
       creditDays: 30,
-      discountPercent: 0,
+      discountPercent: '',
       joinedDate: new Date().toISOString().split('T')[0],
       note: '',
       photoUrl: ''
@@ -782,8 +805,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           </TableCell>
 
                           <TableCell className="py-3.5 px-4 text-left">
-                            <p className="text-slate-700 font-medium text-[11px]">{p.joinedDate || '২০ মে, ২০২৪'}</p>
-                            <p className="text-slate-400 font-medium text-[10px]">ইনভয়েস: INV-{p.id.slice(0, 4)}</p>
+                            <p className="text-slate-700 font-medium text-[11px]">{p.joinedDate ? toBnDigits(p.joinedDate) : '—'}</p>
                           </TableCell>
 
                           <TableCell className="py-3.5 px-4 text-center">
@@ -927,7 +949,6 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           required
                           value={formData.name}
                           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                          placeholder={isCustomer ? 'যেমন: মোঃ আল-আমিন' : 'যেমন: BSRM / Seven Rings Steel Ltd'}
                           className="rounded-xl h-10 bg-white border-slate-200"
                         />
                       </div>
@@ -941,7 +962,6 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                             required
                             value={formData.businessName}
                             onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                            placeholder="যেমন: আমিন বিল্ডার্স"
                             className="rounded-xl h-10 bg-white border-slate-200"
                           />
                         </div>
@@ -1001,7 +1021,6 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                               required
                               value={formData.phone}
                               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                              placeholder="০১৭XXXXXXXX"
                               className="rounded-md h-10 bg-white border-slate-200 pr-9"
                             />
                           </div>
@@ -1011,7 +1030,6 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                               <Input
                                 value={formData.altPhone}
                                 onChange={(e) => setFormData({ ...formData, altPhone: e.target.value })}
-                                placeholder="বিকল্প ফোন নম্বর"
                                 className="rounded-md h-10 bg-white border-slate-200 pr-9"
                               />
                             </div>
@@ -1027,7 +1045,6 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                             type="email"
                             value={formData.email}
                             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                            placeholder="ইমেইল ঠিকানা লিখুন"
                             className="rounded-xl h-10 bg-white border-slate-200 pr-9"
                           />
                         </div>
@@ -1153,7 +1170,6 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         <Input
                           value={formData.address}
                           onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                          placeholder="যেমন: বাসা #৪৫, রোড #০২, সেক্টর #১০, উত্তরা"
                           className="rounded-md h-10 bg-white border-slate-200"
                         />
                       </div>
@@ -1163,7 +1179,6 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         <Input
                           value={formData.postcode}
                           onChange={(e) => setFormData({ ...formData, postcode: e.target.value })}
-                          placeholder="১২৩০"
                           className="rounded-md h-10 bg-white border-slate-200"
                         />
                       </div>
@@ -1204,7 +1219,6 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         <Input
                           value={formData.nid}
                           onChange={(e) => setFormData({ ...formData, nid: e.target.value })}
-                          placeholder="১২৩৪৫৬৭৮৯০"
                           className="rounded-md h-10 bg-white border-slate-200"
                         />
                       </div>
@@ -1214,7 +1228,6 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         <Input
                           value={formData.tinNumber}
                           onChange={(e) => setFormData({ ...formData, tinNumber: e.target.value })}
-                          placeholder="টিন নম্বর..."
                           className="rounded-md h-10 bg-white border-slate-200"
                         />
                       </div>
@@ -1227,9 +1240,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           type="number"
                           value={formData.openingBalance}
                           onChange={(e) =>
-                            setFormData({ ...formData, openingBalance: parseFloat(e.target.value) || 0 })
+                            setFormData({ ...formData, openingBalance: e.target.value })
                           }
-                          placeholder="৳ 0.00"
                           className="rounded-md h-10 bg-white border-slate-200 font-black text-rose-600"
                         />
                       </div>
@@ -1240,9 +1252,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           type="number"
                           value={formData.creditLimit}
                           onChange={(e) =>
-                            setFormData({ ...formData, creditLimit: parseFloat(e.target.value) || 0 })
+                            setFormData({ ...formData, creditLimit: e.target.value })
                           }
-                          placeholder="৳ 0.00"
                           className="rounded-md h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1253,9 +1264,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           type="number"
                           value={formData.discountPercent}
                           onChange={(e) =>
-                            setFormData({ ...formData, discountPercent: parseFloat(e.target.value) || 0 })
+                            setFormData({ ...formData, discountPercent: e.target.value })
                           }
-                          placeholder="% 0"
                           className="rounded-md h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1276,7 +1286,6 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                       <Input
                         value={formData.note}
                         onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-                        placeholder="গ্রাহক সম্পর্কিত যে কোনো বিশেষ নোট লিখুন..."
                         className="rounded-md h-10 bg-white border-slate-200"
                       />
                     </div>

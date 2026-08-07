@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { 
   RotateCcw, Search, Plus, Package, User, DollarSign, FileText, X, 
   ShoppingCart, AlertCircle, Trash2, ArrowRight, CheckCircle2, RefreshCw, Calendar,
-  Filter, ChevronUp, ChevronDown, ArrowLeft, Lightbulb
+  Filter, ChevronUp, ChevronDown, ArrowLeft, Lightbulb, Printer, Edit2, Eye
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -17,10 +17,13 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { toBengaliDigits } from '@/lib/bengaliUtils';
 import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
+import { ReturnInvoiceMemo } from '@/components/ReturnInvoiceMemo';
+import { printElement } from '@/lib/printUtils';
 
 interface ReturnEntry {
   id: string;
@@ -102,6 +105,42 @@ export default function SalesReturnsPage() {
 
   const [reason, setReason] = useState('');
   const [cashRefundInput, setCashRefundInput] = useState(0);
+
+  // View, Edit, Delete States
+  const [selectedReturn, setSelectedReturn] = useState<ReturnEntry | null>(null);
+  const [editingReturn, setEditingReturn] = useState<ReturnEntry | null>(null);
+  const [deletingReturn, setDeletingReturn] = useState<ReturnEntry | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleEditReturn = (entry: ReturnEntry) => {
+    setEditingReturn(entry);
+    setSelectedCustomerId(entry.customerId || '');
+    setReturnCart(entry.returnedItems || []);
+    setNewTakenCart(entry.newTakenItems || []);
+    setReason(entry.reason || '');
+    setIsOpen(true);
+  };
+
+  const handleDeleteReturnConfirm = async () => {
+    if (!deletingReturn) return;
+    try {
+      setIsDeleting(true);
+      await api.transactions.delete(deletingReturn.id);
+      toast.success('বিক্রয় রিটার্ন চালানটি মুছে ফেলা হয়েছে!');
+      setIsDeleteDialogOpen(false);
+      setDeletingReturn(null);
+      if (selectedReturn?.id === deletingReturn.id) {
+        setSelectedReturn(null);
+      }
+      await loadReturnsData();
+    } catch (err: any) {
+      console.error(err);
+      toast.error('রিটার্ন মুছে ফেলতে সমস্যা হয়েছে: ' + (err.message || err));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const loadReturnsData = async () => {
     try {
@@ -273,10 +312,9 @@ export default function SalesReturnsPage() {
     }
 
     try {
-      // 1. Submit Sales Return for Returned Items (Stock IN)
-      await api.transactions.create({
+      const payload = {
         party: Number(selectedCustomerId),
-        transaction_type: 'sale_return',
+        transaction_type: 'sale_return' as const,
         total_amount: totalReturnedValue,
         paid_amount: cashRefundPaid,
         due_amount: Math.max(0, totalReturnedValue - cashRefundPaid),
@@ -292,33 +330,41 @@ export default function SalesReturnsPage() {
           };
         }),
         notes: reason || 'পণ্য ফেরত'
-      });
+      };
 
-      // 2. If new items were taken, submit Sales Transaction for New Taken Items (Stock OUT)
-      if (newTakenCart.length > 0) {
-        await api.transactions.create({
-          party: Number(selectedCustomerId),
-          transaction_type: 'sale',
-          total_amount: totalNewTakenValue,
-          paid_amount: 0,
-          due_amount: totalNewTakenValue,
-          items: newTakenCart.map(item => {
-            const numId = Number(item.id);
-            return {
-              product: !isNaN(numId) && numId > 0 ? numId : null,
-              product_name: item.name,
-              quantity: item.quantity,
-              price: item.price,
-              unit: item.unit,
-              total: item.price * item.quantity
-            };
-          }),
-          notes: `রিটার্ন এক্সচেঞ্জ ক্রয় (রিটার্ন: ${reason || 'পণ্য ফেরত'})`
-        });
+      if (editingReturn) {
+        await api.transactions.update(editingReturn.id, payload);
+        toast.success('বিক্রয় রিটার্ন রেকর্ড সফলভাবে আপডেট করা হয়েছে!');
+      } else {
+        await api.transactions.create(payload);
+
+        // 2. If new items were taken, submit Sales Transaction for New Taken Items (Stock OUT)
+        if (newTakenCart.length > 0) {
+          await api.transactions.create({
+            party: Number(selectedCustomerId),
+            transaction_type: 'sale',
+            total_amount: totalNewTakenValue,
+            paid_amount: 0,
+            due_amount: totalNewTakenValue,
+            items: newTakenCart.map(item => {
+              const numId = Number(item.id);
+              return {
+                product: !isNaN(numId) && numId > 0 ? numId : null,
+                product_name: item.name,
+                quantity: item.quantity,
+                price: item.price,
+                unit: item.unit,
+                total: item.price * item.quantity
+              };
+            }),
+            notes: `রিটার্ন এক্সচেঞ্জ ক্রয় (রিটার্ন: ${reason || 'পণ্য ফেরত'})`
+          });
+        }
+        toast.success('বিক্রয় রিটার্ন ও স্টক সমন্বয় সফলভাবে সম্পন্ন হয়েছে!');
       }
 
-      toast.success('বিক্রয় রিটার্ন ও স্টক সমন্বয় সফলভাবে সম্পন্ন হয়েছে!');
       setIsOpen(false);
+      setEditingReturn(null);
       setSelectedCustomerId('');
       setReturnCart([]);
       setNewTakenCart([]);
@@ -552,14 +598,15 @@ export default function SalesReturnsPage() {
                     <TableHead className="font-bengali text-slate-900 text-xs font-black uppercase">নতুন নেওয়া পণ্য</TableHead>
                     <TableHead className="font-bengali text-slate-900 text-xs font-black text-right uppercase">মোট ফেরত মূল্য</TableHead>
                     <TableHead className="font-bengali text-slate-900 text-xs font-black text-right py-3 px-4 uppercase">বকেয়া কর্তন / ক্যাশ ফেরত</TableHead>
+                    <TableHead className="font-bengali text-slate-900 text-xs font-black text-center py-3 px-4 uppercase">অ্যাকশন</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow><TableCell colSpan={6} className="text-center py-16 text-slate-400 font-bold text-sm">লোড হচ্ছে...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center py-16 text-slate-400 font-bold text-sm">লোড হচ্ছে...</TableCell></TableRow>
                   ) : filteredReturns.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-16">
+                      <TableCell colSpan={7} className="text-center py-16">
                         <div className="flex flex-col items-center justify-center text-slate-400">
                           <RotateCcw className="w-10 h-10 mb-2 opacity-20" />
                           <p className="font-bold text-sm">কোনো বিক্রয় রিটার্ন রেকর্ড পাওয়া যায়নি</p>
@@ -609,6 +656,37 @@ export default function SalesReturnsPage() {
                           {r.dueAdjusted === 0 && r.cashRefundPaid === 0 && (
                             <span className="font-bold text-emerald-600">সমপরিমাণ অ্যাডজাস্ট</span>
                           )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center py-3 px-4">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="মেমো ভিউ ও প্রিন্ট"
+                            onClick={() => setSelectedReturn(r)}
+                            className="h-8 w-8 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-md"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="এডিট করুন"
+                            onClick={() => handleEditReturn(r)}
+                            className="h-8 w-8 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-md"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="ডিলিট করুন"
+                            onClick={() => { setDeletingReturn(r); setIsDeleteDialogOpen(true); }}
+                            className="h-8 w-8 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-md"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -963,6 +1041,112 @@ export default function SalesReturnsPage() {
           </div>
         </div>
       )}
+
+      {/* UNIFIED SALES RETURN VIEW & PRINT MEMO MODAL */}
+      <Dialog open={!!selectedReturn} onOpenChange={() => setSelectedReturn(null)}>
+        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[92vh] overflow-y-auto rounded-2xl p-0 border-none shadow-2xl custom-scrollbar font-bengali">
+          <div className="bg-slate-900 p-4 px-6 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden rounded-t-2xl">
+            <DialogHeader className="space-y-0 text-left">
+              <DialogTitle className="text-xl font-black flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-rose-400" /> বিক্রয় ফেরত ক্যাশ মেমো
+              </DialogTitle>
+              <p className="text-slate-400 font-mono text-xs mt-0.5">মেমো নং: #{selectedReturn?.id?.toUpperCase()}</p>
+            </DialogHeader>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button 
+                onClick={() => printElement('printable-memo-wrapper')}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl px-4 h-9 shadow-md flex items-center gap-1.5 text-xs active:scale-95 transition-transform cursor-pointer"
+              >
+                <Printer className="w-4 h-4" /> মেমো প্রিন্ট করুন
+              </Button>
+              {selectedReturn && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const target = selectedReturn;
+                      setSelectedReturn(null);
+                      handleEditReturn(target);
+                    }}
+                    className="rounded-xl h-9 px-3 text-xs font-bold text-amber-300 border-amber-700/50 bg-amber-950/40 hover:bg-amber-900/60 flex items-center gap-1"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" /> এডিট
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const target = selectedReturn;
+                      setSelectedReturn(null);
+                      setDeletingReturn(target);
+                      setIsDeleteDialogOpen(true);
+                    }}
+                    className="rounded-xl h-9 px-3 text-xs font-bold text-rose-300 border-rose-700/50 bg-rose-950/40 hover:bg-rose-900/60 flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> ডিলিট
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {selectedReturn && (
+            <div className="p-6 bg-slate-100 max-h-[78vh] overflow-y-auto custom-scrollbar space-y-6 print:max-h-none print:overflow-visible print:p-0 print:bg-white">
+              <ReturnInvoiceMemo
+                returnEntry={selectedReturn}
+                showPrintButton={false}
+              />
+            </div>
+          )}
+
+          <div className="p-4 bg-white border-t border-slate-200 flex justify-between items-center print:hidden rounded-b-2xl">
+            <div className="text-xs text-slate-500 font-bold">
+              * গ্রাহককে দেওয়ার জন্য এটি প্রস্তুতকৃত অফিসিয়াল বিক্রয় ফেরত মেমো কপি।
+            </div>
+            <Button variant="outline" onClick={() => setSelectedReturn(null)} className="rounded-xl font-bold text-slate-600 border-slate-200">
+              বন্ধ করুন
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* DELETE RETURN CONFIRMATION DIALOG */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="max-w-md rounded-md p-6 bg-white font-bengali">
+          <DialogHeader className="text-center sm:text-left">
+            <div className="mx-auto sm:mx-0 w-12 h-12 rounded-md bg-rose-100 text-rose-600 flex items-center justify-center mb-3">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-lg font-black text-slate-900">
+              বিক্রয় রিটার্ন রেকর্ডটি মুছে ফেলতে চান?
+            </DialogTitle>
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              আপনি কি নিশ্চিত যে রিটার্ন রেকর্ড <span className="font-mono font-bold text-slate-700">#{deletingReturn?.id.slice(0, 8).toUpperCase()}</span> মুছে ফেলতে চান? 
+              <br /><br />
+              <strong className="text-rose-600 block">⚠️ সতর্কতা:</strong>
+              রেকর্ডটি মুছে ফেললে স্টক ও কাস্টমার বকেয়া ব্যালেন্স পুনরায় সমন্বয় করা হবে।
+            </p>
+          </DialogHeader>
+
+          <DialogFooter className="flex gap-2 pt-4 border-t border-slate-100 mt-4">
+            <Button 
+              variant="outline" 
+              onClick={() => { setIsDeleteDialogOpen(false); setDeletingReturn(null); }} 
+              className="rounded-md font-bold flex-1"
+              disabled={isDeleting}
+            >
+              বাতিল
+            </Button>
+            <Button 
+              onClick={handleDeleteReturnConfirm} 
+              disabled={isDeleting}
+              className="rounded-md font-black bg-rose-600 hover:bg-rose-700 text-white flex-1 shadow-md shadow-rose-600/20"
+            >
+              {isDeleting ? 'মুছে ফেলা হচ্ছে...' : 'হ্যাঁ, মুছে ফেলুন'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Shell>
   );
 }

@@ -347,7 +347,7 @@ export function Shell({ children }: { children: ReactNode }) {
       {/* Main Wrapper */}
       <div className="flex-1 flex flex-col min-w-0 z-10 relative">
         {/* Top Navbar Header */}
-        <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 md:px-6 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-sm">
+        <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 md:px-6 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-sm print:hidden">
           {/* Left: Search Bar */}
           <div className="flex items-center gap-3 flex-1 max-w-md">
             <div className="relative w-full">

@@ -12,6 +12,7 @@ export interface SupplierOption {
   phone?: string;
   address?: string;
   businessName?: string;
+  supplyType?: string;
   totalDue?: number;
 }
 
@@ -226,6 +227,11 @@ export function SupplierSearchSelect({
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2 font-black text-slate-900 text-xs">
                           <span>{nameToShow}</span>
+                          {supp.supplyType && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200">
+                              {supp.supplyType}
+                            </span>
+                          )}
                           {supp.name && supp.businessName && supp.name !== supp.businessName && (
                             <span className="text-[11px] font-semibold text-slate-500">
                               ({supp.name})
