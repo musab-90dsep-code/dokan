@@ -79,3 +79,80 @@ export const numberToBengaliWords = (num: number | undefined | null): string => 
 
   return (result.trim() + ' টাকা মাত্র').replace(/\s+/g, ' ');
 };
+
+export const formatCurrencyToWords = (amount: number): string => {
+  const taka = Math.floor(amount);
+  const poisha = Math.round((amount - taka) * 100);
+  let result = '';
+  if (taka > 0) result += `${numberToBengaliWords(taka).replace(' টাকা মাত্র', '')}`;
+  if (poisha > 0) result += `${result ? ' এবং ' : ''}${convertTwoDigits(poisha)} পয়সা`;
+  return `${result} টাকা মাত্র`;
+};
+
+export interface ParsedProductInfo {
+  categoryName: string;
+  brandName: string;
+  sizeName: string;
+}
+
+export function parseProductDetails(item: { name: string; category?: string; brand?: string; mmSize?: string; size?: string }): ParsedProductInfo {
+  const name = item.name || '';
+  const lowerName = name.toLowerCase();
+
+  // 1. Category / Product Type (পণ্য / রড / সিমেন্ট / রিং)
+  let categoryName = item.category || '';
+  if (!categoryName) {
+    if (lowerName.includes('সিমেন্ট') || lowerName.includes('cement')) {
+      categoryName = 'সিমেন্ট';
+    } else if (lowerName.includes('রড') || lowerName.includes('rod') || lowerName.includes('মিলি') || lowerName.includes('mm')) {
+      categoryName = 'রড';
+    } else if (lowerName.includes('রিং') || lowerName.includes('ring')) {
+      categoryName = 'রিং';
+    } else {
+      categoryName = name || 'অন্যান্য';
+    }
+  }
+
+  // 2. Brand (ব্র্যান্ড)
+  let brandName = item.brand || '';
+  if (!brandName) {
+    const knownBrands = [
+      'BSRM', 'KSRM', 'AKS', 'GPH Ispat', 'Anwar Ispat', 'RSRM', 'Baizid', 'Metrocem', 'SSRM', 'HKG',
+      'শাহ সিমেন্ট', 'সেভেন রিংস', 'বসুন্ধরা সিমেন্ট', 'ফ্রেশ সিমেন্ট', 'ক্রাউন সিমেন্ট', 'প্রিমিয়ার সিমেন্ট',
+      'হোলসিম সিমেন্ট', 'আকিজ সিমেন্ট', 'শাহ', 'সেভেন রিং', 'বসুন্ধরা', 'ফ্রেশ', 'ক্রাউন', 'প্রিমিয়ার', 'হোলসিম', 'আকিজ'
+    ];
+    for (const b of knownBrands) {
+      if (name.includes(b)) {
+        brandName = b.endsWith('সিমেন্ট') ? b : (categoryName === 'সিমেন্ট' ? `${b} সিমেন্ট` : b);
+        break;
+      }
+    }
+    if (!brandName && categoryName === 'সিমেন্ট') {
+      const cleaned = name.trim();
+      if (cleaned) brandName = cleaned;
+    }
+  }
+
+  // 3. Size (সাইজ)
+  let sizeName = item.mmSize || item.size || '';
+  if (!sizeName) {
+    const mmMatch = name.match(/([0-9০-৯]+(?:\.[0-9০-৯]+)?\s*(?:মিলি|mm))/i) 
+                 || name.match(/([0-9০-৯]+)\s*(?:মিলি|mm)/i)
+                 || name.match(/\b(8|10|12|16|20|22|25|28|32|৮|১০|১২|১৬|২০|২২|২৫|২৮|৩২)\s*(?:মিলি|mm|রড)?/i);
+    if (mmMatch) {
+      const numPart = (mmMatch[1] || mmMatch[0]).replace(/(?:মিলি|mm|রড)/gi, '').trim();
+      sizeName = numPart ? `${numPart} মিলি` : mmMatch[0];
+    } else {
+      const ringMatch = name.match(/([0-9০-৯]+["″]?\s*[\*×xX]\s*[0-9০-৯]+["″]?)/);
+      if (ringMatch) {
+        sizeName = ringMatch[1].replace(/[*xX]/g, '″ × ') + (ringMatch[1].includes('″') ? '' : '″');
+      }
+    }
+  }
+
+  return {
+    categoryName: categoryName || 'পণ্য',
+    brandName: brandName || '—',
+    sizeName: sizeName || '—'
+  };
+}

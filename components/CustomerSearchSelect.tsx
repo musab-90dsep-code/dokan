@@ -139,11 +139,6 @@ export function CustomerSearchSelect({
               {selectedCustomer.phone && (
                 <span className="text-slate-500 font-semibold font-mono">({selectedCustomer.phone})</span>
               )}
-              {selectedCustomer.businessName && (
-                <span className="text-orange-600 font-semibold text-[11px] truncate">
-                  — {selectedCustomer.businessName}
-                </span>
-              )}
             </div>
             <button
               type="button"
@@ -233,37 +228,16 @@ export function CustomerSearchSelect({
                           : 'hover:bg-slate-50 text-slate-700'
                       )}
                     >
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2 font-black text-slate-900 text-xs">
-                          <span>{cust.name}</span>
-                          {cust.businessName && (
-                            <span className="text-[11px] font-semibold text-orange-600 bg-orange-100/60 px-1.5 py-0.5 rounded">
-                              {cust.businessName}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 text-[11px] text-slate-500">
-                          {cust.phone && (
-                            <span className="flex items-center gap-1 font-mono">
-                              <Phone className="w-3 h-3 text-slate-400" /> {toBengaliDigits(cust.phone)}
-                            </span>
-                          )}
-                          {cust.address && (
-                            <span className="truncate max-w-[200px] text-slate-400">
-                              {cust.address}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {cust.totalDue !== undefined && cust.totalDue > 0 && (
-                          <span className="text-[10px] font-black bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
-                            বকেয়া: ৳{toBengaliDigits(cust.totalDue.toLocaleString('en-IN'))}
+                      <div className="flex items-center gap-2 font-bold text-slate-900 text-xs">
+                        <span>{cust.name}</span>
+                        {cust.phone && (
+                          <span className="text-slate-500 font-medium font-mono">
+                            ({toBengaliDigits(cust.phone)})
                           </span>
                         )}
-                        {isSelected && <Check className="w-4 h-4 text-orange-600 shrink-0" />}
                       </div>
+
+                      {isSelected && <Check className="w-4 h-4 text-orange-600 shrink-0" />}
                     </div>
                   );
                 })}

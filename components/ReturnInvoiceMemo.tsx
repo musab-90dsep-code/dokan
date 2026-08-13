@@ -13,6 +13,8 @@ export interface ReturnItem {
   quantity: number;
   price: number;
   unit: string;
+  condition?: string;
+  invoiceNo?: string;
 }
 
 export interface ReturnInvoiceMemoProps {
@@ -92,7 +94,7 @@ export const ReturnInvoiceMemo: React.FC<ReturnInvoiceMemoProps> = ({
             phone: parsed.phone ? `মোবাইলঃ ${parsed.phone}` : defaultShop.phone,
             email: parsed.email || defaultShop.email,
             software: parsed.software || customPromo.softwareCompany || defaultShop.software,
-            softwareCompany: customPromo.softwareCompany || parsed.softwareCompany || defaultShop.softwareCompany,
+            softwareCompany: customPromo.softwareCompany || parsed.softwareCompany || defaultShop.software,
             softwarePhone: customPromo.softwarePhone || parsed.softwarePhone || defaultShop.softwarePhone,
             softwareWebsite: customPromo.softwareWebsite || parsed.softwareWebsite || defaultShop.softwareWebsite
           };
@@ -122,10 +124,28 @@ export const ReturnInvoiceMemo: React.FC<ReturnInvoiceMemoProps> = ({
     : 'RET-2026-0001';
 
   const returnedItems = returnEntry.returnedItems || [];
-  const newTakenItems = returnEntry.newTakenItems || [];
+  let newTakenItems = returnEntry.newTakenItems || [];
+  let totalNewTakenValue = Number(returnEntry.totalNewTakenValue || 0);
+
+  const rawNote = (returnEntry as any).notes || returnEntry.reason || '';
+  if (rawNote && typeof rawNote === 'string' && rawNote.trim().startsWith('{')) {
+    try {
+      const idx = rawNote.indexOf('\n');
+      const jsonStr = idx !== -1 ? rawNote.substring(0, idx) : rawNote;
+      const meta = JSON.parse(jsonStr);
+      if ((!newTakenItems || newTakenItems.length === 0) && meta.newTakenItems && Array.isArray(meta.newTakenItems)) {
+        newTakenItems = meta.newTakenItems;
+      }
+      if (!totalNewTakenValue && meta.totalNewTakenValue !== undefined) {
+        totalNewTakenValue = Number(meta.totalNewTakenValue);
+      }
+    } catch {}
+  }
 
   const totalReturnedValue = returnEntry.totalReturnValue || returnedItems.reduce((s, i) => s + (i.price * i.quantity), 0);
-  const totalNewTakenValue = returnEntry.totalNewTakenValue || newTakenItems.reduce((s, i) => s + (i.price * i.quantity), 0);
+  if (totalNewTakenValue === 0 && newTakenItems.length > 0) {
+    totalNewTakenValue = newTakenItems.reduce((s, i) => s + (Number(i.price || 0) * Number(i.quantity || 0)), 0);
+  }
   const netRefundValue = returnEntry.netRefundValue !== undefined ? returnEntry.netRefundValue : (totalReturnedValue - totalNewTakenValue);
 
   const dueAdjusted = returnEntry.dueAdjusted || 0;
@@ -151,7 +171,7 @@ export const ReturnInvoiceMemo: React.FC<ReturnInvoiceMemoProps> = ({
         </div>
       )}
 
-      {/* --- MINIMALIST CLEAN INVOICE SHEET (NO HEAVY BOXES) --- */}
+      {/* --- MINIMALIST CLEAN INVOICE SHEET --- */}
       <div 
         id="printable-memo-wrapper" 
         className={cn(
@@ -159,7 +179,7 @@ export const ReturnInvoiceMemo: React.FC<ReturnInvoiceMemoProps> = ({
           !showPrintButton && "rounded-2xl"
         )}
       >
-        {/* --- 1. HEADER (CLEAN TEXT & SIMPLE LINE) --- */}
+        {/* --- 1. HEADER --- */}
         <div className="flex justify-between items-start pb-4 border-b border-black">
           <div className="space-y-1">
             <h1 className="text-3xl font-black text-black tracking-tight">
@@ -191,7 +211,7 @@ export const ReturnInvoiceMemo: React.FC<ReturnInvoiceMemoProps> = ({
             {returnEntry.customerPhone && (
               <div className="flex items-baseline gap-2">
                 <span className="w-24 shrink-0 font-black text-slate-600">মোবাইল:</span>
-                <span className="font-mono">{returnEntry.customerPhone}</span>
+                <span className="font-mono">{toBengaliDigits(returnEntry.customerPhone)}</span>
               </div>
             )}
             {returnEntry.customerAddress && (
@@ -326,7 +346,7 @@ export const ReturnInvoiceMemo: React.FC<ReturnInvoiceMemoProps> = ({
             </div>
 
             {dueAdjusted > 0 && (
-              <div className="flex justify-between items-center text-blue-700">
+              <div className="flex justify-between items-center text-blue-700 font-bold">
                 <span>বকেয়া কর্তন/সমন্বয়:</span>
                 <span className="font-black">- ৳ {toBengaliDigits(dueAdjusted.toLocaleString('en-IN'))}</span>
               </div>

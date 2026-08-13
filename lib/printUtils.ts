@@ -57,7 +57,8 @@ export const printElement = (elementId: string) => {
             font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           }
           #printable-memo-wrapper,
-          #gate-pass-printable-wrapper {
+          #gate-pass-printable-wrapper,
+          #purchase-memo-wrapper {
             width: 100% !important;
             max-width: 100% !important;
             margin: 0 !important;
@@ -68,6 +69,16 @@ export const printElement = (elementId: string) => {
           }
           .print\\:hidden {
             display: none !important;
+          }
+          thead {
+            display: table-header-group !important;
+          }
+          tfoot {
+            display: table-footer-group !important;
+          }
+          tr, td, th, .keep-together, .memo-section {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
           * {
             -webkit-print-color-adjust: exact !important;

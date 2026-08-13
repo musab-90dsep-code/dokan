@@ -4,10 +4,10 @@ import { useState, useEffect, useMemo } from 'react';
 import { Shell } from '@/components/Shell';
 import { api } from '@/lib/api';
 import { 
-  Plus, Search, Edit2, Trash2, Phone, Building2, DollarSign,
+  Plus, Search, Edit, Edit2, Trash2, Phone, Building2, DollarSign,
   Receipt, Banknote, Calendar, Lightbulb, AlertCircle, X,
   Truck, Eye, Calculator, CheckCircle2, Package, Filter,
-  ChevronUp, ChevronDown, RotateCcw, ArrowLeft, Printer
+  ChevronUp, ChevronDown, RotateCcw, ArrowLeft, Printer, ArrowUpDown
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -22,13 +22,25 @@ import { cn, formatDualStock } from '@/lib/utils';
 import { SupplierSearchSelect } from '@/components/SupplierSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
 import { PurchaseInvoiceMemo } from '@/components/PurchaseInvoiceMemo';
+import { PurchaseInvoiceDetailsView } from '@/components/PurchaseInvoiceDetailsView';
 import { printElement } from '@/lib/printUtils';
+import { parseProductDetails } from '@/lib/bengaliUtils';
+
+const bengaliNumerals = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+export const toBengaliDigits = (num: number | string | undefined | null): string => {
+  if (num === undefined || num === null || num === '') return '';
+  return String(num).replace(/[0-9]/g, (digit) => bengaliNumerals[parseInt(digit, 10)]);
+};
 
 export interface PurchaseItem {
   id?: string;
   name: string;
+  category?: string;
+  brand?: string;
+  mmSize?: string;
   unit: string;
   price: number;
+  sellPrice?: number;
   quantity: number;
   discount?: number;
 }
@@ -136,8 +148,12 @@ export default function PurchasesPage() {
     const newItem: PurchaseItem = {
       id: prodId,
       name: nameToUse,
+      category: selectedCascadingProduct?.category,
+      brand: selectedCascadingProduct?.brand,
+      mmSize: selectedCascadingProduct?.mmSize,
       unit: unitToUse,
       price: itemPrice,
+      sellPrice: itemSellPrice > 0 ? itemSellPrice : undefined,
       quantity: itemQty
     };
 
@@ -150,8 +166,22 @@ export default function PurchasesPage() {
   };
 
   const handleAddCategoryProductToCart = handleAddLineItem;
-  const handleSaveDefaultLabor = (amount: number) => {
-    setLaborCost(amount);
+  
+  // Category-Specific Purchase Defaults (Rod & Cement isolated from Sales)
+  const handleSaveDefaultCharges = () => {
+    if (typeof window === 'undefined') return;
+    const key = `dokan_purchase_defaults_${purchaseType}`;
+    const payload = {
+      laborCost: Number(laborCost || 0),
+      shippingCost: Number(shippingCost || 0)
+    };
+    try {
+      localStorage.setItem(key, JSON.stringify(payload));
+      const catLabel = purchaseType === 'rod' ? 'রড ও রিং' : 'সিমেন্ট';
+      toast.success(`${catLabel} ক্রয়ের জন্য ডিফল্ট লেবার (৳${laborCost}) ও গাড়ি ভাড়া (৳${shippingCost}) সফলভাবে সেভ করা হয়েছে!`);
+    } catch {
+      toast.error('ডিফল্ট চার্জ সেভ করতে সমস্যা হয়েছে');
+    }
   };
 
   // Billing & Payment Extension States
@@ -160,6 +190,8 @@ export default function PurchasesPage() {
   const [discountFlat, setDiscountFlat] = useState<number>(0);
   const [shippingCost, setShippingCost] = useState<number>(0);
   const [laborCost, setLaborCost] = useState<number>(0);
+  const [shippingPaymentStatus, setShippingPaymentStatus] = useState<'pending' | 'paid'>('pending');
+  const [laborPaymentStatus, setLaborPaymentStatus] = useState<'pending' | 'paid'>('pending');
   const [isLandedCostAuto, setIsLandedCostAuto] = useState<boolean>(true);
 
   const [paymentOption, setPaymentOption] = useState<'now' | 'later'>('now');
@@ -190,26 +222,56 @@ export default function PurchasesPage() {
     try {
       setLoading(true);
       const purchaseList = await api.transactions.list({ transaction_type: 'purchase' });
-      setPurchases(purchaseList.map(p => ({
-        id: String(p.id),
-        purchaseId: p.invoice_no,
-        supplierName: p.party_name || 'সরবরাহকারী',
-        supplierPhone: p.party_phone || '',
-        supplierId: String(p.party || ''),
-        items: (p.items || []).map(i => ({
-          name: i.product_name,
-          price: i.price,
-          quantity: i.quantity,
-          unit: i.unit || 'পিস'
-        })),
-        subtotal: p.subtotal,
-        discount: p.discount,
-        totalAmount: p.total_amount,
-        paidAmount: p.paid_amount,
-        dueAmount: p.due_amount,
-        paymentStatus: p.due_amount <= 0 ? 'paid' : 'unpaid',
-        createdAt: p.created_at
-      })));
+      setPurchases(purchaseList.map(p => {
+        let meta: any = {};
+        let userNote = p.notes || '';
+        if (userNote && typeof userNote === 'string' && userNote.trim().startsWith('{')) {
+          try {
+            const firstLine = userNote.split('\n')[0];
+            meta = JSON.parse(firstLine);
+            userNote = userNote.substring(firstLine.length).trim();
+          } catch {}
+        }
+        const pAny = p as any;
+        return {
+          id: String(p.id),
+          purchaseId: p.invoice_no,
+          supplierName: p.party_name || meta.supplierName || 'সরবরাহকারী',
+          supplierPhone: p.party_phone || meta.supplierPhone || '',
+          supplierAddress: pAny.party_address || meta.supplierAddress || '',
+          supplierId: String(p.party || ''),
+          items: (p.items || []).map((i: any) => ({
+            name: i.product_name,
+            price: i.price,
+            quantity: i.quantity,
+            unit: i.unit || 'পিস',
+            discount: i.discount || 0
+          })),
+          subtotal: p.subtotal || meta.subtotal,
+          discount: p.discount !== undefined ? p.discount : (meta.discount || 0),
+          shippingCost: pAny.shipping_cost !== undefined ? pAny.shipping_cost : (meta.shippingCost || 0),
+          laborCost: pAny.labor_cost !== undefined ? pAny.labor_cost : (meta.laborCost || 0),
+          transportCost: meta.transportCost || meta.shippingCost || pAny.shipping_cost || 0,
+          totalAmount: p.total_amount,
+          paidAmount: p.paid_amount,
+          dueAmount: p.due_amount,
+          paymentStatus: p.due_amount <= 0 ? 'পরিশোধিত' : (p.paid_amount || 0) > 0 ? 'আংশিক' : 'বকেয়া আছে',
+          createdAt: p.created_at,
+          vehicleNo: pAny.vehicle_no || meta.vehicleNo || '',
+          driverName: pAny.driver_name || meta.driverName || '',
+          driverPhone: pAny.driver_phone || meta.driverPhone || '',
+          deliveryAddress: pAny.delivery_address || meta.deliveryAddress || '',
+          preparedBy: meta.preparedBy || '',
+          authorizedBy: meta.authorizedBy || '',
+          receivedBy: meta.receivedBy || '',
+          warehouse: meta.warehouse || '',
+          previousSupplierDue: meta.previousSupplierDue || 0,
+          paymentMethod: meta.paymentMethodName || p.payment_method || 'Cash',
+          chequeNo: meta.chequeNo || '',
+          chequeDate: meta.chequeDate || '',
+          note: userNote || meta.userNote || ''
+        };
+      }));
 
       const partyList = await api.parties.list({ party_type: 'supplier' });
       setSuppliers(partyList.map(p => ({
@@ -303,6 +365,28 @@ export default function PurchasesPage() {
     ? (selectedSupplier.totalDue || 0)
     : 0;
 
+  // Auto-load category-specific purchase defaults when purchaseType changes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const key = `dokan_purchase_defaults_${purchaseType}`;
+    queueMicrotask(() => {
+      try {
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setLaborCost(Number(parsed.laborCost || 0));
+          setShippingCost(Number(parsed.shippingCost || 0));
+        } else {
+          setLaborCost(0);
+          setShippingCost(0);
+        }
+      } catch {
+        setLaborCost(0);
+        setShippingCost(0);
+      }
+    });
+  }, [purchaseType]);
+
   const resetForm = () => {
     setSelectedSupplier(null);
     setIsNewSupplier(false);
@@ -314,9 +398,25 @@ export default function PurchasesPage() {
     setDiscountType('percentage');
     setDiscountPercent(0);
     setDiscountFlat(0);
-    setShippingCost(0);
-    const defLabor = typeof window !== 'undefined' ? (parseFloat(localStorage.getItem('dokan_default_labor_charge') || '0') || 0) : 0;
-    setLaborCost(defLabor);
+
+    if (typeof window !== 'undefined') {
+      try {
+        const key = `dokan_purchase_defaults_${purchaseType}`;
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setLaborCost(Number(parsed.laborCost || 0));
+          setShippingCost(Number(parsed.shippingCost || 0));
+        } else {
+          setLaborCost(0);
+          setShippingCost(0);
+        }
+      } catch {
+        setLaborCost(0);
+        setShippingCost(0);
+      }
+    }
+
     setIsLandedCostAuto(true);
     setPaymentOption('now');
     setPaidAmount(0);
@@ -407,6 +507,9 @@ export default function PurchasesPage() {
       else if (pmLower.includes('cheque') || pmLower.includes('check')) effectivePaymentMethod = 'cheque';
       else if (pmLower.includes('mobile') || pmLower.includes('bkash') || pmLower.includes('nagad')) effectivePaymentMethod = 'mobile_banking';
 
+      const goodsTotal = Math.max(0, cartSubtotal - computedDiscount);
+      const supplierDueAmount = paymentOption === 'now' ? Math.max(0, goodsTotal - paidAmount) : goodsTotal;
+
       const purchaseMeta = {
         paymentMethodName: paymentMethod,
         bankName: bankName || supplierBankName || selectedShopBank || '',
@@ -418,30 +521,48 @@ export default function PurchasesPage() {
         supplierTxnRef: supplierTxnRef || '',
         chequeNo: chequeNo || '',
         chequeDate: chequeDate || '',
+        vehicleNo: vehicleNo || '',
+        driverName: driverName || '',
+        driverPhone: driverPhone || '',
+        deliveryAddress: deliveryAddress || '',
+        preparedBy: preparedBy || '',
+        authorizedBy: authorizedBy || '',
+        receivedBy: receivedBy || '',
+        warehouse: warehouse || '',
+        shippingCost: shippingCost || 0,
+        laborCost: laborCost || 0,
+        shippingStatus: shippingPaymentStatus,
+        laborStatus: laborPaymentStatus,
+        shippingPaidAmount: shippingPaymentStatus === 'paid' ? (shippingCost || 0) : 0,
+        laborPaidAmount: laborPaymentStatus === 'paid' ? (laborCost || 0) : 0,
+        supplierDue: Math.round((Number(supplierDueAmount) || 0) * 100) / 100,
+        discount: computedDiscount || 0,
+        discountType: discountType,
+        discountPercent: discountPercent,
+        discountFlat: discountFlat,
+        previousSupplierDue: selectedSupplierDue || 0,
         userNote: purchaseNote || ''
       };
 
       const finalNotesPayload = JSON.stringify(purchaseMeta) + (purchaseNote ? `\n${purchaseNote}` : '');
 
+      const round2 = (val: number) => Math.round((Number(val) || 0) * 100) / 100;
+
       await api.transactions.create({
         party: finalSuppId ? Number(finalSuppId) : null,
         transaction_type: 'purchase',
-        total_amount: cartTotalAmount,
-        paid_amount: paidAmount,
-        due_amount: cartDueAmount,
+        total_amount: round2(cartTotalAmount),
+        paid_amount: round2(paidAmount),
+        due_amount: round2(supplierDueAmount),
         payment_method: effectivePaymentMethod,
         items: cart.map(i => {
-          const extraCharges = (shippingCost || 0) + (laborCost || 0);
-          const landedUnitPrice = (isLandedCostAuto && cartSubtotal > 0 && extraCharges > 0 && i.quantity > 0)
-            ? i.price + (((i.price * i.quantity / cartSubtotal) * extraCharges) / i.quantity)
-            : i.price;
-          const finalUnitPrice = Math.round(landedUnitPrice * 100) / 100;
           return {
             product_name: i.name,
             quantity: i.quantity,
-            price: finalUnitPrice,
+            price: Math.round((Number(i.price) || 0) * 100) / 100,
+            sell_price: i.sellPrice && i.sellPrice > 0 ? Math.round(Number(i.sellPrice) * 100) / 100 : undefined,
             unit: i.unit,
-            total: Math.round(finalUnitPrice * i.quantity * 100) / 100
+            total: Math.round((Number(i.price) || 0) * Number(i.quantity || 0) * 100) / 100
           };
         }),
         notes: finalNotesPayload
@@ -454,6 +575,36 @@ export default function PurchasesPage() {
       console.error(err);
       toast.error(err.message || 'ক্রয় ইনভয়েস সংরক্ষণ করতে সমস্যা হয়েছে');
     }
+  };
+
+  const handleEditPurchase = (p: PurchaseInvoice) => {
+    const pAny = p as any;
+    setEditingPurchaseId(p.id);
+    setSelectedSupplier({ id: p.supplierId || '', name: p.supplierName || 'সরবরাহকারী', businessName: p.supplierName });
+    setCart((p.items || []).map((i: any) => ({
+      name: i.name || i.product_name,
+      price: Number(i.price || 0),
+      quantity: Number(i.quantity || 0),
+      unit: i.unit || 'পিস',
+      discount: Number(i.discount || 0)
+    })));
+    setDiscountType('flat');
+    setDiscountFlat(p.discount || 0);
+    setShippingCost(p.shippingCost || pAny.shipping_cost || 0);
+    setLaborCost(p.laborCost || pAny.labor_cost || 0);
+    setVehicleNo(p.vehicleNo || pAny.vehicle_no || '');
+    setDriverName(p.driverName || pAny.driver_name || '');
+    setDriverPhone(p.driverPhone || pAny.driver_phone || '');
+    setDeliveryAddress(p.deliveryAddress || pAny.delivery_address || '');
+    setPreparedBy(pAny.preparedBy || pAny.operatorName || '');
+    setAuthorizedBy(pAny.authorizedBy || '');
+    setReceivedBy(pAny.receivedBy || '');
+    setWarehouse(pAny.warehouse || 'Main');
+    setPaymentOption(p.paidAmount > 0 ? 'now' : 'later');
+    setPaidAmount(p.paidAmount || 0);
+    setPaymentMethod(pAny.paymentMethod || pAny.payment_method || 'Cash');
+
+    setIsCreateOpen(true);
   };
 
   const handleDeletePurchase = async (p: PurchaseInvoice) => {
@@ -511,67 +662,69 @@ export default function PurchasesPage() {
 
   return (
     <Shell>
-      {!isCreateOpen ? (
-        <div className="space-y-5 font-bengali pb-10">
+      {selectedPurchase ? (
+        <div className="space-y-4 animate-in fade-in duration-300">
+          <PurchaseInvoiceDetailsView
+            invoice={selectedPurchase}
+            onBack={() => setSelectedPurchase(null)}
+            onPrint={() => printElement('printable-memo-wrapper')}
+            onDelete={(p) => handleDeletePurchase(p)}
+          />
+
+          {/* Hidden Print Container for iframe printing */}
+          <div className="hidden print:block">
+            <PurchaseInvoiceMemo
+              invoice={selectedPurchase as any}
+              type="purchase"
+              showPrintButton={false}
+            />
+          </div>
+        </div>
+      ) : !isCreateOpen ? (
+        <div className="space-y-6 font-bengali pb-10">
           
-          {/* HEADER TOOLBAR */}
+          {/* HEADER TOOLBAR MATCHING SALES INVOICES PAGE */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <Truck className="w-7 h-7 text-blue-600" /> ক্রয় ইনভয়েস (Purchases)
+                <Truck className="w-7 h-7 text-indigo-600" /> ক্রয় ইনভয়েস তালিকা
               </h1>
-              <p className="text-slate-500 text-xs mt-0.5">রড ও সিমেন্ট ক্রয়ের হিসাব, চালান ও সরবরাহকারীর পাওনা ব্যবস্থাপনা</p>
+              <p className="text-slate-500 text-xs mt-0.5 font-medium">রড ও সিমেন্ট ক্রয়ের হিসাব, চালান ও সরবরাহকারীর পাওনা ব্যবস্থাপনা</p>
             </div>
 
-            <Button 
-              onClick={() => setIsTypeModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white h-10 px-5 rounded-md font-bold text-xs shadow-md shadow-blue-600/20 active:scale-95 transition-all"
-            >
-              <Plus className="w-4 h-4 mr-1.5" /> নতুন ক্রয় ইনভয়েস
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button 
+                onClick={() => setIsTypeModalOpen(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white h-10 px-5 rounded-md font-bold text-xs shadow-md shadow-indigo-600/20 active:scale-95 transition-all"
+              >
+                <Plus className="w-4 h-4 mr-1.5" /> + নতুন ক্রয় ইনভয়েস
+              </Button>
+            </div>
           </div>
 
-          {/* METRIC OVERVIEW CARDS */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card className="border border-slate-200/80 bg-white rounded-md shadow-2xs">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">মোট ক্রয় বিল</p>
-                  <p className="text-xl font-black text-slate-900 mt-0.5">৳ {totalPurchaseAmount.toLocaleString()}</p>
-                </div>
-                <div className="w-11 h-11 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center font-bold shrink-0">
-                  <Receipt className="w-5 h-5" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border border-slate-200/80 bg-white rounded-md shadow-2xs">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">পরিশোধিত</p>
-                  <p className="text-xl font-black text-emerald-600 mt-0.5">৳ {totalPaidAmount.toLocaleString()}</p>
-                </div>
-                <div className="w-11 h-11 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shrink-0">
-                  <Banknote className="w-5 h-5" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border border-slate-200/80 bg-white rounded-md shadow-2xs">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">কোম্পানির মোট পাওনা</p>
-                  <p className="text-xl font-black text-rose-600 mt-0.5">৳ {totalDueAmount.toLocaleString()}</p>
-                </div>
-                <div className="w-11 h-11 rounded-md bg-rose-50 text-rose-600 flex items-center justify-center font-bold shrink-0">
-                  <DollarSign className="w-5 h-5" />
-                </div>
-              </CardContent>
-            </Card>
+          {/* SUMMARY CARDS MATCHING SALES INVOICES PAGE */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              { label: 'মোট ইনভয়েস ক্রয়', value: `৳ ${toBengaliDigits(totalPurchaseAmount.toLocaleString('en-IN'))}`, icon: Receipt, color: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-100' },
+              { label: 'মোট ক্যাশ পরিশোধ', value: `৳ ${toBengaliDigits(totalPaidAmount.toLocaleString('en-IN'))}`, icon: Banknote, color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+              { label: 'মোট বকেয়া চালান', value: `৳ ${toBengaliDigits(totalDueAmount.toLocaleString('en-IN'))}`, icon: AlertCircle, color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-100' },
+            ].map((s, i) => (
+              <Card key={i} className={cn("border-2 shadow-sm rounded-md transition-all hover:shadow-md", s.border, s.bg)}>
+                <CardContent className="p-6 flex items-center gap-4">
+                  <div className={cn("w-12 h-12 rounded-md flex items-center justify-center bg-white shadow-sm", s.color)}>
+                    <s.icon className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-widest font-black text-slate-500 font-bengali opacity-80">{s.label}</p>
+                    <p className={cn("text-2xl font-black font-bengali mt-0.5", s.color)}>{s.value}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
 
-          {/* COMPACT & EFFICIENT FILTER CARD */}
-          <Card className="border border-slate-200/80 shadow-2xs rounded-md bg-white p-4 font-bengali space-y-3">
+          {/* COMPACT & EFFICIENT FILTER CARD MATCHING SALES INVOICES PAGE */}
+          <Card className="border border-slate-200/80 shadow-xs rounded-md bg-white p-4 font-bengali space-y-3">
             {/* Top Row: Search + Date Range + Status Quick Pills + More Filter Toggle */}
             <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
               
@@ -579,7 +732,7 @@ export default function PurchasesPage() {
               <div className="relative flex-1 min-w-[240px]">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <Input
-                  placeholder="কোম্পানির নাম, ইনভয়েস নম্বর বা ফোন দিয়ে খুঁজুন..."
+                  placeholder="ইনভয়েস নং, কোম্পানির নাম বা নম্বর..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   className="pl-10 h-10 rounded-md bg-slate-50/80 border-slate-200 text-xs font-bold text-slate-900 focus:bg-white transition-all placeholder:text-slate-400"
@@ -626,9 +779,9 @@ export default function PurchasesPage() {
               {/* Quick Status Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
                 {[
-                  { id: 'সব', label: 'সব ক্রয়' },
+                  { id: 'সব', label: 'সব' },
                   { id: 'পরিশোধিত', label: 'পরিশোধিত' },
-                  { id: 'বকেয়া আছে', label: 'বকেয়া আছে' },
+                  { id: 'বকেয়া আছে', label: 'বকেয়া' },
                 ].map(p => (
                   <button
                     key={p.id}
@@ -636,7 +789,7 @@ export default function PurchasesPage() {
                     className={cn(
                       "px-3.5 py-1.5 rounded-md text-xs font-bold transition-all border whitespace-nowrap",
                       filterStatus === p.id
-                        ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                        ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
                         : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
                     )}
                   >
@@ -653,7 +806,7 @@ export default function PurchasesPage() {
                   onClick={() => setIsFilterExpanded(!isFilterExpanded)}
                   className="h-10 px-3.5 rounded-md border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 flex items-center gap-1.5"
                 >
-                  <Filter className="w-3.5 h-3.5 text-blue-600" />
+                  <Filter className="w-3.5 h-3.5 text-indigo-600" />
                   <span>আরও ফিল্টার</span>
                   {isFilterExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </Button>
@@ -698,73 +851,147 @@ export default function PurchasesPage() {
             )}
           </Card>
 
-          {/* PURCHASES TABLE CARD */}
-          <Card className="border border-slate-200/80 shadow-2xs rounded-md bg-white overflow-hidden">
+          {/* PURCHASES DATA TABLE CARD MATCHING SALES INVOICES TABLE */}
+          <Card className="border border-slate-200/80 shadow-md rounded-md bg-white overflow-hidden">
             <CardContent className="p-0 overflow-x-auto custom-scrollbar">
               <Table>
-                <TableHeader className="bg-slate-50 border-b border-slate-200">
+                <TableHeader className="bg-slate-50/80 border-b border-slate-100">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-12 text-center font-bengali text-slate-900 text-xs font-black uppercase py-3">#</TableHead>
-                    <TableHead className="font-bengali text-slate-900 text-xs font-black uppercase">কোম্পানি / সরবরাহকারী</TableHead>
-                    <TableHead className="text-center font-bengali text-slate-900 text-xs font-black uppercase">তারিখ</TableHead>
-                    <TableHead className="text-right font-bengali text-slate-900 text-xs font-black uppercase">মোট বিল</TableHead>
-                    <TableHead className="text-right font-bengali text-slate-900 text-xs font-black uppercase">পরিশোধিত</TableHead>
-                    <TableHead className="text-right font-bengali text-slate-900 text-xs font-black uppercase">কোম্পানির পাওনা</TableHead>
-                    <TableHead className="text-center font-bengali text-slate-900 text-xs font-black uppercase">স্ট্যাটাস</TableHead>
-                    <TableHead className="text-center font-bengali text-slate-900 text-xs font-black w-24 uppercase">অ্যাকশন</TableHead>
+                    <TableHead className="w-10 text-center py-4 px-3">
+                      <input type="checkbox" className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                    </TableHead>
+                    <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4">
+                      <div className="flex items-center gap-1 cursor-pointer select-none">
+                        <span>ইনভয়েস নং</span>
+                        <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      </div>
+                    </TableHead>
+                    <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4">
+                      <div className="flex items-center gap-1 cursor-pointer select-none">
+                        <span>তারিখ ও সময়</span>
+                        <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      </div>
+                    </TableHead>
+                    <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4">কোম্পানি / সরবরাহকারী</TableHead>
+                    <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1 cursor-pointer select-none">
+                        <span>মোট বিল (৳)</span>
+                        <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      </div>
+                    </TableHead>
+                    <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1 cursor-pointer select-none">
+                        <span>পরিশোধিত (৳)</span>
+                        <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      </div>
+                    </TableHead>
+                    <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1 cursor-pointer select-none">
+                        <span>কোম্পানির পাওনা (৳)</span>
+                        <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      </div>
+                    </TableHead>
+                    <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4 text-center">
+                      <div className="flex items-center justify-center gap-1 cursor-pointer select-none">
+                        <span>পেমেন্ট স্ট্যাটাস</span>
+                        <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      </div>
+                    </TableHead>
+                    <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-4 text-center">
+                      <div className="flex items-center justify-center gap-1 cursor-pointer select-none">
+                        <span>স্ট্যাটাস</span>
+                        <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      </div>
+                    </TableHead>
+                    <TableHead className="font-bengali text-slate-600 text-xs font-bold py-4 px-6 text-center">অ্যাকশন</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-16 text-slate-400 font-bold text-sm">লোড হচ্ছে...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={10} className="text-center py-20 text-slate-400 font-bengali font-bold text-lg">লোড হচ্ছে...</TableCell></TableRow>
                   ) : filteredPurchases.length === 0 ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-16 text-slate-400 font-bold text-sm">কোনো ক্রয় ইনভয়েস পাওয়া যায়নি</TableCell></TableRow>
-                  ) : filteredPurchases.map((p, idx) => (
-                    <TableRow 
-                      key={p.id} 
-                      onClick={() => setSelectedPurchase(p)}
-                      className="border-b border-slate-100 hover:bg-slate-50/80 cursor-pointer transition-colors text-xs font-medium"
-                    >
-                      <TableCell className="text-center font-bold text-slate-400">{idx + 1}</TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-black text-slate-900 text-xs">{p.supplierName}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">#{p.id.slice(0, 8).toUpperCase()}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center text-slate-600">{formatDate(p.createdAt)}</TableCell>
-                      <TableCell className="text-right font-black text-slate-900">৳ {(p.totalAmount || 0).toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-bold text-emerald-600">৳ {(p.paidAmount || 0).toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-black text-rose-600">৳ {(p.dueAmount || 0).toLocaleString()}</TableCell>
-                      <TableCell className="text-center">
-                        <span className={cn("px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider inline-block border",
-                          p.paymentStatus === 'পরিশোধিত' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                          p.paymentStatus === 'আংশিক' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                          'bg-rose-50 text-rose-700 border-rose-200'
-                        )}>
-                          {p.paymentStatus}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setSelectedPurchase(p); }} 
-                            className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md"
-                            title="ইনভয়েস দেখুন"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); handleDeletePurchase(p); }} 
-                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-md"
-                            title="মুছে ফেলুন"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center py-20">
+                        <div className="flex flex-col items-center justify-center text-slate-400">
+                          <Receipt className="w-12 h-12 mb-3 opacity-20" />
+                          <p className="font-bengali font-bold text-lg">কোনো ক্রয় ইনভয়েস পাওয়া যায়নি</p>
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : filteredPurchases.map((p) => {
+                    const invNo = p.purchaseId || p.id ? (p.id.startsWith('PUR') ? p.id : `PUR-${p.id.slice(-6).toUpperCase()}`) : 'PUR-000101';
+                    return (
+                      <TableRow 
+                        key={p.id} 
+                        onClick={() => setSelectedPurchase(p)}
+                        className="border-b border-slate-100 hover:bg-slate-50/80 cursor-pointer transition-colors text-xs font-medium"
+                      >
+                        <TableCell className="text-center py-3.5 px-3">
+                          <input type="checkbox" onClick={e => e.stopPropagation()} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                        </TableCell>
+                        <TableCell className="py-3.5 px-4">
+                          <div className="font-mono font-bold text-slate-900 text-xs">{toBengaliDigits(invNo)}</div>
+                        </TableCell>
+                        <TableCell className="py-3.5 px-4 text-slate-600 font-medium">
+                          {formatDate(p.createdAt)}
+                        </TableCell>
+                        <TableCell className="py-3.5 px-4">
+                          <div>
+                            <p className="font-black text-slate-900 text-xs">{p.supplierName}</p>
+                            {p.supplierPhone && <p className="text-[10px] text-slate-400 font-mono">{toBengaliDigits(p.supplierPhone)}</p>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-3.5 px-4 text-right font-mono font-black text-slate-900">
+                          ৳ {toBengaliDigits((p.totalAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
+                        </TableCell>
+                        <TableCell className="py-3.5 px-4 text-right font-mono font-bold text-emerald-600">
+                          ৳ {toBengaliDigits((p.paidAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
+                        </TableCell>
+                        <TableCell className="py-3.5 px-4 text-right font-mono font-black text-rose-600">
+                          ৳ {toBengaliDigits((p.dueAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
+                        </TableCell>
+                        <TableCell className="py-3.5 px-4 text-center">
+                          <span className={cn("px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider inline-block border",
+                            p.paymentStatus === 'পরিশোধিত' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                            p.paymentStatus === 'আংশিক' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                            'bg-rose-50 text-rose-700 border-rose-200'
+                          )}>
+                            {p.paymentStatus}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-3.5 px-4 text-center">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                            সম্পন্ন
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-3.5 px-6 text-center">
+                          <div className="flex items-center justify-center gap-1.5" onClick={e => e.stopPropagation()}>
+                            <button 
+                              onClick={() => setSelectedPurchase(p)} 
+                              className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
+                              title="ইনভয়েস বিবরণী ও মেমো দেখুন"
+                            >
+                              <Eye className="w-4 h-4 text-indigo-600" />
+                            </button>
+                            <button 
+                              onClick={() => handleEditPurchase(p)} 
+                              className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
+                              title="সম্পাদনা করুন"
+                            >
+                              <Edit className="w-4 h-4 text-amber-600" />
+                            </button>
+                            <button 
+                              onClick={() => handleDeletePurchase(p)} 
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-md transition-colors"
+                              title="মুছে ফেলুন"
+                            >
+                              <Trash2 className="w-4 h-4 text-rose-600" />
+                            </button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>
@@ -970,12 +1197,12 @@ export default function PurchasesPage() {
                         <TableHeader className="bg-slate-50">
                           <TableRow className="text-[11px]">
                             <TableHead className="w-10 text-center font-black">#</TableHead>
-                            <TableHead className="font-black">Product</TableHead>
-                            <TableHead className="text-center font-black">Series</TableHead>
-                            <TableHead className="text-center font-black">Variant</TableHead>
-                            <TableHead className="text-center font-black">Quantity</TableHead>
-                            <TableHead className="text-right font-black">Unit Buy Price</TableHead>
-                            <TableHead className="text-right font-black">Subtotal</TableHead>
+                            <TableHead className="font-black">পণ্যের নাম</TableHead>
+                            <TableHead className="text-center font-black">ব্র্যান্ড</TableHead>
+                            <TableHead className="text-center font-black">সাইজ</TableHead>
+                            <TableHead className="text-center font-black">পরিমাণ</TableHead>
+                            <TableHead className="text-right font-black">একক ক্রয় মূল্য</TableHead>
+                            <TableHead className="text-right font-black">মোট মূল্য</TableHead>
                             <TableHead className="w-10 text-center font-black">🗑️</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -986,39 +1213,50 @@ export default function PurchasesPage() {
                                 কার্ট খালি। উপর থেকে পণ্য নির্বাচন করে যোগ করুন।
                               </TableCell>
                             </TableRow>
-                          ) : cart.map((item, idx) => (
-                            <TableRow key={item.id ? `${item.id}-${idx}` : `${item.name}-${idx}`} className="text-xs border-b border-slate-100">
-                              <TableCell className="text-center font-bold text-slate-400">{idx + 1}</TableCell>
-                              <TableCell className="font-bold text-slate-800">{item.name}</TableCell>
-                              <TableCell className="text-center text-slate-400">—</TableCell>
-                              <TableCell className="text-center text-slate-400">—</TableCell>
-                              <TableCell className="text-center">
-                                <div className="inline-flex items-center gap-1.5">
-                                  <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity - 1)} className="w-6 h-6 rounded bg-slate-100 font-bold">-</button>
-                                  <span className="font-bold">{item.quantity} {item.unit}</span>
-                                  <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity + 1)} className="w-6 h-6 rounded bg-slate-100 font-bold">+</button>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right font-medium text-slate-600">
-                                <div>
-                                  <span className="font-bold text-slate-800">৳{item.price.toLocaleString()}</span>
-                                  {isLandedCostAuto && ((shippingCost || 0) + (laborCost || 0) > 0) && cartSubtotal > 0 && (
-                                    <div className="text-[10px] font-black text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-md mt-0.5 inline-block shadow-2xs">
-                                      প্রকৃত কেনা: ৳{Math.round(
-                                        item.price + (((item.price * item.quantity / cartSubtotal) * ((shippingCost || 0) + (laborCost || 0))) / item.quantity)
-                                      ).toLocaleString()}
-                                    </div>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right font-black text-slate-900">৳{(item.price * item.quantity).toLocaleString()}</TableCell>
-                              <TableCell className="text-center">
-                                <button type="button" onClick={() => handleRemoveCartItem(item.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded">
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                          ) : cart.map((item, idx) => {
+                            const parsed = parseProductDetails(item);
+                            return (
+                              <TableRow key={item.id ? `${item.id}-${idx}` : `${item.name}-${idx}`} className="text-xs border-b border-slate-100">
+                                <TableCell className="text-center font-bold text-slate-400">{toBengaliDigits(idx + 1)}</TableCell>
+                                <TableCell className="font-bold text-slate-900">{parsed.categoryName}</TableCell>
+                                <TableCell className="text-center font-bold text-slate-700">{parsed.brandName}</TableCell>
+                                <TableCell className="text-center font-bold text-slate-700">{parsed.sizeName}</TableCell>
+                                <TableCell className="text-center">
+                                  <div className="inline-flex items-center gap-1.5">
+                                    <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity - 1)} className="w-6 h-6 rounded bg-slate-100 font-bold">-</button>
+                                    <span className="font-bold">{toBengaliDigits(item.quantity)} {item.unit}</span>
+                                    <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity + 1)} className="w-6 h-6 rounded bg-slate-100 font-bold">+</button>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right font-medium text-slate-600">
+                                  <div>
+                                    <span className="font-bold text-slate-800">৳{toBengaliDigits(item.price.toLocaleString('en-IN'))}</span>
+                                    {isLandedCostAuto && ((shippingCost || 0) + (laborCost || 0) > 0) && cartSubtotal > 0 && (
+                                      <div className="text-[10px] font-black text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-md mt-0.5 inline-block shadow-2xs">
+                                        {(() => {
+                                          const extraCharges = (shippingCost || 0) + (laborCost || 0);
+                                          const extraPerUnit = (cartSubtotal > 0 && item.quantity > 0)
+                                            ? (((item.price * item.quantity / cartSubtotal) * extraCharges) / item.quantity)
+                                            : 0;
+                                          const landedPrice = item.price + extraPerUnit;
+                                          const displayLanded = landedPrice % 1 === 0 
+                                            ? landedPrice.toLocaleString('en-IN')
+                                            : landedPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                          return `প্রকৃত কেনা: ৳${toBengaliDigits(displayLanded)}`;
+                                        })()}
+                                      </div>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right font-black text-slate-900">৳{toBengaliDigits((item.price * item.quantity).toLocaleString('en-IN'))}</TableCell>
+                                <TableCell className="text-center">
+                                  <button type="button" onClick={() => handleRemoveCartItem(item.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded">
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>
@@ -1129,17 +1367,7 @@ export default function PurchasesPage() {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-[11px] font-bold text-slate-600">Unloading Labor Charge (লেবার খরচ ৳)</Label>
-                            <button
-                              type="button"
-                              onClick={() => handleSaveDefaultLabor(laborCost || 0)}
-                              className="text-[9px] font-black text-amber-700 bg-amber-100 hover:bg-amber-200 px-1.5 py-0.5 rounded border border-amber-300 transition-colors cursor-pointer"
-                              title="বর্তমানে দেওয়া এই সংখ্যাটি সব সময় ডিফল্ট হিসেবে রাখতে এখানে ক্লিক করুন"
-                            >
-                              📌 ডিফল্ট সেভ করুন
-                            </button>
-                          </div>
+                          <Label className="text-[11px] font-bold text-slate-600">Unloading Labor Charge (লেবার খরচ ৳)</Label>
                           <Input 
                             type="number"
                             value={laborCost || ''}
@@ -1159,6 +1387,22 @@ export default function PurchasesPage() {
                             className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
                           />
                         </div>
+                      </div>
+
+                      {/* Category-Isolated Default Charges Saving Banner */}
+                      <div className="p-2.5 bg-indigo-50/70 border border-indigo-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-bengali">
+                        <div className="flex items-center gap-1.5 text-indigo-950 font-bold">
+                          <Lightbulb className="w-4 h-4 text-indigo-600 shrink-0" />
+                          <span>ক্রয় ডিফল্ট চার্জ ({purchaseType === 'rod' ? 'রড ও রিং' : 'সিমেন্ট'}):</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleSaveDefaultCharges}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[11px] px-3 py-1.5 rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer shrink-0 border border-indigo-500"
+                          title="এই গাড়ি ভাড়া ও লেবার খরচ ভবিষ্যৎ ক্রয়ের জন্য ডিফল্ট সেভ রাখুন"
+                        >
+                          📌 {purchaseType === 'rod' ? 'রড ও রিং' : 'সিমেন্ট'} ক্রয়ের ডিফল্ট সেভ করুন
+                        </button>
                       </div>
 
                       {/* Auto Landed Cost Calculator Toggle Switch Banner */}
@@ -1273,44 +1517,40 @@ export default function PurchasesPage() {
                             </div>
                           </div>
 
-                          {/* BANK TRANSFER (SAVED SHOP BANK ACCOUNT SELECTOR) */}
+                          {/* BANK TRANSFER (SUPPLIER BANK DETAILS INPUTS) */}
                           {paymentMethod === 'Bank' && (
-                            <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl space-y-2 font-bengali text-xs animate-in fade-in-0">
+                            <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl space-y-2.5 font-bengali text-xs animate-in fade-in-0">
                               <p className="font-bold text-blue-900 flex items-center gap-1">
-                                🏦 সেভ করা দোকান ব্যাংক অ্যাকাউন্ট
+                                🏦 গ্রহীতা (সাপ্লায়ারের) ব্যাংক তথ্য
                               </p>
-                              <div className="space-y-1">
-                                <Label className="text-[10px] font-bold text-slate-600">প্রেরকের ব্যাংক অ্যাকাউন্ট (দোকান)</Label>
-                                <Select value={selectedShopBank} onValueChange={(val: string | null) => setSelectedShopBank(val || '')}>
-                                  <SelectTrigger className="h-8 rounded-lg bg-white text-xs font-bold border-slate-200">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent className="font-bengali text-xs font-bold">
-                                    {savedBanks.length > 0 ? (
-                                      savedBanks.map(b => (
-                                        <SelectItem key={b.id} value={`${b.name} (${b.accNo})`}>
-                                          {b.name} - {b.accNo}
-                                        </SelectItem>
-                                      ))
-                                    ) : (
-                                      <>
-                                        <SelectItem value="ডাচ-বাংলা ব্যাংক - 123.456.7890">ডাচ-বাংলা ব্যাংক (DBBL) - A/C: 123.456.7890</SelectItem>
-                                        <SelectItem value="ইসলামী ব্যাংক - 2050.1234.5678">ইসলামী ব্যাংক (IBBL) - A/C: 2050.1234.5678</SelectItem>
-                                        <SelectItem value="ব্র্যাক ব্যাংক - 1501.2039.4857">ব্র্যাক ব্যাংক (BRAC Bank) - A/C: 1501.2039.4857</SelectItem>
-                                        <SelectItem value="সিটি ব্যাংক - 3101.9876.5432">সিটি ব্যাংক (City Bank) - A/C: 3101.9876.5432</SelectItem>
-                                      </>
-                                    )}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div>
-                                <Label className="text-[10px] font-bold text-slate-600">Txn / Ref No (অপশনাল)</Label>
-                                <Input 
-                                  placeholder="Txn ID" 
-                                  value={transactionRef} 
-                                  onChange={e => setTransactionRef(e.target.value)}
-                                  className="h-8 rounded-lg bg-white text-xs font-mono"
-                                />
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <Label className="text-[10px] font-bold text-slate-600">গ্রহীতা ব্যাংকের নাম</Label>
+                                  <Input 
+                                    placeholder="যেমন: ইসলামী ব্যাংক / ডাচ-বাংলা" 
+                                    value={supplierBankName} 
+                                    onChange={e => setSupplierBankName(e.target.value)}
+                                    className="h-8 rounded-lg bg-white text-xs font-bold text-slate-800"
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-[10px] font-bold text-slate-600">গ্রহীতার অ্যাকাউন্ট নং / নাম</Label>
+                                  <Input 
+                                    placeholder="A/C No or Name" 
+                                    value={supplierAccountNo} 
+                                    onChange={e => setSupplierAccountNo(e.target.value)}
+                                    className="h-8 rounded-lg bg-white text-xs font-mono font-bold text-slate-800"
+                                  />
+                                </div>
+                                <div className="col-span-2">
+                                  <Label className="text-[10px] font-bold text-slate-600">ট্রানজেকশন / রেফারেন্স আইডি (অপশনাল)</Label>
+                                  <Input 
+                                    placeholder="Txn ID / Ref No" 
+                                    value={supplierTxnRef} 
+                                    onChange={e => setSupplierTxnRef(e.target.value)}
+                                    className="h-8 rounded-lg bg-white text-xs font-mono font-bold text-slate-800"
+                                  />
+                                </div>
                               </div>
                             </div>
                           )}
@@ -1585,24 +1825,38 @@ export default function PurchasesPage() {
                           </div>
                         )}
 
-                        <div className="flex justify-between text-slate-700 font-bold pt-1">
-                          <span>Purchase Total</span>
-                          <span className="font-black text-slate-900">৳ {cartTotalAmount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
-                        </div>
+                        {(() => {
+                          const goodsTotal = Math.max(0, cartSubtotal - cartTotalDiscount);
+                          const goodsSupplierDue = paymentOption === 'now' ? Math.max(0, goodsTotal - paidAmount) : goodsTotal;
+                          return (
+                            <>
+                              <div className="flex justify-between text-slate-700 font-bold pt-1">
+                                <span>Purchase Total</span>
+                                <span className="font-black text-slate-900">৳ {cartTotalAmount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                              </div>
 
-                        <div className="flex justify-between text-rose-600 font-bold">
-                          <span>Previous Supplier Due</span>
-                          <span className="font-black">৳ {selectedSupplierDue.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
-                        </div>
+                              <div className="flex justify-between text-rose-600 font-bold">
+                                <span>Previous Supplier Due</span>
+                                <span className="font-black">৳ {selectedSupplierDue.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
 
-                      <div className="pt-3 border-t border-slate-100 flex justify-between items-baseline">
-                        <div>
-                          <span className="text-xs font-bold text-slate-700 block">Grand Total (with Due)</span>
-                          <span className="text-[10px] text-slate-400 font-bold">বিল + কোম্পানির পূর্বের পাওনা</span>
-                        </div>
-                        <span className="text-2xl font-black text-orange-600">৳ {(cartTotalAmount + selectedSupplierDue).toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
-                      </div>
+                      {(() => {
+                        const goodsTotal = Math.max(0, cartSubtotal - cartTotalDiscount);
+                        const goodsSupplierDue = paymentOption === 'now' ? Math.max(0, goodsTotal - paidAmount) : goodsTotal;
+                        return (
+                          <div className="pt-3 border-t border-slate-100 flex justify-between items-baseline">
+                            <div>
+                              <span className="text-xs font-bold text-slate-700 block">Grand Total (with Due)</span>
+                              <span className="text-[10px] text-slate-400 font-bold">পণ্যের পাওনা + কোম্পানির পূর্বের পাওনা</span>
+                            </div>
+                            <span className="text-2xl font-black text-orange-600">৳ {(goodsSupplierDue + selectedSupplierDue).toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </CardContent>
                 </Card>
@@ -1623,10 +1877,16 @@ export default function PurchasesPage() {
                       </span>
                     </div>
 
-                    <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-3">
-                      <span className="font-bold text-slate-600">Remaining Supplier Due</span>
-                      <span className="text-lg font-black text-rose-600">৳ {cartDueAmount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
-                    </div>
+                    {(() => {
+                      const goodsTotal = Math.max(0, cartSubtotal - cartTotalDiscount);
+                      const goodsSupplierDue = paymentOption === 'now' ? Math.max(0, goodsTotal - paidAmount) : goodsTotal;
+                      return (
+                        <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-3">
+                          <span className="font-bold text-slate-600">Remaining Supplier Due</span>
+                          <span className="text-lg font-black text-rose-600">৳ {goodsSupplierDue.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      );
+                    })()}
                   </CardContent>
                 </Card>
 
@@ -1661,110 +1921,6 @@ export default function PurchasesPage() {
           </div>
         </div>
       )}
-
-      {/* VIEW PURCHASE DETAIL MODAL */}
-      <Dialog open={!!selectedPurchase} onOpenChange={() => setSelectedPurchase(null)}>
-        <DialogContent className="max-w-3xl rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl font-bengali">
-          <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white">
-            <DialogHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <DialogTitle className="text-2xl font-black">ক্রয় ইনভয়েস বিস্তারিত</DialogTitle>
-                  <p className="text-slate-400 font-mono text-sm mt-1">#{selectedPurchase?.id.toUpperCase()}</p>
-                </div>
-                <div className="w-12 h-12 bg-orange-500/20 rounded-2xl flex items-center justify-center border border-orange-500/30">
-                  <Truck className="w-6 h-6 text-orange-500" />
-                </div>
-              </div>
-            </DialogHeader>
-          </div>
-
-          {selectedPurchase && (
-            <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar bg-white">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                <div><p className="text-slate-400 text-[11px] uppercase tracking-widest font-black mb-1">কোম্পানি</p><p className="font-black text-slate-800">{selectedPurchase.supplierName}</p></div>
-                <div><p className="text-slate-400 text-[11px] uppercase tracking-widest font-black mb-1">তারিখ</p><p className="font-bold text-slate-700 text-sm">{formatDate(selectedPurchase.createdAt)}</p></div>
-                <div><p className="text-slate-400 text-[11px] uppercase tracking-widest font-black mb-1">ফোন</p><p className="font-bold text-slate-700 text-sm">{selectedPurchase.supplierPhone || '—'}</p></div>
-                <div>
-                  <p className="text-slate-400 text-[11px] uppercase tracking-widest font-black mb-1">স্ট্যাটাস</p>
-                  <span className={cn("px-2.5 py-1 rounded-lg text-[10px] font-black uppercase inline-block",
-                    selectedPurchase.paymentStatus === 'পরিশোধিত' ? 'bg-emerald-100 text-emerald-800' :
-                    selectedPurchase.paymentStatus === 'আংশিক' ? 'bg-amber-100 text-amber-800' :
-                    'bg-rose-100 text-rose-800'
-                  )}>{selectedPurchase.paymentStatus}</span>
-                </div>
-              </div>
-
-              <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="p-3 text-left font-bold text-slate-600">পণ্য</th>
-                      <th className="p-3 text-center font-bold text-slate-600">পরিমাণ</th>
-                      <th className="p-3 text-right font-bold text-slate-600">ক্রয় মূল্য</th>
-                      <th className="p-3 text-right font-bold text-slate-600">মোট</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {selectedPurchase.items?.map((item, i) => (
-                      <tr key={i} className="hover:bg-slate-50/50">
-                        <td className="p-3 font-bold text-slate-800">{item.name}</td>
-                        <td className="p-3 text-center text-slate-600 font-medium">{item.quantity} {item.unit}</td>
-                        <td className="p-3 text-right text-slate-600 font-medium">৳{item.price?.toLocaleString()}</td>
-                        <td className="p-3 text-right font-bold text-slate-800">৳{((item.price - (item.discount || 0)) * item.quantity).toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="border-t-2 border-slate-200 bg-slate-50/50">
-                    <tr>
-                      <td colSpan={3} className="p-3 text-right font-bold text-slate-600">মোট ক্রয় বিল</td>
-                      <td className="p-3 text-right font-black text-slate-900 text-lg">৳{selectedPurchase.totalAmount?.toLocaleString()}</td>
-                    </tr>
-                    <tr>
-                      <td colSpan={3} className="p-3 text-right font-bold text-slate-600">পরিশোধিত</td>
-                      <td className="p-3 text-right font-black text-emerald-600 text-lg">৳{selectedPurchase.paidAmount?.toLocaleString()}</td>
-                    </tr>
-                    <tr>
-                      <td colSpan={3} className="p-3 text-right font-bold text-slate-600">কোম্পানির পাওনা (বকেয়া)</td>
-                      <td className="p-3 text-right font-black text-rose-600 text-lg">৳{selectedPurchase.dueAmount?.toLocaleString()}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-
-              {/* Transport & Site Details Box if available */}
-              {(selectedPurchase.vehicleNo || selectedPurchase.driverName || selectedPurchase.deliveryAddress) && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-orange-50/60 border border-orange-200/80 rounded-2xl text-xs">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-500 block">গাড়ি / ট্রাক নম্বর</span>
-                    <span className="font-black text-slate-900">{selectedPurchase.vehicleNo || '—'}</span>
-                  </div>
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-500 block">ড্রাইভারের নাম ও ফোন</span>
-                    <span className="font-bold text-slate-800">{selectedPurchase.driverName || '—'} {selectedPurchase.driverPhone ? `(${selectedPurchase.driverPhone})` : ''}</span>
-                  </div>
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-500 block">আনলোডিং সাইট / গুদাম</span>
-                    <span className="font-bold text-slate-800">{selectedPurchase.deliveryAddress || selectedPurchase.supplierAddress || '—'}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
-            <Button
-              onClick={() => setIsPrintMemoOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl px-5 h-10 shadow-md flex items-center gap-2"
-            >
-              <Printer className="w-4 h-4" /> 🖨️ ইনভয়েস মেমো প্রিন্ট করুন
-            </Button>
-            <Button variant="outline" onClick={() => setSelectedPurchase(null)} className="rounded-xl font-bold text-slate-500 border-slate-200">
-              বন্ধ করুন
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* PURCHASE INVOICE PRINT MEMO MODAL (MATCHING THE EXACT IMAGE DESIGN) */}
       <Dialog open={isPrintMemoOpen} onOpenChange={setIsPrintMemoOpen}>

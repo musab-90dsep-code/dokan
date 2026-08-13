@@ -200,7 +200,9 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
 
   const totalBill = transactions.reduce((a, o) => a + Number(o.totalAmount || 0), 0);
   const totalPaid = transactions.reduce((a, o) => a + Number(o.paidAmount || 0), 0);
-  const totalDue = Math.max(0, totalBill - totalPaid);
+  const totalDue = party?.totalDue !== undefined && party?.totalDue > 0 
+    ? party.totalDue 
+    : Math.max(0, (party?.openingBalance || 0) + totalBill - totalPaid);
 
   const formatBnDate = (dateVal: Date | string | undefined | null, pattern: string = 'dd MMMM yyyy') => {
     if (!dateVal) return '—';

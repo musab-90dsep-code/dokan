@@ -421,6 +421,12 @@ export const api = {
         body: JSON.stringify(data),
       });
     },
+    update: async (id: string | number, data: Partial<ExpenseData>): Promise<ExpenseData> => {
+      return request<ExpenseData>(`/expenses/${id}/`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+    },
     delete: async (id: string | number): Promise<void> => {
       return request<void>(`/expenses/${id}/`, { method: 'DELETE' });
     }

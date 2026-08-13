@@ -225,41 +225,17 @@ export function SupplierSearchSelect({
                       )}
                     >
                       <div className="space-y-0.5">
-                        <div className="flex items-center gap-2 font-black text-slate-900 text-xs">
-                          <span>{nameToShow}</span>
-                          {supp.supplyType && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200">
-                              {supp.supplyType}
-                            </span>
-                          )}
-                          {supp.name && supp.businessName && supp.name !== supp.businessName && (
-                            <span className="text-[11px] font-semibold text-slate-500">
-                              ({supp.name})
-                            </span>
-                          )}
+                        <div className="font-black text-slate-900 text-xs">
+                          {nameToShow}
                         </div>
-                        <div className="flex items-center gap-3 text-[11px] text-slate-500">
-                          {supp.phone && (
-                            <span className="flex items-center gap-1 font-mono">
-                              <Phone className="w-3 h-3 text-slate-400" /> {supp.phone}
-                            </span>
-                          )}
-                          {supp.address && (
-                            <span className="truncate max-w-[200px] text-slate-400">
-                              {supp.address}
-                            </span>
-                          )}
-                        </div>
+                        {supp.phone && (
+                          <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1">
+                            <Phone className="w-3 h-3 text-slate-400" /> {supp.phone}
+                          </div>
+                        )}
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        {supp.totalDue !== undefined && supp.totalDue > 0 && (
-                          <span className="text-[10px] font-black bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
-                            বকেয়া: ৳{supp.totalDue.toLocaleString()}
-                          </span>
-                        )}
-                        {isSelected && <Check className="w-4 h-4 text-orange-600 shrink-0" />}
-                      </div>
+                      {isSelected && <Check className="w-4 h-4 text-orange-600 shrink-0" />}
                     </div>
                   );
                 })}

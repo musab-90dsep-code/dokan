@@ -10,7 +10,7 @@ import {
   Receipt, Calendar, DollarSign, AlertCircle, CheckCircle2, Printer, UploadCloud, X,
   Building2, User, Phone, ShieldCheck, FileText, Check, ArrowLeft, Eye, Edit2,
   FileSpreadsheet, FileDown, Clock, PieChart, ChevronLeft, ChevronRight, Lightbulb, PlusCircle,
-  ChevronUp, ChevronDown, RotateCcw
+  ChevronUp, ChevronDown, RotateCcw, MoreVertical
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,9 @@ import { format, isToday, isSameMonth } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toBengaliDigits } from '@/lib/bengaliUtils';
+import { PaymentVoucherDetailsView } from '@/components/PaymentVoucherDetailsView';
+import { PaymentVoucherMemo } from '@/components/PaymentVoucherMemo';
+import { printElement } from '@/lib/printUtils';
 
 interface Transaction {
   id: string;
@@ -38,16 +41,25 @@ interface Transaction {
   paymentId?: string;
   partyName?: string;
   partyPhone?: string;
+  partyAddress?: string;
+  businessName?: string;
   invoiceNo?: string;
   referenceNo?: string;
-  paymentMethod?: 'Cash' | 'Bank' | 'Check';
+  paymentMethod?: string;
   bankAccountName?: string;
+  bankName?: string;
+  accountNo?: string;
+  chequeNo?: string;
+  chequeDate?: string;
   transactionType?: string;
   transactionRef?: string;
   discountAmount?: number;
+  previousBalance?: number;
+  operatorName?: string;
   receiverName?: string;
   status?: 'Completed' | 'Pending' | 'Bounced' | 'Recorded';
   createdAt: any;
+  raw?: any;
 }
 
 interface Bank {
@@ -115,6 +127,48 @@ function TransactionsContent() {
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
 
+  const [selectedTxnForView, setSelectedTxnForView] = useState<Transaction | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; openUp: boolean } | null>(null);
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
+
+  // Close open action menu on outside click or scroll or resize
+  useEffect(() => {
+    const handleClose = () => {
+      setOpenMenuId(null);
+      setMenuPos(null);
+    };
+    if (openMenuId) {
+      window.addEventListener('click', handleClose);
+      window.addEventListener('scroll', handleClose, true);
+      window.addEventListener('resize', handleClose);
+      return () => {
+        window.removeEventListener('click', handleClose);
+        window.removeEventListener('scroll', handleClose, true);
+        window.removeEventListener('resize', handleClose);
+      };
+    }
+  }, [openMenuId]);
+
+  const handleToggleMenu = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    e.stopPropagation();
+    if (openMenuId === id) {
+      setOpenMenuId(null);
+      setMenuPos(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < 200; // flip upward if not enough space at bottom
+
+    setOpenMenuId(id);
+    setMenuPos({
+      top: openUp ? rect.top - 6 : rect.bottom + 6,
+      left: rect.right - 176,
+      openUp
+    });
+  };
+
   // Modals
   const [isAddMoneyOpen, setIsAddMoneyOpen] = useState(false);
   const [isAddTxnOpen, setIsAddTxnOpen] = useState(false);
@@ -123,7 +177,6 @@ function TransactionsContent() {
   const [isCollectPaymentOpen, setIsCollectPaymentOpen] = useState(false);
   const [isMakePaymentOpen, setIsMakePaymentOpen] = useState(false);
   const [isAddBankOpen, setIsAddBankOpen] = useState(false);
-  const [selectedTxnForView, setSelectedTxnForView] = useState<Transaction | null>(null);
 
   // Add Money (টাকা যোগ) State
   const [addMoneyCategory, setAddMoneyCategory] = useState('ক্যাশে জমা (Add Cash)');
@@ -175,14 +228,69 @@ function TransactionsContent() {
 
   const [newBank, setNewBank] = useState({ name: '', accNo: '', initialBalance: 0 });
 
+  const defaultBankOptions = [
+    { value: 'ডাচ-বাংলা ব্যাংক - 123.456.7890', label: 'ডাচ-বাংলা ব্যাংক (DBBL) - A/C: 123.456.7890' },
+    { value: 'ইসলামী ব্যাংক - 2050.1234.5678', label: 'ইসলামী ব্যাংক (IBBL) - A/C: 2050.1234.5678' },
+    { value: 'ব্র্যাক ব্যাংক - 1501.2039.4857', label: 'ব্র্যাক ব্যাংক (BRAC Bank) - A/C: 1501.2039.4857' },
+    { value: 'সিটি ব্যাংক - 3101.9876.5432', label: 'সিটি ব্যাংক (City Bank) - A/C: 3101.9876.5432' },
+    { value: 'সোনালী ব্যাংক - 4402.1122.3344', label: 'সোনালী ব্যাংক (Sonali Bank) - A/C: 4402.1122.3344' }
+  ];
+
+  const dbBankOptions = banks.map(b => {
+    const name = b.name || 'ব্যাংক অ্যাকাউন্ট';
+    const acc = b.accNo || '';
+    const val = acc ? `${name} - ${acc}` : name;
+    return {
+      value: val,
+      label: acc ? `🏦 ${name} - A/C: ${toBengaliDigits(acc)}` : `🏦 ${name}`
+    };
+  });
+
+  const availableBankOptions = dbBankOptions.length > 0 ? dbBankOptions : defaultBankOptions;
+
   const loadAllTransactionsData = useCallback(async () => {
     try {
       setLoading(true);
-      const txList = await api.transactions.list();
+      const [txList, partyList, bankList, orderList, purchaseList] = await Promise.all([
+        api.transactions.list().catch(() => []),
+        api.parties.list().catch(() => []),
+        api.banks.list().catch(() => []),
+        api.transactions.list({ transaction_type: 'sale' }).catch(() => []),
+        api.transactions.list({ transaction_type: 'purchase' }).catch(() => [])
+      ]);
+
       const safeTxList = Array.isArray(txList) ? txList : [];
-      
+      const safePartyList = Array.isArray(partyList) ? partyList : [];
+      const safeBankList = Array.isArray(bankList) ? bankList : [];
+      const safeOrderList = Array.isArray(orderList) ? orderList : [];
+      const safePurchaseList = Array.isArray(purchaseList) ? purchaseList : [];
+
+      setBanks(safeBankList.map((b: any) => ({
+        id: String(b.id),
+        name: b.name || b.bank_name || 'ব্যাংক',
+        accNo: b.account_number || b.accNo || '',
+        balance: Number(b.balance || b.current_balance || 0)
+      })));
+
+      // Party Lookups
+      const partyMapById = new Map<string, any>();
+      const partyMapByName = new Map<string, any>();
+      safePartyList.forEach((p: any) => {
+        const idStr = String(p.id);
+        partyMapById.set(idStr, p);
+        if (p.name) partyMapByName.set(String(p.name).trim().toLowerCase(), p);
+        if (p.business_name) partyMapByName.set(String(p.business_name).trim().toLowerCase(), p);
+      });
+
+      // Invoice Lookups (sales & purchases)
+      const invoiceMap = new Map<string, any>();
+      [...safeOrderList, ...safePurchaseList].forEach((inv: any) => {
+        const invNo = inv.invoice_no || inv.order_id || inv.purchase_id || `INV-${inv.id}`;
+        if (invNo) invoiceMap.set(String(invNo).trim().toLowerCase(), inv);
+        if (inv.id) invoiceMap.set(String(inv.id), inv);
+      });
+
       // EXCLUDE ALL INVOICES (sale, purchase, sale_return, purchase_return)
-      // Only keep direct payment received (payment_in), payment paid (payment_out), and money additions (add_balance, fund_added, taka_jog, cash_in)
       const paymentOnlyList = safeTxList.filter(t => 
         t.transaction_type !== 'sale' && 
         t.transaction_type !== 'purchase' && 
@@ -191,55 +299,129 @@ function TransactionsContent() {
       );
 
       setTransactions(paymentOnlyList.map(t => {
+        let meta: any = {};
+        let userNote = t.notes || '';
+        if (userNote && typeof userNote === 'string' && userNote.trim().startsWith('{')) {
+          try {
+            const firstLine = userNote.split('\n')[0];
+            meta = JSON.parse(firstLine);
+            userNote = meta.userNote !== undefined ? meta.userNote : userNote.substring(firstLine.length).trim();
+          } catch {}
+        }
+
+        const rawNoteStr = String(t.notes || '');
+        const isAddMoney = meta.isAddMoney === true || 
+                           meta.category === 'টাকা যোগ' || 
+                           rawNoteStr.includes('[টাকা যোগ') ||
+                           (t.transaction_type as string) === 'contra';
+
         let txnType: 'income' | 'expense' | 'contra' = 'income';
         let categoryName = 'পেমেন্ট গ্রহণ';
         
-        if (t.transaction_type === 'payment_out') {
+        if (isAddMoney) {
+          txnType = 'contra';
+          categoryName = 'টাকা যোগ';
+        } else if (t.transaction_type === 'payment_out') {
           txnType = 'expense';
           categoryName = 'পেমেন্ট প্রদান';
         } else if (t.transaction_type === 'payment_in') {
           txnType = 'income';
           categoryName = 'পেমেন্ট গ্রহণ';
         } else {
-          txnType = 'income';
+          txnType = 'contra';
           categoryName = 'টাকা যোগ';
         }
 
+        const invNoStr = t.invoice_no || meta.invoiceNo || '';
+        const linkedInvoice = invNoStr ? invoiceMap.get(String(invNoStr).trim().toLowerCase()) : null;
+
+        const rawT = t as any;
+        const partyIdKey = String(rawT.party_id || (rawT.party && typeof rawT.party === 'object' ? rawT.party.id : '') || meta.partyId || '');
+        const rawPartyName = rawT.party_name || (rawT.party && typeof rawT.party === 'object' ? rawT.party.name : '') || meta.partyName || '';
+        const partyNameKey = String(rawPartyName).trim().toLowerCase();
+
+        const matchedParty = partyMapById.get(partyIdKey) || 
+                             (partyNameKey ? partyMapByName.get(partyNameKey) : null) || 
+                             (typeof rawT.party === 'object' ? rawT.party : null) ||
+                             (linkedInvoice ? (linkedInvoice.party || linkedInvoice) : null);
+
+        let addMoneyPartyName = 'দোকান ক্যাশ / মূলধন';
+        if (isAddMoney) {
+          if (meta.addMoneyCategory) {
+            addMoneyPartyName = meta.addMoneyCategory;
+          } else if (rawNoteStr.includes('[টাকা যোগ - ')) {
+            const match = rawNoteStr.match(/\[টাকা যোগ - ([^\]]+)\]/);
+            if (match && match[1]) {
+              addMoneyPartyName = match[1];
+            }
+          }
+        }
+
+        const resolvedPartyName = isAddMoney
+          ? addMoneyPartyName
+          : (rawPartyName && rawPartyName !== 'কাস্টমার' && rawPartyName !== 'সরবরাহকারী')
+            ? rawPartyName
+            : (matchedParty?.name || matchedParty?.business_name || matchedParty?.customer_name || matchedParty?.customerName || linkedInvoice?.customerName || linkedInvoice?.customer_name || linkedInvoice?.supplierName || linkedInvoice?.supplier_name || meta.partyName || (txnType === 'expense' ? 'সরবরাহকারী' : 'কাস্টমার'));
+
+        const resolvedPartyPhone = rawT.party_phone || (rawT.party && typeof rawT.party === 'object' ? rawT.party.phone : '') || matchedParty?.phone || matchedParty?.customerPhone || matchedParty?.customer_phone || linkedInvoice?.customerPhone || linkedInvoice?.customer_phone || linkedInvoice?.supplierPhone || meta.partyPhone || meta.phone || '';
+
+        const resolvedPartyAddress = rawT.party_address || (rawT.party && typeof rawT.party === 'object' ? rawT.party.address : '') || matchedParty?.address || matchedParty?.customerAddress || matchedParty?.customer_address || linkedInvoice?.customerAddress || linkedInvoice?.customer_address || linkedInvoice?.supplierAddress || meta.partyAddress || meta.address || '';
+
+        const resolvedBusinessName = rawT.business_name || (rawT.party && typeof rawT.party === 'object' ? rawT.party.business_name : '') || matchedParty?.business_name || matchedParty?.businessName || meta.businessName || '';
+
+        const resolvedPreviousBalance = Number(
+          rawT.previous_balance !== undefined ? rawT.previous_balance :
+          rawT.previous_due !== undefined ? rawT.previous_due :
+          matchedParty?.total_due !== undefined ? matchedParty?.total_due :
+          matchedParty?.due !== undefined ? matchedParty?.due :
+          matchedParty?.balance !== undefined ? matchedParty?.balance :
+          meta.previousBalance !== undefined ? meta.previousBalance :
+          meta.previousDue !== undefined ? meta.previousDue :
+          0
+        );
+
         return {
-          id: String(t.id),
-          paymentId: t.invoice_no || `PAY-${t.id}`,
+          id: String(rawT.id),
+          paymentId: rawT.invoice_no || meta.paymentId || `PAY-${rawT.id}`,
           type: txnType,
-          amount: Number(t.paid_amount || t.total_amount || 0),
-          category: categoryName,
-          description: t.notes || categoryName,
-          partyName: t.party_name || (t.transaction_type === 'payment_out' ? 'সরবরাহকারী' : t.transaction_type === 'payment_in' ? 'কাস্টমার' : 'ক্যাশ/ব্যাংক ফান্ড'),
-          partyPhone: t.party_phone || '',
-          invoiceNo: t.invoice_no || '—',
-          referenceNo: t.notes || '',
-          paymentMethod: (t.payment_method === 'bank' ? 'Bank' : t.payment_method === 'cheque' ? 'Check' : 'Cash') as 'Cash' | 'Bank' | 'Check',
+          amount: Number(rawT.paid_amount || rawT.total_amount || meta.amount || 0),
+          category: rawT.category || categoryName,
+          description: userNote || rawT.notes || categoryName,
+          partyName: resolvedPartyName,
+          partyPhone: resolvedPartyPhone,
+          partyAddress: resolvedPartyAddress,
+          businessName: resolvedBusinessName,
+          invoiceNo: rawT.invoice_no || meta.invoiceNo || '—',
+          referenceNo: rawT.reference_no || meta.referenceNo || userNote || '—',
+          paymentMethod: meta.paymentMethodName || rawT.payment_method || (rawT.account_type === 'bank' ? 'Bank' : 'Cash'),
+          discountAmount: Number(rawT.discount || rawT.discount_amount || meta.discountAmount || 0),
+          previousBalance: resolvedPreviousBalance,
+          bankName: (t as any).bank_name || (t as any).bank_account_name || meta.bankName || meta.selectedShopBank || '',
+          accountNo: (t as any).account_number || meta.accountNo || meta.supplierAccountNo || '',
+          chequeNo: (t as any).cheque_no || meta.chequeNo || '',
+          chequeDate: (t as any).cheque_date || meta.chequeDate || '',
+          transactionRef: (t as any).transaction_ref || meta.transactionRef || meta.supplierTxnRef || '',
+          operatorName: (t as any).operator_name || (t as any).prepared_by || meta.preparedBy || meta.operatorName || 'ক্যাশিয়ার',
           status: (t.status === 'completed' || !t.status) ? 'Completed' : t.status === 'pending' ? 'Pending' : t.status === 'bounced' ? 'Bounced' : 'Completed',
-          createdAt: t.created_at
+          createdAt: t.created_at,
+          raw: t
         };
       }));
 
-      const bankList = await api.banks.list();
-      const safeBankList = Array.isArray(bankList) ? bankList : [];
-      setBanks(safeBankList.map(b => ({
+      setBanks(safeBankList.map((b: any) => ({
         id: String(b.id),
         name: b.name,
         accNo: b.account_number || '',
         balance: Number(b.balance || 0)
       })));
 
-      const partyList = await api.parties.list();
-      const safePartyList = Array.isArray(partyList) ? partyList : [];
-      const loadedCusts = safePartyList.filter(p => p.party_type === 'customer' || p.party_type === 'both').map(p => ({
+      const loadedCusts = safePartyList.filter((p: any) => p.party_type === 'customer' || p.party_type === 'both').map((p: any) => ({
         id: String(p.id),
         name: p.name,
         phone: p.phone,
         businessName: p.business_name
       }));
-      const loadedSupps = safePartyList.filter(p => p.party_type === 'supplier' || p.party_type === 'both').map(p => ({
+      const loadedSupps = safePartyList.filter((p: any) => p.party_type === 'supplier' || p.party_type === 'both').map((p: any) => ({
         id: String(p.id),
         name: p.name,
         phone: p.phone,
@@ -264,6 +446,7 @@ function TransactionsContent() {
     customCusts?: Customer[],
     customSupps?: Supplier[]
   ) => {
+    setEditingTransactionId(null);
     setPaymentType(type);
     setAutoPaymentId(`PAY-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`);
     const pId = targetPartyId || partyParam || '';
@@ -284,9 +467,55 @@ function TransactionsContent() {
     setDiscountAmount(0);
     setReferenceNo(`REF-${Math.floor(100 + Math.random() * 900)}`);
     setPaymentNote('');
+    if (type === 'income') {
+      const defaultBank = availableBankOptions[0]?.value || 'ডাচ-বাংলা ব্যাংক - 123.456.7890';
+      setSelectedShopBank(defaultBank);
+      setBankName(defaultBank);
+    } else {
+      setSelectedShopBank('');
+      setBankName('');
+    }
     setTransactionRef('');
     setIsAddOpen(true);
-  }, [partyParam, customers, suppliers]);
+  }, [partyParam, customers, suppliers, availableBankOptions]);
+
+  // Edit Existing Transaction
+  const handleEditTransaction = (t: Transaction) => {
+    setEditingTransactionId(t.id);
+    const type = t.type === 'expense' ? 'expense' : 'income';
+    setPaymentType(type);
+    setAutoPaymentId(t.paymentId || `PAY-${t.id}`);
+    
+    const partyList = type === 'income' ? customers : suppliers;
+    const foundParty = partyList.find(p => p.name === t.partyName || String(p.id) === String(t.raw?.party || t.raw?.party_id));
+    if (foundParty) {
+      setSelectedPartyId(foundParty.id);
+      setSelectedParty(foundParty);
+      setAccountHolderName(foundParty.name);
+    } else {
+      setSelectedPartyId('');
+      setSelectedParty(t.partyName ? { id: '', name: t.partyName, phone: t.partyPhone || '', address: t.partyAddress || '' } : null);
+    }
+
+    setSelectedInvoiceId('');
+    setSelectedInvoice(null);
+    setPaidAmount(t.amount || 0);
+    setDiscountAmount(t.discountAmount || 0);
+    setReferenceNo(t.referenceNo !== '—' ? (t.referenceNo || '') : '');
+    setPaymentNote(t.description !== t.category ? (t.description || '') : '');
+    setPaymentMethod(t.paymentMethod || (t.accountType === 'bank' ? 'Bank' : 'Cash'));
+    if (type === 'income') {
+      setSelectedShopBank(t.bankName || availableBankOptions[0]?.value || 'ডাচ-বাংলা ব্যাংক - 123.456.7890');
+      setBankName(t.bankName || availableBankOptions[0]?.value || 'ডাচ-বাংলা ব্যাংক - 123.456.7890');
+    } else {
+      setSelectedShopBank('');
+      setBankName(t.bankName || '');
+    }
+    setChequeNo(t.chequeNo || '');
+    setChequeDate(t.chequeDate || '');
+    setTransactionRef(t.transactionRef || '');
+    setIsAddOpen(true);
+  };
 
   const handleCreateAddMoneySubmit = async () => {
     if (addMoneyAmount <= 0) {
@@ -294,15 +523,24 @@ function TransactionsContent() {
       return;
     }
 
+    const metaJson = JSON.stringify({
+      isAddMoney: true,
+      category: 'টাকা যোগ',
+      addMoneyCategory: addMoneyCategory,
+      partyName: addMoneyCategory,
+      userNote: addMoneyNote || ''
+    });
+
     try {
       await api.transactions.create({
+        party_name: addMoneyCategory,
         transaction_type: 'payment_in',
         total_amount: addMoneyAmount,
         paid_amount: addMoneyAmount,
         due_amount: 0,
         payment_method: (addMoneyMethod.toLowerCase().includes('bank') ? 'bank' : addMoneyMethod.toLowerCase().includes('cheque') ? 'cheque' : addMoneyMethod.toLowerCase()),
         cheque_bank: addMoneyMethod === 'Bank' ? banks.find(b => b.id === addMoneyBankId)?.name : '',
-        notes: `[টাকা যোগ - ${addMoneyCategory}] ${addMoneyNote}`
+        notes: metaJson + '\n' + `[টাকা যোগ - ${addMoneyCategory}] ${addMoneyNote}`
       });
 
       toast.success('টাকা সফলভাবে যোগ করা হয়েছে!');
@@ -383,7 +621,7 @@ function TransactionsContent() {
   const handleSubmitPaymentForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedParty) {
-      toast.error(txnType === 'income' ? 'কাস্টমার নির্বাচন করুন' : 'সাপ্লায়ার নির্বাচন করুন');
+      toast.error(paymentType === 'income' ? 'কাস্টমার নির্বাচন করুন' : 'সাপ্লায়ার নির্বাচন করুন');
       return;
     }
     if (paidAmount <= 0) {
@@ -391,19 +629,64 @@ function TransactionsContent() {
       return;
     }
 
-    try {
-      await api.transactions.create({
-        party: Number(selectedParty),
-        transaction_type: txnType === 'income' ? 'payment_in' : 'payment_out',
-        total_amount: paidAmount,
-        paid_amount: paidAmount,
-        due_amount: 0,
-        payment_method: (paymentMethod.toLowerCase().includes('bank') ? 'bank' : paymentMethod.toLowerCase().includes('cheque') ? 'cheque' : paymentMethod.toLowerCase()),
-        notes: paymentNote || referenceNo || ''
-      });
+    const partyObj: any = selectedParty;
+    const metaJson = JSON.stringify({
+      partyId: partyObj.id,
+      partyName: partyObj.name,
+      partyPhone: partyObj.phone || '',
+      partyAddress: partyObj.address || '',
+      businessName: partyObj.businessName || partyObj.business_name || '',
+      invoiceNo: selectedInvoice?.orderId || selectedInvoice?.purchaseId || selectedInvoice?.id || selectedInvoiceId || '',
+      referenceNo: referenceNo || '',
+      paymentMethodName: paymentMethod,
+      bankName: (paymentType === 'income' ? (selectedShopBank || bankName) : bankName) || '',
+      accountNo: senderAccountNo || '',
+      chequeNo: chequeNo || '',
+      chequeDate: chequeDate || '',
+      transactionRef: transactionRef || '',
+      discountAmount: discountAmount || 0,
+      previousBalance: partyObj.totalDue || partyObj.due || partyObj.balance || 0,
+      userNote: paymentNote || ''
+    });
 
-      toast.success('পেমেন্ট সফলভাবে সংরক্ষণ করা হয়েছে');
+    try {
+      if (editingTransactionId) {
+        await api.transactions.update(editingTransactionId, {
+          party: Number(partyObj.id) || partyObj.id,
+          party_name: partyObj.name,
+          party_phone: partyObj.phone || '',
+          party_address: partyObj.address || '',
+          invoice_no: selectedInvoice?.orderId || selectedInvoice?.purchaseId || selectedInvoice?.id || referenceNo || '',
+          transaction_type: paymentType === 'income' ? 'payment_in' : 'payment_out',
+          total_amount: paidAmount,
+          paid_amount: paidAmount,
+          discount: discountAmount || 0,
+          due_amount: 0,
+          payment_method: (paymentMethod.toLowerCase().includes('bank') ? 'bank' : paymentMethod.toLowerCase().includes('cheque') ? 'cheque' : 'cash'),
+          notes: metaJson + '\n' + (paymentNote || '')
+        } as any);
+        toast.success('পেমেন্ট সফলভাবে আপডেট করা হয়েছে');
+      } else {
+        await api.transactions.create({
+          party: Number(partyObj.id) || partyObj.id,
+          party_name: partyObj.name,
+          party_phone: partyObj.phone || '',
+          party_address: partyObj.address || '',
+          invoice_no: selectedInvoice?.orderId || selectedInvoice?.purchaseId || selectedInvoice?.id || referenceNo || '',
+          transaction_type: paymentType === 'income' ? 'payment_in' : 'payment_out',
+          total_amount: paidAmount,
+          paid_amount: paidAmount,
+          discount: discountAmount || 0,
+          due_amount: 0,
+          payment_method: (paymentMethod.toLowerCase().includes('bank') ? 'bank' : paymentMethod.toLowerCase().includes('cheque') ? 'cheque' : 'cash'),
+          notes: metaJson + '\n' + (paymentNote || '')
+        } as any);
+        toast.success('পেমেন্ট সফলভাবে সংরক্ষণ করা হয়েছে');
+      }
+
+      setEditingTransactionId(null);
       setIsAddTxnOpen(false);
+      setIsAddOpen(false);
       loadAllTransactionsData();
     } catch (err: any) {
       console.error(err);
@@ -470,7 +753,7 @@ function TransactionsContent() {
     // 2. Active Tab / Type Filter (all, income/payment_in, expense/payment_out, contra/taka_jog)
     let matchesTab = true;
     if (activeTab === 'income') {
-      matchesTab = t.type === 'income' || t.category === 'পেমেন্ট গ্রহণ';
+      matchesTab = (t.type === 'income' || t.category === 'পেমেন্ট গ্রহণ') && t.type !== 'contra' && t.category !== 'টাকা যোগ';
     } else if (activeTab === 'expense') {
       matchesTab = t.type === 'expense' || t.category === 'পেমেন্ট প্রদান';
     } else if (activeTab === 'contra') {
@@ -550,8 +833,27 @@ function TransactionsContent() {
 
   return (
     <Shell>
-      <>
-        {!isAddOpen ? (
+      {selectedTxnForView ? (
+        <div className="space-y-4 animate-in fade-in duration-300">
+          <PaymentVoucherDetailsView
+            voucher={selectedTxnForView}
+            onBack={() => setSelectedTxnForView(null)}
+            onPrint={() => printElement('printable-memo-wrapper')}
+            onDelete={(tx) => {
+              setSelectedTxnForView(null);
+              handleDelete(tx);
+            }}
+          />
+
+          {/* Hidden Print Container for iframe printing */}
+          <div className="hidden print:block">
+            <PaymentVoucherMemo
+              voucher={selectedTxnForView}
+              showPrintButton={false}
+            />
+          </div>
+        </div>
+      ) : !isAddOpen ? (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 font-bengali">
           
           {/* TOP BREADCRUMB & PAGE TITLE HEADER */}
@@ -720,27 +1022,19 @@ function TransactionsContent() {
                     )}
                   </div>
 
-                  {/* Quick Type Pills */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
-                    {[
-                      { id: 'all', label: 'সব লেনদেন' },
-                      { id: 'income', label: 'পেমেন্ট গ্রহণ' },
-                      { id: 'expense', label: 'পেমেন্ট প্রদান' },
-                      { id: 'contra', label: 'টাকা যোগ' },
-                    ].map(p => (
-                      <button
-                        key={p.id}
-                        onClick={() => setActiveTab(p.id as any)}
-                        className={cn(
-                          "px-3.5 py-1.5 rounded-md text-xs font-bold transition-all border whitespace-nowrap",
-                          activeTab === p.id
-                            ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
-                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                        )}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
+                  {/* Transaction Type Filter Dropdown */}
+                  <div className="w-full sm:w-44 shrink-0">
+                    <Select value={activeTab} onValueChange={(val: string | null) => setActiveTab((val as any) || 'all')}>
+                      <SelectTrigger className="rounded-md h-10 bg-slate-50/80 border-slate-200 text-xs font-bold text-slate-800">
+                        <SelectValue placeholder="সব লেনদেন" />
+                      </SelectTrigger>
+                      <SelectContent className="font-bengali">
+                        <SelectItem value="all" className="text-xs font-bold">সব লেনদেন</SelectItem>
+                        <SelectItem value="income" className="text-xs font-bold text-emerald-600">পেমেন্ট গ্রহণ (জমা)</SelectItem>
+                        <SelectItem value="expense" className="text-xs font-bold text-rose-600">পেমেন্ট প্রদান (খরচ)</SelectItem>
+                        <SelectItem value="contra" className="text-xs font-bold text-blue-600">টাকা যোগ</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   {/* More Filters Toggle */}
@@ -864,16 +1158,15 @@ function TransactionsContent() {
                         <TableHead className="font-slate-700 text-[11px] tracking-wider font-black uppercase">পেমেন্ট মাধ্যম</TableHead>
                         <TableHead className="font-slate-700 text-[11px] tracking-wider font-black text-right uppercase">পরিমাণ (৳)</TableHead>
                         <TableHead className="font-slate-700 text-[11px] tracking-wider font-black uppercase">নোট / রেফারেন্স</TableHead>
-                        <TableHead className="font-slate-700 text-[11px] tracking-wider font-black uppercase">স্ট্যাটাস</TableHead>
-                        <TableHead className="w-24 text-center font-slate-700 text-[11px] tracking-wider font-black py-3.5 px-4 uppercase">অ্যাকশন</TableHead>
+                        <TableHead className="w-16 text-center font-slate-700 text-[11px] tracking-wider font-black py-3.5 px-4 uppercase">অ্যাকশন</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {loading ? (
-                        <TableRow><TableCell colSpan={9} className="text-center py-16 text-slate-400 font-bold text-sm">লোড হচ্ছে...</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={8} className="text-center py-16 text-slate-400 font-bold text-sm">লোড হচ্ছে...</TableCell></TableRow>
                       ) : filteredTransactions.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={9} className="text-center py-16">
+                          <TableCell colSpan={8} className="text-center py-16">
                             <div className="flex flex-col items-center justify-center text-slate-400">
                               <Receipt className="w-10 h-10 mb-2 opacity-20" />
                               <p className="font-bold text-sm">কোনো পেমেন্ট বা লেনদেনের রেকর্ড পাওয়া যায়নি</p>
@@ -882,12 +1175,16 @@ function TransactionsContent() {
                         </TableRow>
                       ) : filteredTransactions.map((t, idx) => {
                         const method = t.paymentMethod || (t.accountType === 'bank' ? 'Bank' : 'Cash');
-                        const status = t.status || 'Completed';
-                        const isIncome = t.type === 'income' || t.category === 'পেমেন্ট গ্রহণ';
+                        const isContra = t.type === 'contra' || t.category === 'টাকা যোগ';
+                        const isIncome = (t.type === 'income' || t.category === 'পেমেন্ট গ্রহণ') && !isContra;
                         const isExpense = t.type === 'expense' || t.category === 'পেমেন্ট প্রদান';
 
                         return (
-                          <TableRow key={t.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors text-xs">
+                          <TableRow 
+                            key={t.id} 
+                            onClick={() => setSelectedTxnForView(t)}
+                            className="border-b border-slate-100 hover:bg-slate-50/90 transition-colors text-xs cursor-pointer group"
+                          >
                             <TableCell className="py-3.5 px-4 font-mono font-black text-slate-800">
                               {toBengaliDigits(t.paymentId || `PAY-2026-${(100145 - idx)}`)}
                             </TableCell>
@@ -899,12 +1196,12 @@ function TransactionsContent() {
                                 "inline-flex items-center gap-1 font-bold px-2.5 py-0.5 rounded-md text-[11px] border",
                                 isIncome && "bg-emerald-50 text-emerald-700 border-emerald-200",
                                 isExpense && "bg-orange-50 text-orange-700 border-orange-200",
-                                !isIncome && !isExpense && "bg-blue-50 text-blue-700 border-blue-200"
+                                isContra && "bg-blue-50 text-blue-700 border-blue-200"
                               )}>
                                 {isIncome && <ArrowUpRight className="w-3 h-3 text-emerald-600" />}
                                 {isExpense && <ArrowDownRight className="w-3 h-3 text-orange-600" />}
-                                {!isIncome && !isExpense && <PlusCircle className="w-3 h-3 text-blue-600" />}
-                                <span>{t.category || (isIncome ? 'পেমেন্ট গ্রহণ' : isExpense ? 'পেমেন্ট প্রদান' : 'টাকা যোগ')}</span>
+                                {isContra && <PlusCircle className="w-3 h-3 text-blue-600" />}
+                                <span>{isContra ? 'টাকা যোগ' : (t.category || (isIncome ? 'পেমেন্ট গ্রহণ' : 'পেমেন্ট প্রদান'))}</span>
                               </span>
                             </TableCell>
                             <TableCell className="font-black text-slate-900">
@@ -929,36 +1226,21 @@ function TransactionsContent() {
                             <TableCell className="font-mono text-slate-500 max-w-[150px] truncate" title={t.referenceNo || t.description}>
                               {toBengaliDigits(t.referenceNo || t.description || '—')}
                             </TableCell>
-                            <TableCell>
-                              <span className={cn("inline-flex font-bold px-2 py-0.5 rounded-md text-[10px]",
-                                status === 'Completed' && "bg-emerald-50 text-emerald-700 border border-emerald-200",
-                                status === 'Pending' && "bg-amber-50 text-amber-700 border border-amber-200",
-                                status === 'Bounced' && "bg-rose-50 text-rose-700 border border-rose-200"
-                              )}>
-                                {status === 'Completed' ? 'সম্পন্ন' : status === 'Pending' ? 'অপেক্ষমাণ' : status === 'Bounced' ? 'প্রত্যাখ্যাত' : status}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-center py-3 px-4">
-                              <div className="flex items-center justify-center gap-1">
-                                <button 
-                                  onClick={() => setSelectedTxnForView(t)}
-                                  className="p-1 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                </button>
-                                <button 
-                                  onClick={() => handleOpenAddForm(t.type === 'expense' ? 'expense' : 'income')}
-                                  className="p-1 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button 
-                                  onClick={() => setIsPrintMemoOpen(true)}
-                                  className="p-1 text-slate-400 hover:text-purple-600 rounded-lg hover:bg-purple-50"
-                                >
-                                  <Printer className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                            
+                            {/* 3-DOT ACTION MENU BUTTON */}
+                            <TableCell className="text-center py-3 px-4" onClick={e => e.stopPropagation()}>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => handleToggleMenu(e, t.id)}
+                                className={cn(
+                                  "h-8 w-8 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors",
+                                  openMenuId === t.id && "bg-slate-100 text-slate-900"
+                                )}
+                                title="মেনু"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
                             </TableCell>
                           </TableRow>
                         );
@@ -984,6 +1266,86 @@ function TransactionsContent() {
                   </div>
                 </div>
               </Card>
+
+              {/* FLOATING FIXED 3-DOT ACTION MENU (NEVER CLIPPED BY FRAME/CARD/OVERFLOW) */}
+              {openMenuId && menuPos && (() => {
+                const activeMenuTxn = transactions.find(t => t.id === openMenuId);
+                if (!activeMenuTxn) return null;
+                return (
+                  <div 
+                    style={{
+                      position: 'fixed',
+                      top: `${menuPos.top}px`,
+                      left: `${Math.max(10, menuPos.left)}px`,
+                      transform: menuPos.openUp ? 'translateY(-100%)' : 'none',
+                      zIndex: 99999
+                    }}
+                    onClick={e => e.stopPropagation()}
+                    className="w-44 bg-white rounded-lg shadow-2xl border border-slate-200 py-1.5 animate-in fade-in-50 zoom-in-95 duration-100 font-bengali text-xs"
+                  >
+                    {/* 1. View / বিস্তারিত দেখুন */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setMenuPos(null);
+                        setSelectedTxnForView(activeMenuTxn);
+                      }}
+                      className="w-full flex items-center gap-2 px-3.5 py-2 text-slate-700 hover:bg-blue-50 hover:text-blue-700 font-bold transition-colors text-left"
+                    >
+                      <Eye className="w-4 h-4 text-blue-600" />
+                      <span>বিস্তারিত দেখুন</span>
+                    </button>
+
+                    {/* 2. Edit / সম্পাদনা */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setMenuPos(null);
+                        handleEditTransaction(activeMenuTxn);
+                      }}
+                      className="w-full flex items-center gap-2 px-3.5 py-2 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 font-bold transition-colors text-left"
+                    >
+                      <Edit2 className="w-4 h-4 text-emerald-600" />
+                      <span>সম্পাদনা করুন</span>
+                    </button>
+
+                    {/* 3. Print / প্রিন্ট */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setMenuPos(null);
+                        setSelectedTxnForView(activeMenuTxn);
+                        setTimeout(() => {
+                          printElement('printable-memo-wrapper');
+                        }, 300);
+                      }}
+                      className="w-full flex items-center gap-2 px-3.5 py-2 text-slate-700 hover:bg-purple-50 hover:text-purple-700 font-bold transition-colors text-left"
+                    >
+                      <Printer className="w-4 h-4 text-purple-600" />
+                      <span>প্রিন্ট ভাউচার</span>
+                    </button>
+
+                    <div className="my-1 border-t border-slate-100" />
+
+                    {/* 4. Delete / মুছে ফেলুন */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setMenuPos(null);
+                        handleDelete(activeMenuTxn);
+                      }}
+                      className="w-full flex items-center gap-2 px-3.5 py-2 text-rose-600 hover:bg-rose-50 font-bold transition-colors text-left"
+                    >
+                      <Trash2 className="w-4 h-4 text-rose-600" />
+                      <span>মুছে ফেলুন</span>
+                    </button>
+                  </div>
+                );
+              })()}
 
             </div>
 
@@ -1094,7 +1456,9 @@ function TransactionsContent() {
 
                 <div className="flex items-center gap-3">
                   <h1 className="text-xl font-black text-slate-900 tracking-tight">
-                    {paymentType === 'income' ? 'নতুন পেমেন্ট গ্রহণ এন্ট্রি' : 'নতুন পেমেন্ট প্রদান এন্ট্রি'}
+                    {editingTransactionId
+                      ? (paymentType === 'income' ? 'পেমেন্ট গ্রহণ সম্পাদনা' : 'পেমেন্ট প্রদান সম্পাদনা')
+                      : (paymentType === 'income' ? 'নতুন পেমেন্ট গ্রহণ এন্ট্রি' : 'নতুন পেমেন্ট প্রদান এন্ট্রি')}
                   </h1>
                   
                   {/* PAYMENT ID BADGE */}
@@ -1105,7 +1469,7 @@ function TransactionsContent() {
 
                   {/* STATUS BADGE */}
                   <span className="px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-md text-xs font-bold">
-                    নতুন খসড়া
+                    {editingTransactionId ? 'সম্পাদনা মোড' : 'নতুন খসড়া'}
                   </span>
                 </div>
               </div>
@@ -1359,27 +1723,51 @@ function TransactionsContent() {
                           {paymentMethod === 'Bank' && (
                             <div className="p-3.5 bg-blue-50/60 border border-blue-100 rounded-md space-y-2 font-bengali text-xs animate-in fade-in-0">
                               <p className="font-bold text-blue-900 flex items-center gap-1">
-                                🏦 ব্যাংক একাউন্ট নির্বাচন করুন
+                                🏦 ব্যাংক ট্রান্সফার তথ্য
                               </p>
-                              <div className="grid grid-cols-2 gap-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <div>
-                                  <Label className="text-[10px] font-bold text-slate-600">দোকান ব্যাংক একাউন্ট</Label>
-                                  <Select value={selectedShopBank} onValueChange={(val: string | null) => setSelectedShopBank(val || '')}>
-                                    <SelectTrigger className="h-9 rounded-md bg-white text-xs font-bold border-blue-200">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent className="font-bengali text-xs font-bold z-[99999]">
-                                      <SelectItem value="ডাচ-বাংলা ব্যাংক - 123.456.7890">ডাচ-বাংলা ব্যাংক (DBBL) - A/C: 123.456.7890</SelectItem>
-                                      <SelectItem value="ইসলামী ব্যাংক - 2050.1234.5678">ইসলামী ব্যাংক (IBBL) - A/C: 2050.1234.5678</SelectItem>
-                                      <SelectItem value="ব্র্যাক ব্যাংক - 1501.2039.4857">ব্র্যাক ব্যাংক (BRAC Bank) - A/C: 1501.2039.4857</SelectItem>
-                                      <SelectItem value="সিটি ব্যাংক - 3101.9876.5432">সিটি ব্যাংক (City Bank) - A/C: 3101.9876.5432</SelectItem>
-                                    </SelectContent>
-                                  </Select>
+                                  <Label className="text-[10px] font-bold text-slate-600">
+                                    {paymentType === 'income' 
+                                      ? 'দোকানের ব্যাংক অ্যাকাউন্ট নির্বাচন করুন *' 
+                                      : 'প্রাপক / সাপ্লায়ারের ব্যাংক ও অ্যাকাউন্ট নম্বর *'}
+                                  </Label>
+                                  {paymentType === 'income' ? (
+                                    <Select 
+                                      value={selectedShopBank || bankName || availableBankOptions[0]?.value} 
+                                      onValueChange={(val: string | null) => {
+                                        const selectedVal = val || '';
+                                        setSelectedShopBank(selectedVal);
+                                        setBankName(selectedVal);
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-9 rounded-md bg-white text-xs font-bold border-blue-200">
+                                        <SelectValue placeholder="দোকানের ব্যাংক অ্যাকাউন্ট নির্বাচন করুন..." />
+                                      </SelectTrigger>
+                                      <SelectContent className="font-bengali text-xs font-bold z-[99999]">
+                                        {availableBankOptions.map((b) => (
+                                          <SelectItem key={b.value} value={b.value}>
+                                            {b.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  ) : (
+                                    <Input 
+                                      placeholder="যেমন: প্রাপক ব্যাংক নাম, শাখা ও অ্যাকাউন্ট নং" 
+                                      value={bankName} 
+                                      onChange={e => {
+                                        setBankName(e.target.value);
+                                        setSelectedShopBank(e.target.value);
+                                      }}
+                                      className="h-9 rounded-md bg-white text-xs font-bengali"
+                                    />
+                                  )}
                                 </div>
                                 <div>
-                                  <Label className="text-[10px] font-bold text-slate-600">ট্রানজেকশন / রেফারেন্স আইডি (অপশনাল)</Label>
+                                  <Label className="text-[10px] font-bold text-slate-600">ট্রানজেকশন / রেফারেন্স আইডি (ঐচ্ছিক)</Label>
                                   <Input 
-                                    placeholder="Txn ID" 
+                                    placeholder="যেমন: TXN-123456" 
                                     value={transactionRef} 
                                     onChange={e => setTransactionRef(e.target.value)}
                                     className="h-9 rounded-md bg-white text-xs font-mono"
@@ -1678,56 +2066,7 @@ function TransactionsContent() {
           </Dialog>
         )}
 
-        {/* VIEW DETAILS MODAL */}
-        {selectedTxnForView && (
-          <Dialog open={!!selectedTxnForView} onOpenChange={() => setSelectedTxnForView(null)}>
-            <DialogContent className="max-w-md rounded-3xl p-6 bg-white font-bengali space-y-4">
-              <DialogHeader>
-                <DialogTitle className="text-xl font-black text-slate-900 flex items-center justify-between">
-                  <span>পেমেন্ট বিবরণী</span>
-                  <span className="text-xs font-mono text-slate-400">{toBengaliDigits(selectedTxnForView.paymentId || '')}</span>
-                </DialogTitle>
-              </DialogHeader>
 
-              <div className="p-4 bg-slate-50 rounded-2xl space-y-3 text-xs border border-slate-100">
-                <div className="flex justify-between py-1 border-b border-slate-200/60">
-                  <span className="text-slate-500">পার্টি নাম:</span>
-                  <span className="font-black text-slate-900">{selectedTxnForView.partyName || '—'}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-200/60">
-                  <span className="text-slate-500">ইনভয়েস নং:</span>
-                  <span className="font-mono font-bold text-slate-800">{toBengaliDigits(selectedTxnForView.invoiceNo || '—')}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-200/60">
-                  <span className="text-slate-500">পেমেন্ট মাধ্যম:</span>
-                  <span className="font-bold text-blue-700">{selectedTxnForView.paymentMethod === 'Bank' ? 'ব্যাংক' : selectedTxnForView.paymentMethod === 'Check' ? 'চেক' : 'নগদ'}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-200/60">
-                  <span className="text-slate-500">পরিমাণ:</span>
-                  <span className="font-black text-base text-emerald-600">৳ {toBengaliDigits((selectedTxnForView.amount || 0).toLocaleString('bn-BD'))}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-200/60">
-                  <span className="text-slate-500">রেফারেন্স নং:</span>
-                  <span className="font-mono font-bold text-slate-700">{toBengaliDigits(selectedTxnForView.referenceNo || '—')}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-200/60">
-                  <span className="text-slate-500">প্রাপ্তগ্রহীতা:</span>
-                  <span className="font-bold text-slate-800">{selectedTxnForView.receiverName || 'মুসাব খান'}</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-500">স্ট্যাটাস:</span>
-                  <span className="font-bold text-emerald-700">{selectedTxnForView.status === 'Completed' ? 'সম্পন্ন' : selectedTxnForView.status === 'Pending' ? 'অপেক্ষমাণ' : selectedTxnForView.status === 'Bounced' ? 'প্রত্যাখ্যাত' : selectedTxnForView.status || 'সম্পন্ন'}</span>
-                </div>
-              </div>
-
-              <DialogFooter>
-                <Button onClick={() => setSelectedTxnForView(null)} className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs">
-                  বন্ধ করুন
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
 
         {/* ADD MONEY (টাকা যোগ) MODAL DIALOG */}
         <Dialog open={isAddMoneyOpen} onOpenChange={setIsAddMoneyOpen}>
@@ -1852,7 +2191,6 @@ function TransactionsContent() {
           </DialogContent>
         </Dialog>
 
-      </>
     </Shell>
   );
 }

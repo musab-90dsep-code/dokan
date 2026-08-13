@@ -72,7 +72,9 @@ export default function CustomerDuesPage() {
       const cOrders = orders.filter(o => o.customerId === c.id || o.customerName === c.name);
       const totalBill = cOrders.reduce((a, o) => a + (o.totalAmount || 0), 0);
       const totalPaid = cOrders.reduce((a, o) => a + (o.paidAmount || 0), 0);
-      const totalDue = cOrders.reduce((a, o) => a + (o.dueAmount || 0), c.totalDue || 0);
+      const totalDue = c.totalDue !== undefined && c.totalDue > 0
+        ? c.totalDue
+        : Math.max(0, totalBill - totalPaid);
       return { 
         ...c, 
         totalBill, 

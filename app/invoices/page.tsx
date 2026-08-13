@@ -21,10 +21,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
-import { toBengaliDigits } from '@/lib/bengaliUtils';
+import { toBengaliDigits, parseProductDetails } from '@/lib/bengaliUtils';
 import { ProductSearchSelect } from '@/components/ProductSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
 import { InvoiceMemo } from '@/components/InvoiceMemo';
+import { SalesInvoiceDetailsView } from '@/components/SalesInvoiceDetailsView';
 import { printElement } from '@/lib/printUtils';
 
 interface Product { 
@@ -43,6 +44,10 @@ interface Customer {
   address?: string; 
   businessName?: string;
   totalDue?: number;
+  due?: number;
+  balance?: number;
+  previousDue?: number;
+  openingBalance?: number;
 }
 
 interface OrderItem {
@@ -195,6 +200,7 @@ function InvoicesContent() {
   });
   const [isGatePassOpen, setIsGatePassOpen] = useState<boolean>(false);
   const [isPrintMemoOpen, setIsPrintMemoOpen] = useState<boolean>(false);
+  const [invoiceViewMode, setInvoiceViewMode] = useState<'details' | 'memo'>('details');
 
   // Pagination States
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -285,14 +291,21 @@ function InvoicesContent() {
       })));
 
       const partyList = await api.parties.list({ party_type: 'customer' });
-      setCustomers(partyList.map(p => ({
-        id: String(p.id),
-        name: p.name,
-        phone: p.phone,
-        address: p.address || '',
-        businessName: p.business_name || '',
-        totalDue: Number(p.total_due || 0)
-      })));
+      setCustomers(partyList.map(p => {
+        const d = Number(p.total_due !== undefined ? p.total_due : (p.opening_balance || 0));
+        return {
+          id: String(p.id),
+          name: p.name,
+          phone: p.phone,
+          address: p.address || '',
+          businessName: p.business_name || '',
+          totalDue: d,
+          due: d,
+          balance: d,
+          previousDue: d,
+          openingBalance: Number(p.opening_balance || 0)
+        };
+      }));
 
       const bankList = await api.banks.list();
       setSavedBanks(bankList.map(b => ({
@@ -427,6 +440,9 @@ function InvoicesContent() {
       return [...prev, {
         id: itemId,
         name: itemName,
+        category: selectedCascadingProduct?.category,
+        brand: selectedCascadingProduct?.brand,
+        mmSize: selectedCascadingProduct?.mmSize,
         unit: itemUnitToUse,
         price: finalPrice,
         quantity: itemQty,
@@ -450,20 +466,23 @@ function InvoicesContent() {
     setCart(prev => prev.map(i => i.id === id ? { ...i, quantity: newQty } : i));
   };
 
+  // Helper to prevent floating point precision issues in DecimalField API validation
+  const round2 = (val: number) => Math.round((Number(val) || 0) * 100) / 100;
+
   // Cart Calculations matching 1:1 Screenshot
-  const cartSubtotal = cart.reduce((a, i) => a + (i.price * i.quantity), 0);
+  const cartSubtotal = round2(cart.reduce((a, i) => a + (i.price * i.quantity), 0));
   const computedDiscount = discountType === 'percentage' 
-    ? (cartSubtotal * (discountPercent || 0)) / 100 
-    : (discountFlat || 0);
-  const cartTotalDiscount = computedDiscount + cart.reduce((a, i) => a + ((i.discount || 0) * i.quantity), 0);
-  const cartTotalAmount = Math.max(0, cartSubtotal - cartTotalDiscount + (shippingCost || 0) + (laborCost || 0));
+    ? round2((cartSubtotal * (discountPercent || 0)) / 100) 
+    : round2(discountFlat || 0);
+  const cartTotalDiscount = round2(computedDiscount + cart.reduce((a, i) => a + ((i.discount || 0) * i.quantity), 0));
+  const cartTotalAmount = round2(Math.max(0, cartSubtotal - cartTotalDiscount + (shippingCost || 0) + (laborCost || 0)));
 
   // Total Paid considering Split payment or single payment
-  const totalReceivedPayment = (cashPaidAmount > 0 || chequePaidAmount > 0)
+  const totalReceivedPayment = round2((cashPaidAmount > 0 || chequePaidAmount > 0)
     ? ((cashPaidAmount || 0) + (chequePaidAmount || 0))
-    : (invoicePaidAmount || 0);
+    : (invoicePaidAmount || 0));
 
-  const cartDueAmount = paymentOption === 'now' ? Math.max(0, cartTotalAmount - totalReceivedPayment) : cartTotalAmount;
+  const cartDueAmount = round2(paymentOption === 'now' ? Math.max(0, cartTotalAmount - totalReceivedPayment) : cartTotalAmount);
 
   // Selected Customer Existing Due Calculation
   const selectedCustomerDue = selectedCustomer 
@@ -640,27 +659,34 @@ function InvoicesContent() {
         chequeDate: chequeDate || '',
         cashPaidAmount: Number(cashPaidAmount || 0),
         chequePaidAmount: Number(chequePaidAmount || 0),
+        previousBalance: selectedCustomer ? Number((selectedCustomer as any).totalDue || (selectedCustomer as any).due || (selectedCustomer as any).balance || (selectedCustomer as any).previousDue || (selectedCustomer as any).openingBalance || 0) : 0,
         userNote: invoiceNote || ''
       };
 
       const finalNotesPayload = JSON.stringify(logisticsMeta) + (invoiceNote ? `\n${invoiceNote}` : '');
 
+      const safeSubtotal = round2(cartSubtotal);
+      const safeDiscount = round2(cartTotalDiscount);
+      const safeTotalAmount = round2(cartTotalAmount);
+      const safePaidAmount = round2(finalPaidAmount);
+      const safeDueAmount = round2(cartDueAmount);
+
       if (editingInvoiceId) {
         await api.transactions.update(editingInvoiceId, {
           party: finalCustId ? Number(finalCustId) : null,
-          subtotal: cartSubtotal,
-          discount: cartTotalDiscount,
-          total_amount: cartTotalAmount,
-          paid_amount: finalPaidAmount,
-          due_amount: cartDueAmount,
+          subtotal: safeSubtotal,
+          discount: safeDiscount,
+          total_amount: safeTotalAmount,
+          paid_amount: safePaidAmount,
+          due_amount: safeDueAmount,
           payment_method: effectivePaymentMethod,
           ...chequePayload,
           items: cart.map(i => ({
             product_name: i.name,
             quantity: i.quantity,
-            price: i.price,
+            price: round2(i.price),
             unit: i.unit,
-            total: i.price * i.quantity
+            total: round2(i.price * i.quantity)
           })),
           notes: finalNotesPayload
         });
@@ -669,19 +695,19 @@ function InvoicesContent() {
         await api.transactions.create({
           party: finalCustId ? Number(finalCustId) : null,
           transaction_type: 'sale',
-          subtotal: cartSubtotal,
-          discount: cartTotalDiscount,
-          total_amount: cartTotalAmount,
-          paid_amount: finalPaidAmount,
-          due_amount: cartDueAmount,
+          subtotal: safeSubtotal,
+          discount: safeDiscount,
+          total_amount: safeTotalAmount,
+          paid_amount: safePaidAmount,
+          due_amount: safeDueAmount,
           payment_method: effectivePaymentMethod,
           ...chequePayload,
           items: cart.map(i => ({
             product_name: i.name,
             quantity: i.quantity,
-            price: i.price,
+            price: round2(i.price),
             unit: i.unit,
-            total: i.price * i.quantity
+            total: round2(i.price * i.quantity)
           })),
           notes: finalNotesPayload
         });
@@ -833,7 +859,31 @@ function InvoicesContent() {
 
   return (
     <Shell>
-      {!isCreateInvoiceOpen ? (
+      {selectedInvoice ? (
+        <div className="space-y-4 animate-in fade-in duration-300">
+          <SalesInvoiceDetailsView
+            invoice={selectedInvoice}
+            onBack={() => setSelectedInvoice(null)}
+            onEdit={(inv) => {
+              const current = selectedInvoice;
+              setSelectedInvoice(null);
+              handleEditInvoice(current || inv);
+            }}
+            onPrint={() => printElement('printable-memo-wrapper')}
+          />
+
+          {/* Hidden Print Container for iframe printing */}
+          <div className="hidden print:block">
+            <InvoiceMemo
+              invoice={{
+                ...selectedInvoice,
+                transportCost: selectedInvoice.shippingCost || 0
+              } as any}
+              showPrintButton={false}
+            />
+          </div>
+        </div>
+      ) : !isCreateInvoiceOpen ? (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         {/* Top Title & Header Action */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1464,8 +1514,8 @@ function InvoicesContent() {
                           <TableRow className="text-[11px]">
                             <TableHead className="w-10 text-center font-black">#</TableHead>
                             <TableHead className="font-black">পণ্যের নাম</TableHead>
-                            <TableHead className="text-center font-black">সিরিজ / বিবরণ</TableHead>
-                            <TableHead className="text-center font-black">সাইজ / ভ্যারিয়েন্ট</TableHead>
+                            <TableHead className="text-center font-black">ব্র্যান্ড</TableHead>
+                            <TableHead className="text-center font-black">সাইজ</TableHead>
                             <TableHead className="text-center font-black">পরিমাণ</TableHead>
                             <TableHead className="text-right font-black">একক মূল্য</TableHead>
                             <TableHead className="text-right font-black">মোট মূল্য</TableHead>
@@ -1479,28 +1529,31 @@ function InvoicesContent() {
                                 কার্ট খালি। উপর থেকে পণ্য নির্বাচন করে যোগ করুন।
                               </TableCell>
                             </TableRow>
-                          ) : cart.map((item, idx) => (
-                            <TableRow key={item.id ? `${item.id}-${idx}` : `${item.name}-${idx}`} className="text-xs border-b border-slate-100">
-                              <TableCell className="text-center font-bold text-slate-400">{toBengaliDigits(idx + 1)}</TableCell>
-                              <TableCell className="font-bold text-slate-800">{item.name}</TableCell>
-                              <TableCell className="text-center text-slate-400">—</TableCell>
-                              <TableCell className="text-center text-slate-400">—</TableCell>
-                              <TableCell className="text-center">
-                                <div className="inline-flex items-center gap-1.5">
-                                  <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity - 1)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold">-</button>
-                                  <span className="font-bold">{toBengaliDigits(item.quantity)} {item.unit}</span>
-                                  <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity + 1)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold">+</button>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right font-medium text-slate-600">৳{toBengaliDigits((item.price || 0).toLocaleString('en-IN'))}</TableCell>
-                              <TableCell className="text-right font-black text-slate-900">৳{toBengaliDigits(((item.price || 0) * item.quantity).toLocaleString('en-IN'))}</TableCell>
-                              <TableCell className="text-center">
-                                <button type="button" onClick={() => handleRemoveCartItem(item.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded-sm">
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                          ) : cart.map((item, idx) => {
+                            const parsed = parseProductDetails(item);
+                            return (
+                              <TableRow key={item.id ? `${item.id}-${idx}` : `${item.name}-${idx}`} className="text-xs border-b border-slate-100">
+                                <TableCell className="text-center font-bold text-slate-400">{toBengaliDigits(idx + 1)}</TableCell>
+                                <TableCell className="font-bold text-slate-900">{parsed.categoryName}</TableCell>
+                                <TableCell className="text-center font-bold text-slate-700">{parsed.brandName}</TableCell>
+                                <TableCell className="text-center font-bold text-slate-700">{parsed.sizeName}</TableCell>
+                                <TableCell className="text-center">
+                                  <div className="inline-flex items-center gap-1.5">
+                                    <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity - 1)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold">-</button>
+                                    <span className="font-bold">{toBengaliDigits(item.quantity)} {item.unit}</span>
+                                    <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity + 1)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold">+</button>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right font-medium text-slate-600">৳{toBengaliDigits((item.price || 0).toLocaleString('en-IN'))}</TableCell>
+                                <TableCell className="text-right font-black text-slate-900">৳{toBengaliDigits(((item.price || 0) * item.quantity).toLocaleString('en-IN'))}</TableCell>
+                                <TableCell className="text-center">
+                                  <button type="button" onClick={() => handleRemoveCartItem(item.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded-sm">
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>
@@ -2146,106 +2199,7 @@ function InvoicesContent() {
       </div>
       )}
 
-      {/* UNIFIED INVOICE VIEW & PRINT MEMO MODAL */}
-      <Dialog open={!!selectedInvoice} onOpenChange={() => setSelectedInvoice(null)}>
-        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[92vh] overflow-y-auto rounded-2xl p-0 border-none shadow-2xl custom-scrollbar font-bengali">
-          <div className="bg-slate-900 p-4 px-6 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden rounded-t-2xl">
-            <DialogHeader className="space-y-0 text-left">
-              <DialogTitle className="text-xl font-black flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-emerald-400" /> বিক্রয় চালান ক্যাশ মেমো
-              </DialogTitle>
-              <p className="text-slate-400 font-mono text-xs mt-0.5">ইনভয়েস নং: #{selectedInvoice?.orderId || selectedInvoice?.id?.toUpperCase()}</p>
-            </DialogHeader>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Button 
-                onClick={() => printElement('printable-memo-wrapper')}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl px-4 h-9 shadow-md flex items-center gap-1.5 text-xs active:scale-95 transition-transform cursor-pointer"
-              >
-                <Printer className="w-4 h-4" /> মেমো প্রিন্ট করুন
-              </Button>
-              <Button 
-                variant="outline"
-                onClick={() => setIsGatePassOpen(true)}
-                className="rounded-xl h-9 px-3.5 text-xs font-bold text-emerald-300 border-emerald-700/50 bg-emerald-950/40 hover:bg-emerald-900/60"
-              >
-                🚛 গেট পাস
-              </Button>
-              {selectedInvoice && (
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={() => handleEditInvoice(selectedInvoice)}
-                    className="rounded-xl h-9 px-3 text-xs font-bold text-amber-300 border-amber-700/50 bg-amber-950/40 hover:bg-amber-900/60 flex items-center gap-1"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" /> এডিট
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => { setDeletingInvoice(selectedInvoice); setIsDeleteDialogOpen(true); }}
-                    className="rounded-xl h-9 px-3 text-xs font-bold text-rose-300 border-rose-700/50 bg-rose-950/40 hover:bg-rose-900/60 flex items-center gap-1"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> ডিলিট
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {selectedInvoice && (
-            <div className="p-6 bg-slate-100 max-h-[78vh] overflow-y-auto custom-scrollbar space-y-6 print:max-h-none print:overflow-visible print:p-0 print:bg-white">
-              {/* Official A4 Memo Component */}
-              <InvoiceMemo
-                invoice={{
-                  ...selectedInvoice,
-                  transportCost: selectedInvoice.shippingCost || 0
-                } as any}
-                showPrintButton={false}
-              />
-
-              {/* Add Payment Form (If Invoice Has Remaining Due) */}
-              {(selectedInvoice.dueAmount || 0) > 0 && (
-                <div className="max-w-[820px] mx-auto p-5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl space-y-3 shadow-sm print:hidden">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Banknote className="w-5 h-5 text-emerald-600" />
-                      <p className="font-black text-emerald-900 text-sm">বকেয়া আদায় করুন</p>
-                    </div>
-                    <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200">
-                      অবশিষ্ট বকেয়া: ৳{toBengaliDigits((selectedInvoice.dueAmount || 0).toLocaleString('en-IN'))}
-                    </span>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <Input 
-                      type="number" 
-                      value={addPayment} 
-                      onChange={e => setAddPayment(parseFloat(e.target.value) || 0)} 
-                      placeholder="জমার পরিমাণ লিখুন" 
-                      className="h-11 rounded-xl text-base font-bold border-emerald-300 focus:border-emerald-500 bg-white" 
-                    />
-                    <Button 
-                      onClick={handleAddPayment} 
-                      className="bg-emerald-600 hover:bg-emerald-700 font-bengali rounded-xl h-11 px-6 font-black text-sm text-white shadow-md shadow-emerald-600/20 active:scale-95 transition-all shrink-0 cursor-pointer"
-                    >
-                      পেমেন্ট জমা দিন
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="p-4 bg-white border-t border-slate-200 flex justify-between items-center print:hidden rounded-b-2xl">
-            <div className="text-xs text-slate-500 font-bold">
-              * গ্রাহককে দেওয়ার জন্য এটি প্রস্তুতকৃত অফিসিয়াল ক্যাশ মেমো চালান কপি।
-            </div>
-            <Button variant="outline" onClick={() => setSelectedInvoice(null)} className="rounded-xl font-bold text-slate-600 border-slate-200">
-              বন্ধ করুন
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+ 
 
       {/* GATE PASS / DELIVERY CHALAN MODAL */}
       <Dialog open={isGatePassOpen} onOpenChange={setIsGatePassOpen}>
@@ -2258,63 +2212,67 @@ function InvoicesContent() {
                 </DialogTitle>
                 <p className="text-xs font-bold text-emerald-600 tracking-wider uppercase mt-0.5">ডেলিভারি চালান / গেট পাস (Delivery Chalan & Gate Pass)</p>
               </div>
-              <span className="text-xs font-mono font-bold bg-slate-100 px-3 py-1 rounded-sm">#{selectedInvoice?.id.toUpperCase()}</span>
+              <span className="text-xs font-mono font-bold bg-slate-100 px-3 py-1 rounded-sm">#{(selectedInvoice as any)?.id?.toUpperCase() || ''}</span>
             </div>
           </DialogHeader>
 
-          {selectedInvoice && (
-            <div id="gate-pass-printable-wrapper" className="space-y-4 py-3 text-xs">
-              <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-md">
-                <div>
-                  <span className="font-bold text-slate-400 text-[11px] block">কাস্টমার / দোকান</span>
-                  <span className="font-black text-slate-900 text-sm">{selectedInvoice.customerName}</span>
-                  <span className="block text-slate-500">{selectedInvoice.customerPhone}</span>
+          {(() => {
+            const currentInvoice = selectedInvoice as Invoice | null;
+            if (!currentInvoice) return null;
+            return (
+              <div id="gate-pass-printable-wrapper" className="space-y-4 py-3 text-xs">
+                <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-md">
+                  <div>
+                    <span className="font-bold text-slate-400 text-[11px] block">কাস্টমার / দোকান</span>
+                    <span className="font-black text-slate-900 text-sm">{currentInvoice.customerName}</span>
+                    <span className="block text-slate-500">{currentInvoice.customerPhone}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-400 text-[11px] block">ডেলিভারি সাইটের ঠিকানা</span>
+                    <span className="font-bold text-slate-800">{currentInvoice.deliveryAddress || currentInvoice.customerAddress || 'প্রধান ঠিকানা'}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-400 text-[11px] block">গাড়ি / ট্রাক নম্বর</span>
+                    <span className="font-black text-emerald-600">{currentInvoice.vehicleNo || 'তথ্য দেওয়া হয়নি'}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-400 text-[11px] block">ড্রাইভারের নাম ও মোবাইল</span>
+                    <span className="font-bold text-slate-800">{currentInvoice.driverName || '—'} {currentInvoice.driverPhone ? `(${currentInvoice.driverPhone})` : ''}</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="font-bold text-slate-400 text-[11px] block">ডেলিভারি সাইটের ঠিকানা</span>
-                  <span className="font-bold text-slate-800">{selectedInvoice.deliveryAddress || selectedInvoice.customerAddress || 'প্রধান ঠিকানা'}</span>
-                </div>
-                <div>
-                  <span className="font-bold text-slate-400 text-[11px] block">গাড়ি / ট্রাক নম্বর</span>
-                  <span className="font-black text-emerald-600">{selectedInvoice.vehicleNo || 'তথ্য দেওয়া হয়নি'}</span>
-                </div>
-                <div>
-                  <span className="font-bold text-slate-400 text-[11px] block">ড্রাইভারের নাম ও মোবাইল</span>
-                  <span className="font-bold text-slate-800">{selectedInvoice.driverName || '—'} {selectedInvoice.driverPhone ? `(${selectedInvoice.driverPhone})` : ''}</span>
-                </div>
-              </div>
 
-              {/* Items Table for Gate Pass */}
-              <div className="border border-slate-200 rounded-md overflow-hidden">
-                <Table>
-                  <TableHeader className="bg-slate-100">
-                    <TableRow className="text-[11px]">
-                      <TableHead className="w-12 text-center font-black">#</TableHead>
-                      <TableHead className="font-black">পণ্যের নাম (Product)</TableHead>
-                      <TableHead className="text-center font-black">পরিমাণ (Quantity)</TableHead>
-                      <TableHead className="text-center font-black">একক (Unit)</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {selectedInvoice.items?.map((item, idx) => (
-                      <TableRow key={idx} className="border-b border-slate-100">
-                        <TableCell className="text-center font-bold text-slate-400">{idx + 1}</TableCell>
-                        <TableCell className="font-black text-slate-800 text-sm">{item.name}</TableCell>
-                        <TableCell className="text-center font-black text-emerald-600 text-base">{item.quantity}</TableCell>
-                        <TableCell className="text-center font-bold text-slate-600">{item.unit}</TableCell>
+                {/* Items Table for Gate Pass */}
+                <div className="border border-slate-200 rounded-md overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-slate-100">
+                      <TableRow className="text-[11px]">
+                        <TableHead className="w-12 text-center font-black">#</TableHead>
+                        <TableHead className="font-black">পণ্যের নাম (Product)</TableHead>
+                        <TableHead className="text-center font-black">পরিমাণ (Quantity)</TableHead>
+                        <TableHead className="text-center font-black">একক (Unit)</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {currentInvoice.items?.map((item: any, idx: number) => (
+                        <TableRow key={idx} className="border-b border-slate-100">
+                          <TableCell className="text-center font-bold text-slate-400">{idx + 1}</TableCell>
+                          <TableCell className="font-black text-slate-800 text-sm">{item.name}</TableCell>
+                          <TableCell className="text-center font-black text-emerald-600 text-base">{item.quantity}</TableCell>
+                          <TableCell className="text-center font-bold text-slate-600">{item.unit}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
 
-              <div className="pt-6 grid grid-cols-3 gap-4 text-center text-[11px] font-bold text-slate-500">
-                <div className="border-t border-slate-300 pt-2">প্রস্তুতকারীর স্বাক্ষর</div>
-                <div className="border-t border-slate-300 pt-2">ড্রাইভারের স্বাক্ষর</div>
-                <div className="border-t border-slate-300 pt-2">গ্রহীতার স্বাক্ষর</div>
+                <div className="pt-6 grid grid-cols-3 gap-4 text-center text-[11px] font-bold text-slate-500">
+                  <div className="border-t border-slate-300 pt-2">প্রস্তুতকারীর স্বাক্ষর</div>
+                  <div className="border-t border-slate-300 pt-2">ড্রাইভারের স্বাক্ষর</div>
+                  <div className="border-t border-slate-300 pt-2">গ্রহীতার স্বাক্ষর</div>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
             <Button variant="outline" onClick={() => setIsGatePassOpen(false)} className="rounded-md font-bold">

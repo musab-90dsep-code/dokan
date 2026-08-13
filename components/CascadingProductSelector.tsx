@@ -141,16 +141,19 @@ export function CascadingProductSelector({
     return ['রড', 'সিমেন্ট', 'রিং', 'অন্যান্য'];
   }, [allowedCategories, purchaseType]);
 
-  const [categoryState, setCategoryState] = useState<'রড' | 'সিমেন্ট' | 'রিং' | 'অন্যান্য'>(
-    categoriesToDisplay[0] || 'রড'
-  );
+  const initialCategory = categoriesToDisplay[0] || 'রড';
+  const [categoryState, setCategoryState] = useState<'রড' | 'সিমেন্ট' | 'রিং' | 'অন্যান্য'>(initialCategory);
 
   const category = categoriesToDisplay.includes(categoryState)
     ? categoryState
-    : (categoriesToDisplay[0] || 'রড');
+    : initialCategory;
 
-  const [selectedMm, setSelectedMm] = useState<string>('১০ মিলি');
-  const [selectedBrand, setSelectedBrand] = useState<string>('BSRM');
+  const [selectedMm, setSelectedMm] = useState<string>(
+    initialCategory === 'রিং' ? '৭″ × ৭″' : initialCategory === 'সিমেন্ট' ? '' : '১০ মিলি'
+  );
+  const [selectedBrand, setSelectedBrand] = useState<string>(
+    initialCategory === 'সিমেন্ট' ? 'শাহ সিমেন্ট' : initialCategory === 'রিং' ? '৮ মিলি রিং' : 'BSRM'
+  );
   const [otherProductId, setOtherProductId] = useState<string>('');
   const [customName, setCustomName] = useState<string>('');
 
@@ -285,19 +288,21 @@ export function CascadingProductSelector({
 
   // Derive effective activeBrand and activeMm based on availability
   const activeBrand = useMemo(() => {
-    if (onlyInStock) {
-      if (category === 'রড' && availableRodBrands.length > 0 && !availableRodBrands.includes(selectedBrand)) {
-        return availableRodBrands[0];
+    if (category === 'সিমেন্ট') {
+      if (!availableCementBrands.includes(selectedBrand)) {
+        return availableCementBrands[0] || 'শাহ সিমেন্ট';
       }
-      if (category === 'সিমেন্ট' && availableCementBrands.length > 0 && !availableCementBrands.includes(selectedBrand)) {
-        return availableCementBrands[0];
+    } else if (category === 'রড') {
+      if (!availableRodBrands.includes(selectedBrand)) {
+        return availableRodBrands[0] || 'BSRM';
       }
-      if (category === 'রিং' && availableRingBrands.length > 0 && !availableRingBrands.includes(selectedBrand)) {
-        return availableRingBrands[0];
+    } else if (category === 'রিং') {
+      if (!availableRingBrands.includes(selectedBrand)) {
+        return availableRingBrands[0] || '৮ মিলি রিং';
       }
     }
     return selectedBrand;
-  }, [onlyInStock, category, availableRodBrands, availableCementBrands, availableRingBrands, selectedBrand]);
+  }, [category, availableRodBrands, availableCementBrands, availableRingBrands, selectedBrand]);
 
   const activeMm = useMemo(() => {
     if (onlyInStock) {

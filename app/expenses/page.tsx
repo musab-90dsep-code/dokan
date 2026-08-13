@@ -76,6 +76,48 @@ export default function ExpensePage() {
   const [isUploadReceiptOpen, setIsUploadReceiptOpen] = useState(false);
   const [selectedExpenseForView, setSelectedExpenseForView] = useState<ExpenseItem | null>(null);
 
+  // Floating Action Menu state (Fixed viewport popup identical to transactions page)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; openUp: boolean }>({ top: 0, left: 0, openUp: false });
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+
+  const handleToggleMenu = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (openMenuId === id) {
+      setOpenMenuId(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < 200; // flip upward if not enough space at bottom
+
+    setOpenMenuId(id);
+    setMenuPos({
+      top: openUp ? rect.top - 6 : rect.bottom + 6,
+      left: rect.right - 176,
+      openUp
+    });
+  };
+
+  useEffect(() => {
+    const handleDismiss = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest('[data-expense-menu]')) {
+        setOpenMenuId(null);
+      }
+    };
+    const handleScroll = () => setOpenMenuId(null);
+
+    window.addEventListener('click', handleDismiss);
+    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleScroll);
+    return () => {
+      window.removeEventListener('click', handleDismiss);
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, []);
+
   const [newExpense, setNewExpense] = useState({
     title: '',
     category: 'electric',
@@ -89,6 +131,42 @@ export default function ExpensePage() {
     bankId: '',
     note: ''
   });
+
+  const handleOpenCreateExpense = () => {
+    setEditingExpenseId(null);
+    setNewExpense({
+      title: '',
+      category: 'electric',
+      amount: 0,
+      date: format(new Date(), 'yyyy-MM-dd'),
+      vendor: '',
+      billNo: '',
+      accountNo: '',
+      status: 'পরিশোধিত',
+      paymentMethod: 'Cash',
+      bankId: '',
+      note: ''
+    });
+    setIsAddExpenseOpen(true);
+  };
+
+  const handleEditExpense = (exp: ExpenseItem) => {
+    setEditingExpenseId(exp.id);
+    setNewExpense({
+      title: exp.title || '',
+      category: exp.category || 'other',
+      amount: exp.amount || 0,
+      date: exp.date || format(new Date(), 'yyyy-MM-dd'),
+      vendor: exp.vendor || '',
+      billNo: exp.billNo || '',
+      accountNo: exp.accountNo || '',
+      status: exp.status || 'পরিশোধিত',
+      paymentMethod: exp.paymentMethod || 'Cash',
+      bankId: exp.bankId || '',
+      note: exp.note || ''
+    });
+    setIsAddExpenseOpen(true);
+  };
 
   const fetchExpensesAndBanks = useCallback(async () => {
     try {
@@ -172,18 +250,32 @@ export default function ExpensePage() {
     }
 
     try {
-      await api.expenses.create({
-        title: newExpense.title,
-        category_name: categoriesList.find(c => c.id === newExpense.category)?.name || newExpense.category,
-        amount: newExpense.amount,
-        date: newExpense.date,
-        payment_method: (newExpense.paymentMethod.toLowerCase().includes('bank') ? 'bank' : newExpense.paymentMethod.toLowerCase().includes('cheque') ? 'cheque' : newExpense.paymentMethod.toLowerCase()),
-        reference_no: newExpense.billNo || newExpense.vendor || '',
-        notes: newExpense.note
-      });
+      if (editingExpenseId) {
+        await api.expenses.update(editingExpenseId, {
+          title: newExpense.title,
+          category_name: categoriesList.find(c => c.id === newExpense.category)?.name || newExpense.category,
+          amount: newExpense.amount,
+          date: newExpense.date,
+          payment_method: (newExpense.paymentMethod.toLowerCase().includes('bank') ? 'bank' : newExpense.paymentMethod.toLowerCase().includes('cheque') ? 'cheque' : newExpense.paymentMethod.toLowerCase()),
+          reference_no: newExpense.billNo || newExpense.vendor || '',
+          notes: newExpense.note
+        });
+        toast.success('খরচ সফলভাবে আপডেট করা হয়েছে');
+      } else {
+        await api.expenses.create({
+          title: newExpense.title,
+          category_name: categoriesList.find(c => c.id === newExpense.category)?.name || newExpense.category,
+          amount: newExpense.amount,
+          date: newExpense.date,
+          payment_method: (newExpense.paymentMethod.toLowerCase().includes('bank') ? 'bank' : newExpense.paymentMethod.toLowerCase().includes('cheque') ? 'cheque' : newExpense.paymentMethod.toLowerCase()),
+          reference_no: newExpense.billNo || newExpense.vendor || '',
+          notes: newExpense.note
+        });
+        toast.success('নতুন খরচ সফলভাবে সংরক্ষণ করা হয়েছে');
+      }
 
-      toast.success('নতুন খরচ সফলভাবে সংরক্ষণ করা হয়েছে');
       setIsAddExpenseOpen(false);
+      setEditingExpenseId(null);
       setNewExpense({
         title: '',
         category: 'electric',
@@ -290,7 +382,7 @@ export default function ExpensePage() {
           {/* RIGHT TOP ACTION BUTTONS */}
           <div className="flex flex-wrap items-center gap-2.5">
             <Button 
-              onClick={() => setIsAddExpenseOpen(true)}
+              onClick={handleOpenCreateExpense}
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all text-xs"
             >
               <Plus className="w-4 h-4 mr-1.5" /> + নতুন খরচ যোগ করুন
@@ -509,7 +601,11 @@ export default function ExpensePage() {
                     const IconComp = catObj.icon;
                     const expDate = safeDate(exp.date) || new Date();
                     return (
-                      <div key={exp.id} className="flex gap-4 items-start p-3.5 hover:bg-slate-50/80 rounded-2xl transition-all border border-slate-100/60">
+                      <div 
+                        key={exp.id} 
+                        onClick={() => setSelectedExpenseForView(exp)}
+                        className="flex gap-4 items-start p-3.5 hover:bg-slate-100/90 rounded-2xl transition-all border border-slate-100/60 cursor-pointer group"
+                      >
                         
                         {/* LEFT DATE STAMP */}
                         <div className="w-20 text-center flex-shrink-0 pt-0.5">
@@ -533,7 +629,7 @@ export default function ExpensePage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <h4 className="font-black text-slate-900 text-sm">{exp.title}</h4>
+                              <h4 className="font-black text-slate-900 text-sm group-hover:text-blue-600 transition-colors">{exp.title}</h4>
                               <p className="text-xs text-slate-500 font-semibold">{exp.vendor || 'সাধারণ খরচ'}</p>
                               {(exp.billNo || exp.accountNo) && (
                                 <p className="text-[11px] text-slate-400 font-mono mt-0.5">
@@ -556,25 +652,18 @@ export default function ExpensePage() {
                           </div>
                         </div>
 
-                        {/* ACTION BUTTONS */}
-                        <div className="flex items-center gap-1 flex-shrink-0 self-center">
+                        {/* 3-DOT ACTION MENU BUTTON */}
+                        <div className="flex items-center gap-1 flex-shrink-0 self-center" onClick={(e) => e.stopPropagation()}>
                           <button 
-                            onClick={() => setSelectedExpenseForView(exp)}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                            type="button"
+                            onClick={(e) => handleToggleMenu(e, exp.id)}
+                            className={cn(
+                              "p-2 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-200/70 transition-colors cursor-pointer focus:outline-none",
+                              openMenuId === exp.id && "bg-slate-200 text-slate-900"
+                            )}
+                            title="অ্যাকশন মেনু"
                           >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => toast.info('রসিদ সংযুক্ত করা আছে')}
-                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg"
-                          >
-                            <LinkIcon className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteExpense(exp.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
-                          >
-                            <Trash2 className="w-4 h-4" />
+                            <MoreVertical className="w-4 h-4" />
                           </button>
                         </div>
 
@@ -725,7 +814,7 @@ export default function ExpensePage() {
               <div className="grid grid-cols-2 gap-2.5">
                 
                 <button 
-                  onClick={() => setIsAddExpenseOpen(true)}
+                  onClick={handleOpenCreateExpense}
                   className="p-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-2xl text-center space-y-1.5 transition-all group"
                 >
                   <Plus className="w-5 h-5 mx-auto text-emerald-600 group-hover:scale-110 transition-transform" />
@@ -765,12 +854,20 @@ export default function ExpensePage() {
 
       </div>
 
-      {/* CREATE NEW EXPENSE MODAL */}
-      <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
+      {/* CREATE / EDIT EXPENSE MODAL */}
+      <Dialog open={isAddExpenseOpen} onOpenChange={(open) => { setIsAddExpenseOpen(open); if (!open) setEditingExpenseId(null); }}>
         <DialogContent className="max-w-lg rounded-3xl p-6 bg-white font-bengali">
           <DialogHeader>
             <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2">
-              <Plus className="w-5 h-5 text-emerald-600" /> নতুন খরচ যোগ করুন
+              {editingExpenseId ? (
+                <>
+                  <Edit2 className="w-5 h-5 text-amber-600" /> খরচ সম্পাদনা করুন
+                </>
+              ) : (
+                <>
+                  <Plus className="w-5 h-5 text-emerald-600" /> নতুন খরচ যোগ করুন
+                </>
+              )}
             </DialogTitle>
           </DialogHeader>
 
@@ -872,22 +969,44 @@ export default function ExpensePage() {
               )}
             </div>
 
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">বিল নং (ঐচ্ছিক)</Label>
+                <Input 
+                  value={newExpense.billNo}
+                  onChange={e => setNewExpense({ ...newExpense, billNo: e.target.value })}
+                  placeholder="যেমন: BILL-102" 
+                  className="rounded-xl h-11 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">ভেনডর / প্রতিষ্ঠান (ঐচ্ছিক)</Label>
+                <Input 
+                  value={newExpense.vendor}
+                  onChange={e => setNewExpense({ ...newExpense, vendor: e.target.value })}
+                  placeholder="যেমন: DESCO, WASA..." 
+                  className="rounded-xl h-11 text-xs"
+                />
+              </div>
+            </div>
+
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-slate-700">ভেনডর / প্রদানকারী প্রতিষ্ঠান (ঐচ্ছিক)</Label>
+              <Label className="text-xs font-bold text-slate-700">নোট / মন্তব্য (ঐচ্ছিক)</Label>
               <Input 
-                value={newExpense.vendor}
-                onChange={e => setNewExpense({ ...newExpense, vendor: e.target.value })}
-                placeholder="যেমন: DESCO, WASA, Link3, দোকান মালিক..." 
+                value={newExpense.note}
+                onChange={e => setNewExpense({ ...newExpense, note: e.target.value })}
+                placeholder="খরচের বিস্তারিত নোট..." 
                 className="rounded-xl h-11 text-xs"
               />
             </div>
 
             <DialogFooter className="grid grid-cols-2 gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => setIsAddExpenseOpen(false)} className="h-11 rounded-xl font-bold text-slate-600">
+              <Button type="button" variant="outline" onClick={() => { setIsAddExpenseOpen(false); setEditingExpenseId(null); }} className="h-11 rounded-xl font-bold text-slate-600">
                 বাতিল
               </Button>
-              <Button type="submit" className="h-11 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold">
-                সংরক্ষণ করুন
+              <Button type="submit" className={cn("h-11 text-white rounded-xl font-bold", editingExpenseId ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700")}>
+                {editingExpenseId ? 'আপডেট করুন' : 'সংরক্ষণ করুন'}
               </Button>
             </DialogFooter>
 
@@ -963,14 +1082,115 @@ export default function ExpensePage() {
               </div>
             </div>
 
-            <DialogFooter>
-              <Button onClick={() => setSelectedExpenseForView(null)} className="w-full bg-slate-900 text-white rounded-xl font-bold text-xs">
+            <DialogFooter className="grid grid-cols-3 gap-2">
+              <Button 
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const exp = selectedExpenseForView;
+                  setSelectedExpenseForView(null);
+                  handleEditExpense(exp);
+                }} 
+                className="rounded-xl font-bold text-xs text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100"
+              >
+                <Edit2 className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                <span>এডিট</span>
+              </Button>
+              <Button 
+                type="button"
+                variant="outline"
+                onClick={() => window.print()} 
+                className="rounded-xl font-bold text-xs text-blue-700 border-blue-300 bg-blue-50 hover:bg-blue-100"
+              >
+                <Printer className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                <span>প্রিন্ট</span>
+              </Button>
+              <Button 
+                type="button"
+                onClick={() => setSelectedExpenseForView(null)} 
+                className="bg-slate-900 text-white rounded-xl font-bold text-xs"
+              >
                 বন্ধ করুন
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
+
+      {/* 3-DOT FLOATING ACTIONS PORTAL MENU */}
+      {openMenuId && (() => {
+        const targetExp = expenses.find(e => e.id === openMenuId);
+        if (!targetExp) return null;
+        return (
+          <div 
+            data-expense-menu
+            style={{
+              position: 'fixed',
+              top: menuPos.openUp ? undefined : `${menuPos.top}px`,
+              bottom: menuPos.openUp ? `${window.innerHeight - menuPos.top}px` : undefined,
+              left: `${menuPos.left}px`,
+              zIndex: 999999
+            }}
+            className="w-44 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 font-bengali animate-in fade-in-0 zoom-in-95 duration-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenMenuId(null);
+                setSelectedExpenseForView(targetExp);
+              }}
+              className="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2.5 transition-colors cursor-pointer"
+            >
+              <Eye className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>বিস্তারিত দেখুন</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenMenuId(null);
+                handleEditExpense(targetExp);
+              }}
+              className="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 hover:bg-amber-50 hover:text-amber-700 flex items-center gap-2.5 transition-colors cursor-pointer"
+            >
+              <Edit2 className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>সম্পাদনা করুন</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenMenuId(null);
+                setSelectedExpenseForView(targetExp);
+                setTimeout(() => window.print(), 200);
+              }}
+              className="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2.5 transition-colors cursor-pointer"
+            >
+              <Printer className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>প্রিন্ট ভাউচার</span>
+            </button>
+
+            <div className="my-1 border-t border-slate-100" />
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenMenuId(null);
+                handleDeleteExpense(targetExp.id);
+              }}
+              className="w-full px-3.5 py-2 text-left text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>মুছে ফেলুন</span>
+            </button>
+          </div>
+        );
+      })()}
 
     </Shell>
   );

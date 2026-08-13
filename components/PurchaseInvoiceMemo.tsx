@@ -2,7 +2,10 @@
 
 import React, { useState } from 'react';
 import { format } from 'date-fns';
-import { Printer, FileText } from 'lucide-react';
+import { 
+  Printer, User, Truck, ClipboardList, CreditCard, 
+  FileText, Edit3, CheckCircle2 
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toBengaliDigits, numberToBengaliWords } from '@/lib/bengaliUtils';
 import { printElement } from '@/lib/printUtils';
@@ -10,44 +13,53 @@ import { printElement } from '@/lib/printUtils';
 export interface PurchaseItem {
   id?: string;
   name: string;
-  unit: string;
-  price: number;
+  brand?: string;
+  variant?: string;
   quantity: number;
+  price: number;
+  unit?: string;
   discount?: number;
-  bundle?: number | string;
-  pieces?: number | string;
+  bundle?: number;
 }
 
 export interface PurchaseInvoiceMemoProps {
   invoice: {
     id: string;
     purchaseId?: string;
-    supplierName: string;
+    supplierName?: string;
+    contactPerson?: string;
     supplierPhone?: string;
     supplierAddress?: string;
     businessName?: string;
     supplierId?: string;
-    items: PurchaseItem[];
+    items?: PurchaseItem[];
     subtotal?: number;
     discount?: number;
     shippingCost?: number;
     transportCost?: number;
     laborCost?: number;
-    totalAmount: number;
-    paidAmount: number;
-    dueAmount: number;
-    paymentStatus: string;
+    totalAmount?: number;
+    paidAmount?: number;
+    dueAmount?: number;
+    previousSupplierDue?: number;
+    paymentStatus?: string;
     paymentMethod?: string;
-    chequeNo?: string;
-    chequeDate?: string;
-    note?: string;
-    createdAt: any;
+    createdAt?: any;
     vehicleNo?: string;
     driverName?: string;
     driverPhone?: string;
     deliveryAddress?: string;
-    purchaseType?: 'rod' | 'cement' | string;
+    unloadingSite?: string;
+    deliveryFrom?: string;
+    deliveryTo?: string;
+    preparedBy?: string;
     operatorName?: string;
+    authorizedBy?: string;
+    receivedBy?: string;
+    warehouse?: string;
+    targetWarehouse?: string;
+    note?: string;
+    notes?: string;
   };
   shopInfo?: {
     name?: string;
@@ -57,10 +69,10 @@ export interface PurchaseInvoiceMemoProps {
     email?: string;
     terms?: string;
     proprietor?: string;
+    website?: string;
   };
-  type?: 'purchase' | 'sales';
+  type?: 'purchase' | 'voucher';
   showPrintButton?: boolean;
-  onClose?: () => void;
 }
 
 export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
@@ -81,7 +93,7 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
       address: '৩১০, চৌধুরী নিউ সুপার মার্কেট, বঙ্গবন্ধু সড়ক, গোপালগঞ্জ',
       phone: '০১৭১২-০১৪২২৫, ০১৭০১-২৯৫৩৩০',
       email: 'delowarteraders@gmail.com',
-      terms: 'বিঃ দ্রঃ— ১. এটি একটি সিস্টেম-জেনারেটেড অফিশিয়াল ক্রয় চালান। ২. ডেলিভারি সাইটে মালামাল গণন পূর্বক বুঝে নেওয়ার অনুরোধ করা যাচ্ছে।',
+      website: 'www.delowartraders.com',
       software: 'Hasanah Tech Solution',
       softwareCompany: 'Hasanah Tech Solution',
       softwarePhone: '01349345353',
@@ -108,12 +120,12 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
           return {
             name: parsed.name || defaultShop.name,
             proprietor: parsed.proprietor || defaultShop.proprietor,
-            tagline: parsed.type ? `${parsed.type} - পাইকারী ও খুচরা সরবরাহ কেন্দ্র` : defaultShop.tagline,
+            tagline: parsed.tagline || defaultShop.tagline,
             address: parsed.address || defaultShop.address,
-            phone: parsed.phone ? `মোবাইলঃ ${parsed.phone}` : defaultShop.phone,
+            phone: parsed.phone || defaultShop.phone,
             email: parsed.email || defaultShop.email,
-            terms: parsed.terms || defaultShop.terms,
-            software: parsed.software || customPromo.softwareCompany || defaultShop.software,
+            website: parsed.website || defaultShop.website,
+            software: parsed.software || defaultShop.software,
             softwareCompany: customPromo.softwareCompany || parsed.softwareCompany || defaultShop.softwareCompany,
             softwarePhone: customPromo.softwarePhone || parsed.softwarePhone || defaultShop.softwarePhone,
             softwareWebsite: customPromo.softwareWebsite || parsed.softwareWebsite || defaultShop.softwareWebsite
@@ -129,56 +141,21 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
   // Format Date & Time
   const rawDate = invoice?.createdAt;
   const d = rawDate?.toDate ? rawDate.toDate() : (rawDate ? new Date(rawDate) : new Date());
-  let dateStr = '০৭/০৮/২০২০';
-  let timeStr = '১১:৪৫ AM';
+  let dateStr = '';
   try {
     dateStr = toBengaliDigits(format(d, 'dd/MM/yyyy'));
-    timeStr = toBengaliDigits(format(d, 'hh:mm a'));
   } catch {
     dateStr = toBengaliDigits(format(new Date(), 'dd/MM/yyyy'));
-    timeStr = toBengaliDigits(format(new Date(), 'hh:mm a'));
   }
 
-  const items = invoice.items || [];
-  const subtotal = invoice.subtotal || items.reduce((sum, i) => sum + ((i.price - (i.discount || 0)) * i.quantity), 0);
-  const discount = invoice.discount || 0;
-  const transportCost = invoice.transportCost || invoice.shippingCost || 0;
-  const laborCost = invoice.laborCost || 0;
-  const totalAmount = invoice.totalAmount || (subtotal - discount + transportCost + laborCost);
-  const paidAmount = invoice.paidAmount || 0;
-  const dueAmount = invoice.dueAmount !== undefined ? invoice.dueAmount : Math.max(0, totalAmount - paidAmount);
-
-  // Memo number format
-  const isPurchase = type === 'purchase';
-  const prefix = isPurchase ? 'PUR' : 'INV';
-  const memoNo = invoice.id 
-    ? (invoice.id.startsWith('INV') || invoice.id.startsWith('PUR') ? invoice.id : `${prefix}-${invoice.id.slice(-6).toUpperCase()}`)
-    : `${prefix}-2026-0042`;
-
-  // Aggregate quantity by unit
-  const aggregatedUnits = items.reduce((acc: Record<string, number>, item) => {
-    const u = item.unit || 'পিস';
-    acc[u] = (acc[u] || 0) + item.quantity;
-    return acc;
-  }, {});
-
-  const totalQuantitySummary = Object.entries(aggregatedUnits)
-    .map(([unit, qty]) => `${toBengaliDigits(qty.toLocaleString('en-IN'))} ${unit}`)
-    .join(' • ');
-
-  const isPaid = dueAmount <= 0 || invoice.paymentStatus === 'paid' || invoice.paymentStatus === 'পরিশোধিত';
-
-  const partyTitle = isPurchase ? 'সাপ্লাইয়ার / কোম্পানি' : 'গ্রাহক / কাস্টমার';
-  const memoTitle = isPurchase ? 'অফিসিয়াল ক্রয় ইনভয়েস' : 'অফিসিয়াল বিক্রয় ক্যাশ মেমো';
-
-  // Try parsing meta notes if stored as JSON
+  // Parse meta notes if stored as JSON
   let meta: any = {};
-  let cleanUserNote = invoice.note || (invoice as any).notes || '';
-  if (cleanUserNote && cleanUserNote.startsWith('{')) {
+  let cleanUserNote = invoice?.note || (invoice as any)?.notes || '';
+  if (cleanUserNote && typeof cleanUserNote === 'string' && cleanUserNote.trim().startsWith('{')) {
     try {
       const firstLine = cleanUserNote.split('\n')[0];
       meta = JSON.parse(firstLine);
-      cleanUserNote = cleanUserNote.substring(firstLine.length).trim();
+      cleanUserNote = meta.userNote !== undefined ? meta.userNote : cleanUserNote.substring(firstLine.length).trim();
     } catch {
       // not json
     }
@@ -186,297 +163,621 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
 
   const effectiveVehicleNo = invoice.vehicleNo || meta.vehicleNo || '';
   const effectiveDriverName = invoice.driverName || meta.driverName || '';
-  const effectiveDeliveryAddress = invoice.deliveryAddress || meta.deliveryAddress || '';
+  const effectiveDriverPhone = invoice.driverPhone || meta.driverPhone || '';
+  const effectiveDeliveryAddress = invoice.deliveryAddress || invoice.unloadingSite || meta.deliveryAddress || meta.unloadingSite || invoice.supplierAddress || '';
+  const effectivePreparedBy = invoice.preparedBy || invoice.operatorName || meta.preparedBy || meta.operatorName || 'ক্যাশিয়ার';
+  const effectiveAuthorizedBy = invoice.authorizedBy || meta.authorizedBy || 'হিসাব রক্ষক';
+  const effectiveReceivedBy = invoice.receivedBy || meta.receivedBy || 'ব্যবস্থাপক';
+  const effectiveWarehouse = invoice.warehouse || invoice.targetWarehouse || meta.warehouse || meta.targetWarehouse || 'প্রধান গুদাম';
+  
+  const effectivePreviousSupplierDue = Number(
+    invoice.previousSupplierDue !== undefined ? invoice.previousSupplierDue :
+    (invoice as any).previousBalance !== undefined ? (invoice as any).previousBalance :
+    (invoice as any).previous_due !== undefined ? (invoice as any).previous_due :
+    (invoice as any).supplier_due !== undefined ? (invoice as any).supplier_due :
+    (invoice as any).supplier?.due !== undefined ? (invoice as any).supplier?.due :
+    meta.previousSupplierDue !== undefined ? meta.previousSupplierDue :
+    meta.previousDue !== undefined ? meta.previousDue :
+    0
+  );
+
   const effectivePaymentMethodName = meta.paymentMethodName || invoice.paymentMethod || 'Cash';
+  const pmLower = effectivePaymentMethodName.toLowerCase();
+  const isBankToBank = pmLower.includes('banktobank') || pmLower.includes('ব্যাংক-টু-ব্যাংক');
+  const isBank = pmLower.includes('bank') || pmLower.includes('ব্যাংক');
+  const isCheque = pmLower.includes('cheque') || pmLower.includes('check') || pmLower.includes('চেক');
+  const isSplit = pmLower.includes('split') || pmLower.includes('স্প্লিট');
+
+  const shopBank = (invoice as any).receiverShopBank || (invoice as any).selectedShopBank || meta.selectedShopBank || meta.receiverShopBank || '';
+  const supplierBank = (invoice as any).supplierBankName || meta.supplierBankName || (invoice as any).bankName || meta.bankName || '';
+  const supplierAcc = (invoice as any).supplierAccountNo || meta.supplierAccountNo || (invoice as any).accountNo || meta.accountNo || '';
+  const txnRef = (invoice as any).supplierTxnRef || meta.supplierTxnRef || (invoice as any).transactionRef || meta.transactionRef || meta.txnRef || '';
+  const chqNo = (invoice as any).chequeNo || meta.chequeNo || '';
+  const chqDate = (invoice as any).chequeDate || meta.chequeDate || '';
+  const cashPaid = Number((invoice as any).cashPaidAmount || meta.cashPaidAmount || 0);
+  const chequePaid = Number((invoice as any).chequePaidAmount || meta.chequePaidAmount || 0);
+
+  const items = (invoice.items && invoice.items.length > 0) ? invoice.items : [];
+  const effectiveShippingCost = Number(invoice.transportCost || invoice.shippingCost || meta.shippingCost || meta.transportCost || 0);
+  const effectiveLaborCost = Number(invoice.laborCost || meta.laborCost || 0);
+
+  const totalExtra = effectiveShippingCost + effectiveLaborCost;
+  const totalQtySum = items.reduce((a, i) => a + Number(i.quantity || 0), 0);
+  const extraPerUnit = totalQtySum > 0 ? (totalExtra / totalQtySum) : 0;
+
+  const storedItemsSum = items.reduce((sum, i) => sum + ((Number(i.price || 0) - Number(i.discount || 0)) * Number(i.quantity || 0)), 0);
+  const invoiceTotalInRecord = Number(invoice.totalAmount || 0);
+
+  let isStoredAsLandedCost = false;
+  if (totalExtra > 0 && storedItemsSum > 0 && invoiceTotalInRecord > 0) {
+    if (Math.abs(storedItemsSum - invoiceTotalInRecord) <= 1.0 || (storedItemsSum + totalExtra - invoiceTotalInRecord) > 1.0) {
+      isStoredAsLandedCost = true;
+    }
+  }
+
+  const subtotal = isStoredAsLandedCost 
+    ? Math.max(0, storedItemsSum - totalExtra)
+    : (invoice.subtotal ? Number(invoice.subtotal) : storedItemsSum);
+
+  const discountPercent = Number(meta.discountPercent || 0);
+  const discountFlat = Number(invoice.discount !== undefined ? invoice.discount : (meta.discountFlat || meta.discount || 0));
+  const effectiveDiscount = discountFlat > 0 ? discountFlat : (discountPercent > 0 ? (subtotal * discountPercent / 100) : 0);
+
+  const totalAmount = Math.max(0, subtotal - effectiveDiscount + effectiveShippingCost + effectiveLaborCost);
+  const paidAmount = Number(invoice.paidAmount !== undefined ? invoice.paidAmount : 0);
+  const dueAmount = Number(invoice.dueAmount !== undefined ? invoice.dueAmount : Math.max(0, totalAmount - paidAmount));
+  const grandTotalPayable = totalAmount + effectivePreviousSupplierDue;
+  const finalGrandDue = Math.max(0, grandTotalPayable - paidAmount);
+
+  // Memo number format
+  const memoNo = invoice.id 
+    ? (invoice.id.startsWith('INV') || invoice.id.startsWith('PUR') ? invoice.id : `PUR-${invoice.id.slice(-6).toUpperCase()}`)
+    : 'PUR-000101';
+
+  const isPaid = dueAmount <= 0;
+  const isPartial = paidAmount > 0 && dueAmount > 0;
+  const paymentStatusText = isPaid ? 'পরিশোধিত' : isPartial ? 'আংশিক পরিশোধিত' : 'বকেয়া আছে';
 
   return (
     <div className="w-full font-bengali">
       {/* Top bar preview button */}
       {showPrintButton && (
-        <div className="flex items-center justify-between bg-black text-white p-3.5 px-6 rounded-t-2xl print:hidden shadow-md">
+        <div className="flex items-center justify-between bg-slate-900 text-white p-3.5 px-6 rounded-t-2xl print:hidden shadow-md">
           <div className="flex items-center gap-2 text-xs font-bold">
-            <FileText className="w-4 h-4 text-white" />
-            <span>ক্লিন ইনভয়েস প্রিভিউ (A4 Print Copy)</span>
+            <FileText className="w-4 h-4 text-blue-400" />
+            <span>ক্রয় ইনভয়েস মেমো প্রিভিউ (A4 Print Format)</span>
           </div>
           <button
             type="button"
             onClick={handleTriggerPrint}
-            className="bg-white text-black hover:bg-slate-200 text-xs font-black px-5 py-2 rounded-xl flex items-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer border border-slate-300"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-5 py-2 rounded-xl flex items-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer border border-blue-500"
           >
-            <Printer className="w-4 h-4 text-black" />
+            <Printer className="w-4 h-4 text-white" />
             <span>ইনভয়েস প্রিন্ট করুন</span>
           </button>
         </div>
       )}
 
-      {/* --- MINIMALIST CLEAN INVOICE SHEET (NO HEAVY BOXES) --- */}
+      {/* --- EXACT REPLICA PURCHASE INVOICE SHEET --- */}
       <div 
         id="printable-memo-wrapper" 
         className={cn(
-          "w-full max-w-[820px] mx-auto bg-white text-black p-8 space-y-6 print:shadow-none print:border-none print:p-0 print:m-0 print:w-full print:max-w-none print:rounded-none",
+          "w-full max-w-[850px] mx-auto bg-white text-slate-900 p-6 space-y-3 font-bengali print:shadow-none print:border-none print:p-0 print:m-0 print:w-full print:max-w-none print:rounded-none",
           !showPrintButton && "rounded-2xl"
         )}
       >
-        {/* --- 1. HEADER (CLEAN TEXT & SIMPLE LINE) --- */}
-        <div className="flex justify-between items-start pb-4 border-b border-black">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-black text-black tracking-tight">
-              {shop.name}
-            </h1>
-            <p className="text-xs font-bold text-slate-700">
-              {shop.tagline}
-            </p>
-            <p className="text-xs font-bold text-slate-800 pt-1">
-              📍 {shop.address} • 📞 {shop.phone}
+        {/* --- 1. HEADER (LOGO, SHOP DETAILS & INVOICE META BOX) --- */}
+        <div className="grid grid-cols-12 gap-2 items-center border-b pb-3 border-slate-300">
+          
+          {/* Shop Logo & Address */}
+          <div className="col-span-5 flex items-start gap-3">
+            {/* Building Icon Logo */}
+            <div className="shrink-0 pt-1">
+              <svg className="w-12 h-12" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="8" y="20" width="14" height="38" rx="2" fill="#64748B" />
+                <rect x="25" y="10" width="16" height="48" rx="2" fill="#2563EB" />
+                <rect x="44" y="28" width="12" height="30" rx="2" fill="#CBD5E1" />
+                <path d="M25 10L33 2L41 10H25Z" fill="#1D4ED8" />
+              </svg>
+            </div>
+
+            <div className="space-y-0.5 text-xs text-slate-700 font-medium">
+              <h1 className="text-xl font-black text-slate-900 tracking-tight leading-tight">
+                {shop.name}
+              </h1>
+              <p className="text-[11px] font-bold text-blue-700">
+                {shop.tagline}
+              </p>
+              <p className="pt-0.5 text-[11px] leading-tight">
+                📍 {shop.address}
+              </p>
+              <p className="text-[11px]">
+                📞 {toBengaliDigits(shop.phone)}
+              </p>
+              {shop.email && (
+                <p className="text-[11px] text-slate-600 font-mono">
+                  ✉️ {shop.email}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Center Document Title */}
+          <div className="col-span-3 text-center">
+            <h2 className="text-3xl font-black text-slate-900 tracking-wide font-bengali">
+              ক্রয় চালান
+            </h2>
+            <p className="text-xs font-black text-blue-700 tracking-wider font-mono uppercase mt-0.5">
+              (PURCHASE INVOICE)
             </p>
           </div>
 
-          <div className="text-right text-xs font-bold space-y-1 shrink-0">
-            <h2 className="text-xl font-black text-black uppercase tracking-wider">{memoTitle}</h2>
-            <p className="pt-1">আইডি: <span className="font-mono font-black text-sm">{memoNo}</span></p>
-            <p>তারিখ: <span>{dateStr}</span></p>
-            <p>সময়: <span className="font-mono">{timeStr}</span></p>
-            <p className="font-black text-sm pt-1">
-              [{isPaid ? 'পরিশোধিত' : 'বকেয়া আছে'}]
-            </p>
+          {/* Right Header Box */}
+          <div className="col-span-4 text-right">
+            <div className="border border-slate-400 rounded-lg p-2.5 bg-white text-xs font-bold text-slate-800 space-y-1 inline-block text-left w-full max-w-[240px]">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-700">চালান নম্বর</span>
+                <span>: <span className="font-mono font-black">{memoNo}</span></span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-700">চালানের তারিখ</span>
+                <span>: <span className="font-mono">{dateStr}</span></span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-700">চালানের ধরন</span>
+                <span>: <span className="font-bold text-blue-700">ক্রয় ইনভয়েস</span></span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-700">পেমেন্ট স্ট্যাটাস</span>
+                <span>: <span className={cn("font-bold", isPaid ? "text-emerald-700" : isPartial ? "text-amber-700" : "text-rose-700")}>{paymentStatusText}</span></span>
+              </div>
+              {invoice.purchaseId && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-700">রেফারেন্স / চালানি</span>
+                  <span>: <span className="font-mono">{toBengaliDigits(invoice.purchaseId)}</span></span>
+                </div>
+              )}
+            </div>
           </div>
+
         </div>
 
-        {/* --- 2. PARTY INFO (CLEAN WITHOUT BOXES) --- */}
-        <div className="grid grid-cols-12 gap-4 text-xs font-bold text-black border-b border-slate-300 pb-4">
-          <div className="col-span-7 space-y-1.5">
-            <div className="flex items-baseline gap-2">
-              <span className="w-24 shrink-0 font-black text-slate-600">{partyTitle}:</span>
-              <span className="font-black text-sm">{invoice.supplierName || invoice.businessName || 'নগদ সরবরাহকারী'}</span>
+        {/* --- 2. SUPPLIER DETAILS & DELIVERY DETAILS (SIDE BY SIDE CARDS) --- */}
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          
+          {/* Supplier / Vendor Details Box */}
+          <div className="border border-slate-300 rounded-lg p-2.5 bg-white space-y-1.5">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 pb-1 border-b border-slate-200">
+              <User className="w-3.5 h-3.5 text-blue-700" />
+              <span>সরবরাহকারী / কোম্পানির বিবরণ</span>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="w-24 shrink-0 font-black text-slate-600">মোবাইল:</span>
-              <span className="font-mono">{invoice.supplierPhone || '—'}</span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="w-24 shrink-0 font-black text-slate-600">ঠিকানা:</span>
-              <span>{invoice.supplierAddress || '—'}</span>
+            
+            <div className="space-y-1 font-medium text-slate-800">
+              <div className="flex">
+                <span className="w-28 shrink-0 font-bold text-slate-900">সরবরাহকারীর নাম</span>
+                <span className="shrink-0 px-1">:</span>
+                <span className="font-bold text-slate-900">{invoice.supplierName || 'সাধারণ সরবরাহকারী'}</span>
+              </div>
+              {invoice.businessName && (
+                <div className="flex">
+                  <span className="w-28 shrink-0 text-slate-700">কোম্পানির নাম</span>
+                  <span className="shrink-0 px-1">:</span>
+                  <span className="font-bold text-blue-700">{invoice.businessName}</span>
+                </div>
+              )}
+              {invoice.contactPerson && (
+                <div className="flex">
+                  <span className="w-28 shrink-0 text-slate-700">প্রোপ্রাইটর / কন্টাক্ট</span>
+                  <span className="shrink-0 px-1">:</span>
+                  <span>{invoice.contactPerson}</span>
+                </div>
+              )}
+              <div className="flex">
+                <span className="w-28 shrink-0 text-slate-700">মোবাইল নম্বর</span>
+                <span className="shrink-0 px-1">:</span>
+                <span className="font-mono">{invoice.supplierPhone ? toBengaliDigits(invoice.supplierPhone) : '—'}</span>
+              </div>
+              <div className="flex">
+                <span className="w-28 shrink-0 text-slate-700">ঠিকানা</span>
+                <span className="shrink-0 px-1">:</span>
+                <span className="leading-tight">{invoice.supplierAddress || '—'}</span>
+              </div>
+              <div className="flex pt-1 border-t border-slate-100">
+                <span className="w-28 shrink-0 font-bold text-rose-700">পূর্বের পাওনা/বকেয়া</span>
+                <span className="shrink-0 px-1">:</span>
+                <span className="font-mono font-bold text-rose-700">৳ {toBengaliDigits(effectivePreviousSupplierDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+              </div>
             </div>
           </div>
 
-          <div className="col-span-5 space-y-1.5 text-right">
-            {effectiveVehicleNo && <div><span className="text-slate-600 font-black">গাড়ি নং: </span><span className="font-mono">{effectiveVehicleNo}</span></div>}
-            {effectiveDriverName && <div><span className="text-slate-600 font-black">ড্রাইভার: </span>{effectiveDriverName}</div>}
-            {effectiveDeliveryAddress && <div><span className="text-slate-600 font-black">সাইট: </span>{effectiveDeliveryAddress}</div>}
+          {/* Delivery / Transport Details Box */}
+          <div className="border border-slate-300 rounded-lg p-2.5 bg-white space-y-1.5">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 pb-1 border-b border-slate-200">
+              <Truck className="w-3.5 h-3.5 text-blue-700" />
+              <span>পরিবহন ও ডেলিভারি বিবরণী</span>
+            </div>
+            
+            <div className="space-y-1 font-medium text-slate-800">
+              <div className="flex">
+                <span className="w-32 shrink-0 font-bold text-slate-900">গাড়ি / ট্রাক নম্বর</span>
+                <span className="shrink-0 px-1">:</span>
+                <span className="font-bold text-slate-900">{effectiveVehicleNo ? toBengaliDigits(effectiveVehicleNo) : '—'}</span>
+              </div>
+              <div className="flex">
+                <span className="w-32 shrink-0 text-slate-700">ড্রাইভারের নাম</span>
+                <span className="shrink-0 px-1">:</span>
+                <span>{effectiveDriverName || '—'}</span>
+              </div>
+              <div className="flex">
+                <span className="w-32 shrink-0 text-slate-700">ড্রাইভার মোবাইল</span>
+                <span className="shrink-0 px-1">:</span>
+                <span className="font-mono">{effectiveDriverPhone ? toBengaliDigits(effectiveDriverPhone) : '—'}</span>
+              </div>
+              <div className="flex">
+                <span className="w-32 shrink-0 text-slate-700">আনলোডিং সাইট / স্থান</span>
+                <span className="shrink-0 px-1">:</span>
+                <span>{effectiveDeliveryAddress || '—'}</span>
+              </div>
+              <div className="flex">
+                <span className="w-32 shrink-0 text-slate-700">গুদাম / ডিপো</span>
+                <span className="shrink-0 px-1">:</span>
+                <span>{effectiveWarehouse}</span>
+              </div>
+              <div className="flex">
+                <span className="w-32 shrink-0 text-slate-700">রেকর্ডকারী</span>
+                <span className="shrink-0 px-1">:</span>
+                <span>{effectivePreparedBy}</span>
+              </div>
+            </div>
           </div>
+
         </div>
 
-        {/* --- 3. PRODUCT TABLE (SIMPLE CLEAN LINES, NO VERTICAL GRID BOXES) --- */}
+        {/* --- 3. ITEM DETAILS TABLE --- */}
         <div>
-          <table className="w-full text-xs sm:text-sm text-black border-collapse">
+          <div className="flex items-center justify-between gap-1.5 text-xs font-bold text-blue-700 py-1">
+            <div className="flex items-center gap-1.5">
+              <ClipboardList className="w-3.5 h-3.5 text-blue-700" />
+              <span>ক্রয়কৃত পণ্যের বিবরণী (Item Details)</span>
+            </div>
+            <span className="text-[10px] font-normal text-slate-500">(লেবার ও গাড়ি ভাড়া ছাড়া মূল একক ও হিসাবকৃত মোট মূল্য)</span>
+          </div>
+
+          <table className="w-full text-xs border-collapse border border-slate-400">
             <thead>
-              <tr className="border-y-2 border-black font-black text-left">
-                <th className="py-2 px-1 text-center w-[6%]">#</th>
-                <th className="py-2 px-2 text-left w-[46%]">পণ্যের বিবরণ</th>
-                <th className="py-2 px-2 text-center w-[14%]">পরিমাণ</th>
-                <th className="py-2 px-2 text-right w-[16%]">একক দর (৳)</th>
-                <th className="py-2 px-2 text-right w-[18%]">মোট টাকা (৳)</th>
+              <tr className="bg-slate-100 font-bold border border-slate-400 text-slate-900 text-center">
+                <th className="border border-slate-400 py-1.5 px-1 w-[6%]">ক্রমিক</th>
+                <th className="border border-slate-400 py-1.5 px-2 text-left w-[30%]">পণ্যের নাম (Product)</th>
+                <th className="border border-slate-400 py-1.5 px-2 w-[14%]">ব্র্যান্ড</th>
+                <th className="border border-slate-400 py-1.5 px-2 w-[14%]">সাইজ / গ্রেড</th>
+                <th className="border border-slate-400 py-1.5 px-2 w-[12%]">পরিমাণ</th>
+                <th className="border border-slate-400 py-1.5 px-2 w-[8%]">একক</th>
+                <th className="border border-slate-400 py-1.5 px-2 text-right w-[12%]">একক মূল্য (৳)</th>
+                <th className="border border-slate-400 py-1.5 px-2 text-right w-[14%]">মোট মূল্য (৳)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200">
-              {items.map((item, idx) => {
-                const itemTotal = (item.price - (item.discount || 0)) * item.quantity;
-                const bundleInfo = item.bundle ? `(${toBengaliDigits(item.bundle)} বান্ডিল)` : item.pieces ? `(${toBengaliDigits(item.pieces)} পিস)` : '';
-                return (
-                  <tr key={idx} className="hover:bg-slate-50">
-                    <td className="py-2 px-1 text-center font-bold text-slate-600">
-                      {toBengaliDigits(idx + 1)}
-                    </td>
-                    <td className="py-2 px-2 text-left font-black">
-                      <span>{item.name}</span> <span className="text-slate-600 font-semibold">{bundleInfo}</span>
-                    </td>
-                    <td className="py-2 px-2 text-center font-black">
-                      {toBengaliDigits(item.quantity.toLocaleString('en-IN'))} {item.unit || 'পিস'}
-                    </td>
-                    <td className="py-2 px-2 text-right font-bold">
-                      ৳ {toBengaliDigits(item.price.toLocaleString('en-IN'))}
-                    </td>
-                    <td className="py-2 px-2 text-right font-black">
-                      ৳ {toBengaliDigits(itemTotal.toLocaleString('en-IN'))}
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {/* Labor Row */}
-              {laborCost > 0 && (
-                <tr className="border-t border-slate-200">
-                  <td className="py-2 px-1 text-center font-bold text-slate-500">-</td>
-                  <td className="py-2 px-2 text-left font-bold">নামানো / লেবার খরচ</td>
-                  <td className="py-2 px-2 text-center font-bold">-</td>
-                  <td className="py-2 px-2 text-right font-bold">-</td>
-                  <td className="py-2 px-2 text-right font-black">৳ {toBengaliDigits(laborCost.toLocaleString('en-IN'))}</td>
+            <tbody className="divide-y divide-slate-300">
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-6 text-center text-slate-400 font-bold">
+                    কোনো পণ্য রেকর্ড করা হয়নি
+                  </td>
                 </tr>
-              )}
+              ) : (
+                items.map((item, idx) => {
+                  const storedPrice = Number(item.price || 0);
+                  const itemQty = Number(item.quantity || 0);
 
-              {/* Transport Row */}
-              {transportCost > 0 && (
-                <tr className="border-t border-slate-200">
-                  <td className="py-2 px-1 text-center font-bold text-slate-500">-</td>
-                  <td className="py-2 px-2 text-left font-bold">গাড়ি ভাড়া / পরিবহন খরচ</td>
-                  <td className="py-2 px-2 text-center font-bold">-</td>
-                  <td className="py-2 px-2 text-right font-bold">-</td>
-                  <td className="py-2 px-2 text-right font-black">৳ {toBengaliDigits(transportCost.toLocaleString('en-IN'))}</td>
-                </tr>
+                  const baseUnitPrice = isStoredAsLandedCost 
+                    ? Math.max(0, storedPrice - extraPerUnit) 
+                    : storedPrice;
+
+                  const landedUnitPrice = isStoredAsLandedCost 
+                    ? storedPrice 
+                    : baseUnitPrice + extraPerUnit;
+
+                  const baseItemTotal = baseUnitPrice * itemQty;
+                  const landedItemTotal = landedUnitPrice * itemQty;
+
+                  return (
+                    <tr key={idx} className="text-slate-900 font-medium">
+                      <td className="border border-slate-300 py-1.5 px-1 text-center font-mono">{toBengaliDigits(idx + 1)}</td>
+                      <td className="border border-slate-300 py-1.5 px-2 text-left font-bold">
+                        {item.name}
+                        {item.bundle && <span className="text-[10px] text-slate-500 block">({toBengaliDigits(item.bundle)} বান্ডিল)</span>}
+                      </td>
+                      <td className="border border-slate-300 py-1.5 px-2 text-center">{item.brand || '—'}</td>
+                      <td className="border border-slate-300 py-1.5 px-2 text-center">{item.variant || '—'}</td>
+                      <td className="border border-slate-300 py-1.5 px-2 text-center font-mono font-bold">{toBengaliDigits(itemQty.toLocaleString('en-IN'))}</td>
+                      <td className="border border-slate-300 py-1.5 px-2 text-center">{item.unit || 'পিস'}</td>
+                      <td className="border border-slate-300 py-1.5 px-2 text-right font-mono">
+                        <div className="font-bold">৳ {toBengaliDigits(baseUnitPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</div>
+                        {extraPerUnit > 0 && (
+                          <div className="text-[9px] text-blue-700 font-extrabold" title="লেবার ও শিপিং ভাড়া সহ কার্যকর একক দর">
+                            (খরচসহ ৳ {toBengaliDigits(landedUnitPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 }))})
+                          </div>
+                        )}
+                      </td>
+                      <td className="border border-slate-300 py-1.5 px-2 text-right font-mono font-bold">
+                        <div className="font-bold">৳ {toBengaliDigits(baseItemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</div>
+                        {extraPerUnit > 0 && (
+                          <div className="text-[9px] text-blue-700 font-extrabold" title="লেবার ও শিপিং ভাড়া সহ কার্যকর মোট বিল">
+                            (খরচসহ ৳ {toBengaliDigits(landedItemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }))})
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
-
-          {/* Subtotal Summary Bar */}
-          <div className="flex justify-between items-center border-t-2 border-black pt-2 font-black text-xs text-black">
-            <span>মোট মালামাল পরিমাণ: {totalQuantitySummary || '০ পিস'}</span>
-            <span className="text-sm">মোট ইনভয়েস বিল: ৳ {toBengaliDigits(totalAmount.toLocaleString('en-IN'))}</span>
-          </div>
         </div>
 
-        {/* --- 4. FINANCIAL BREAKDOWN & WORDS --- */}
-        <div className="grid grid-cols-12 gap-4 items-start pt-2 text-black font-bold text-xs">
-          {/* Left Column */}
+        {/* --- 4. WORDS, PAYMENT INFO, REMARKS & CALCULATIONS TABLE --- */}
+        <div className="grid grid-cols-12 gap-3 items-start text-xs pt-1">
+          
+          {/* Left Column (Words + Payment Info + Remarks) */}
           <div className="col-span-7 space-y-2">
-            <div>
-              <p className="font-black text-[11px] text-slate-600">টাকা (কথায়):</p>
-              <p className="font-black text-sm pt-0.5">
-                {numberToBengaliWords(totalAmount)} টাকা মাত্র।
+            
+            {/* Amount in words */}
+            <div className="font-bold text-xs text-slate-800 font-bengali">
+              মোট (কথায়): <span className="font-black">{numberToBengaliWords(totalAmount)} টাকা মাত্র।</span>
+            </div>
+
+            {/* Payment Information Box */}
+            <div className="border border-slate-300 rounded-lg p-2.5 bg-white space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 pb-1 border-b border-slate-200">
+                <CreditCard className="w-3.5 h-3.5 text-blue-700" />
+                <span>পেমেন্ট বিবরণী</span>
+              </div>
+              <div className="space-y-0.5 font-medium text-slate-800 pt-0.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-700">পেমেন্ট মাধ্যম</span>
+                  <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                    {isBankToBank ? '🔄 ব্যাংক-টু-ব্যাংক ট্রান্সফার' :
+                     isBank ? '🏦 ব্যাংক ট্রান্সফার' :
+                     isCheque ? '📄 চেক (Cheque)' :
+                     isSplit ? '💵+📄 স্প্লিট পেমেন্ট (ক্যাশ ও চেক)' :
+                     '💵 নগদ (Cash)'}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-700">আজকের পরিশোধিত জমা</span>
+                  <span className="font-mono font-bold text-emerald-600">৳ {toBengaliDigits(paidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+                </div>
+
+                {isSplit && (
+                  <div className="p-1.5 bg-slate-50 rounded border border-slate-200 my-1 space-y-0.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-600">• নগদ জমা</span>
+                      <span className="font-mono font-bold text-emerald-700">৳ {toBengaliDigits(cashPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-600">• চেক জমা</span>
+                      <span className="font-mono font-bold text-blue-700">৳ {toBengaliDigits(chequePaid.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+                    </div>
+                  </div>
+                )}
+
+                {(isBank || isBankToBank) && (
+                  <div className="p-1.5 bg-blue-50/70 border border-blue-200 rounded my-1 space-y-0.5 text-blue-950">
+                    {shopBank && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">• প্রেরক শপ ব্যাংক</span>
+                        <span className="font-bold font-mono">{shopBank}</span>
+                      </div>
+                    )}
+                    {supplierBank && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">• গ্রহীতা ব্যাংক (সাপ্লায়ার)</span>
+                        <span className="font-bold font-mono">{supplierBank}</span>
+                      </div>
+                    )}
+                    {supplierAcc && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">• অ্যাকাউন্ট নং</span>
+                        <span className="font-mono font-bold">{toBengaliDigits(supplierAcc)}</span>
+                      </div>
+                    )}
+                    {txnRef && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">• Txn / Ref ID</span>
+                        <span className="font-mono font-bold">{toBengaliDigits(txnRef)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {(isCheque || isSplit) && (chqNo || chqDate) && (
+                  <div className="p-1.5 bg-slate-50 border border-slate-200 rounded my-1 space-y-0.5">
+                    {chqNo && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">• চেক নম্বর</span>
+                        <span className="font-mono font-bold">{toBengaliDigits(chqNo)}</span>
+                      </div>
+                    )}
+                    {chqDate && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">• চেকের তারিখ</span>
+                        <span className="font-mono font-bold">{toBengaliDigits(chqDate)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-start pt-1">
+                  <span className="w-28 shrink-0 text-slate-700">নোট / বিবরণ</span>
+                  <span className="shrink-0 px-1">:</span>
+                  <span className="font-bengali text-slate-800 leading-tight">
+                    {cleanUserNote || (isPaid ? 'চালানটি সম্পূর্ণ পরিশোধিত।' : `বাকি ৳ ${toBengaliDigits(finalGrandDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))} পরে পরিশোধযোগ্য।`)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Notes / Remarks Box */}
+            <div className="border border-slate-300 rounded-lg p-2.5 bg-white space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 pb-1 border-b border-slate-200">
+                <Edit3 className="w-3.5 h-3.5 text-blue-700" />
+                <span>বিশেষ দ্রষ্টব্য / নোট</span>
+              </div>
+              <p className="font-bengali text-slate-800 text-[11px] pt-0.5">
+                • পণ্যসমূহ সঠিক গুণগত মান ও সংখ্যা যাচাইপূর্বক গুদামে রিসিভ করা হয়েছে।
               </p>
             </div>
 
-            <div className="pt-2 text-slate-700 text-xs space-y-1">
-              {(() => {
-                const pmRaw = effectivePaymentMethodName || 'Cash';
-                const pmLower = pmRaw.toLowerCase();
-                const isBankToBank = pmLower.includes('banktobank') || pmLower.includes('ব্যাংক-টু-ব্যাংক');
-                const isBank = pmLower.includes('bank') || pmLower.includes('ব্যাংক');
-                const isCheque = pmLower.includes('cheque') || pmLower.includes('check') || pmLower.includes('চেক');
-
-                let displayMethod = '💵 নগদ (Cash)';
-                if (isBankToBank) displayMethod = '🔄 ব্যাংক-টু-ব্যাংক ট্রান্সফার (Bank-to-Bank)';
-                else if (isBank) displayMethod = '🏦 ব্যাংক ট্রান্সফার (Bank Transfer)';
-                else if (isCheque) displayMethod = '📄 চেক (Cheque)';
-                else if (pmLower.includes('mobile')) displayMethod = '📱 মোবাইল ব্যাংকিং';
-
-                const shopBank = meta.selectedShopBank || meta.bankName || invoice.chequeNo ? '' : '';
-                const suppBank = meta.supplierBankName || '';
-                const suppAcc = meta.supplierAccountNo || '';
-                const txnRef = meta.transactionRef || meta.supplierTxnRef || '';
-                const chqNo = invoice.chequeNo || meta.chequeNo || '';
-                const chqDate = invoice.chequeDate || meta.chequeDate || '';
-
-                return (
-                  <div className="space-y-1 border-t border-slate-200 pt-2 mt-2">
-                    <p className="font-bold">
-                      পেমেন্ট মাধ্যম: <span className="font-black text-black">{displayMethod}</span>
-                    </p>
-
-                    {isBankToBank && (
-                      <div className="bg-slate-50 p-2 rounded border border-slate-200 text-[11px] space-y-0.5 mt-1 font-mono">
-                        {meta.selectedShopBank && <p>• প্রেরক (দোকান ব্যাংক): {meta.selectedShopBank}</p>}
-                        {suppBank && <p>• গ্রহীতা ব্যাংক: {suppBank} {suppAcc ? `(A/C: ${suppAcc})` : ''}</p>}
-                        {txnRef && <p>• Txn/Ref ID: {txnRef}</p>}
-                      </div>
-                    )}
-
-                    {isBank && !isBankToBank && (
-                      <div className="bg-slate-50 p-2 rounded border border-slate-200 text-[11px] space-y-0.5 mt-1 font-mono">
-                        {meta.selectedShopBank && <p>• ব্যাংক A/C: {meta.selectedShopBank}</p>}
-                        {txnRef && <p>• Txn ID: {txnRef}</p>}
-                      </div>
-                    )}
-
-                    {isCheque && (
-                      <div className="bg-slate-50 p-2 rounded border border-slate-200 text-[11px] space-y-0.5 mt-1 font-mono">
-                        {chqNo && <p>• চেক নম্বর: {chqNo}</p>}
-                        {chqDate && <p>• তারিখ: {chqDate}</p>}
-                      </div>
-                    )}
-
-                    {cleanUserNote && (
-                      <p className="pt-1 text-[11px] font-medium text-slate-700">
-                        <strong className="text-black">নোট:</strong> {cleanUserNote}
-                      </p>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
           </div>
 
-          {/* Right Column (Calculation Alignment) */}
-          <div className="col-span-5 space-y-1.5 text-xs font-bold border-t border-b border-black py-2">
-            <div className="flex justify-between items-center">
-              <span className="text-slate-700">চালান মূল্য:</span>
-              <span className="font-black">৳ {toBengaliDigits(subtotal.toLocaleString('en-IN'))}</span>
-            </div>
-
-            {discount > 0 && (
-              <div className="flex justify-between items-center">
-                <span className="text-slate-700">বিশেষ ছাড় (Discount):</span>
-                <span className="font-black">- ৳ {toBengaliDigits(discount.toLocaleString('en-IN'))}</span>
+          {/* Right Column (Calculations Grid Table) */}
+          <div className="col-span-5">
+            <div className="border border-slate-400 font-bold text-xs divide-y divide-slate-300 bg-white">
+              
+              <div className="flex justify-between items-center p-1.5 px-2">
+                <span className="text-slate-800 font-medium">পণ্যের মোট মূল্য (Subtotal)</span>
+                <span className="font-mono">৳ {toBengaliDigits(subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
               </div>
-            )}
 
-            <div className="flex justify-between items-center font-black text-sm pt-1 border-t border-slate-300">
-              <span>সর্বমোট পাওনা:</span>
-              <span>৳ {toBengaliDigits(totalAmount.toLocaleString('en-IN'))}</span>
-            </div>
+              {effectiveShippingCost > 0 && (
+                <div className="flex justify-between items-center p-1.5 px-2">
+                  <span className="text-slate-800 font-medium">+ পরিবহন ভাড়া / গাড়ি ভাড়া</span>
+                  <span className="font-mono">+ ৳ {toBengaliDigits(effectiveShippingCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+                </div>
+              )}
 
-            <div className="flex justify-between items-center">
-              <span className="text-slate-700">পরিশোধিত / জমা:</span>
-              <span className="font-black">৳ {toBengaliDigits(paidAmount.toLocaleString('en-IN'))}</span>
-            </div>
+              {effectiveLaborCost > 0 && (
+                <div className="flex justify-between items-center p-1.5 px-2">
+                  <span className="text-slate-800 font-medium">+ আনলোডিং / লেবার খরচ</span>
+                  <span className="font-mono">+ ৳ {toBengaliDigits(effectiveLaborCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+                </div>
+              )}
 
-            <div className="flex justify-between items-center font-black text-sm pt-1 border-t border-slate-300">
-              <span>অবশিষ্ট বকেয়া:</span>
-              <span>৳ {toBengaliDigits(dueAmount.toLocaleString('en-IN'))}</span>
+              {effectiveDiscount > 0 && (
+                <div className="flex justify-between items-center p-1.5 px-2 text-rose-600">
+                  <span className="text-slate-800 font-medium">- বিশেষ ছাড় (Discount)</span>
+                  <span className="font-mono">- ৳ {toBengaliDigits(effectiveDiscount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center p-2 px-2 text-xs bg-slate-100 font-black text-slate-900 border-t border-b border-slate-400">
+                <span>চালান মোট ক্রয় বিল (Total Purchase Bill)</span>
+                <span className="font-mono text-sm">৳ {toBengaliDigits(totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+              </div>
+
+              <div className="flex justify-between items-center p-1.5 px-2 text-rose-700">
+                <span className="text-slate-800 font-medium">+ পূর্বের পাওনা / বকেয়া (Supplier Due)</span>
+                <span className="font-mono font-bold">+ ৳ {toBengaliDigits(effectivePreviousSupplierDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+              </div>
+
+              <div className="flex justify-between items-center p-2 px-2 text-xs bg-blue-50 font-black text-blue-950 border-t border-b border-blue-200">
+                <span>সর্বমোট প্রদেয় বিল (বকেয়াসহ)</span>
+                <span className="font-mono text-sm">৳ {toBengaliDigits(grandTotalPayable.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+              </div>
+
+              <div className="flex justify-between items-center p-1.5 px-2 text-emerald-600 font-bold">
+                <span>- আজকের পরিশোধিত জমা (Paid Amount)</span>
+                <span className="font-mono">- ৳ {toBengaliDigits(paidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+              </div>
+
+              <div className="flex justify-between items-center p-2 px-2 text-sm text-rose-600 font-black bg-rose-50 border-t border-rose-200">
+                <span>সর্বশেষ অবশিষ্ট দেনা (Grand Total Due)</span>
+                <span className="font-mono text-base">৳ {toBengaliDigits(finalGrandDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+              </div>
+
             </div>
           </div>
+
         </div>
 
-        {/* --- 5. SIGNATURES & NOTICE --- */}
-        <div className="pt-10 space-y-4 text-black">
-          <div className="grid grid-cols-3 gap-4 text-center text-xs font-bold">
-            <div>
-              <div className="w-36 mx-auto border-t border-black pt-1 font-black">
-                {partyTitle}র স্বাক্ষর
-              </div>
-            </div>
-            <div>
-              <div className="w-36 mx-auto border-t border-black pt-1 font-black">
-                প্রস্তুতকারী (অপারেটর)
-              </div>
-            </div>
-            <div>
-              <div className="w-40 mx-auto border-t border-black pt-1 font-black">
-                পক্ষে- {shop.name}
-              </div>
-            </div>
+        {/* --- 5. SIGNATURES (4 EQUAL COLUMNS) --- */}
+        <div className="grid grid-cols-4 gap-2 text-center text-xs font-bold pt-3 pb-1 border-t border-slate-300 mt-2 keep-together">
+          
+          <div>
+            <p className="font-bold text-slate-900 font-bengali">প্রস্তুতকারীর স্বাক্ষর</p>
+            <p className="text-[10px] text-slate-500 font-bengali font-semibold">(রেকর্ডকারী)</p>
+            <div className="w-28 mx-auto border-b border-dashed border-slate-400 my-2" />
+            <p className="font-bold text-slate-800 font-bengali">{effectivePreparedBy}</p>
+            <p className="text-[10px] text-slate-600 font-mono font-medium mt-0.5">তারিখ: {dateStr}</p>
           </div>
 
-          {/* System Generated Invoice Notice */}
-          <div className="pt-3 border-t border-slate-300 text-center text-[10px] font-bold text-slate-600">
-            বিঃ দ্রঃ— এটি একটি কম্পিউটারাইজড অটো-জেনারেটেড অফিশিয়াল ক্রয় ইনভয়েস চালান।
+          <div>
+            <p className="font-bold text-slate-900 font-bengali">হিসাব রক্ষকের স্বাক্ষর</p>
+            <p className="text-[10px] text-slate-500 font-bengali font-semibold">(যাচাইকৃত)</p>
+            <div className="w-28 mx-auto border-b border-dashed border-slate-400 my-2" />
+            <p className="font-bold text-slate-800 font-bengali">{effectiveAuthorizedBy}</p>
+            <p className="text-[10px] text-slate-600 font-mono font-medium mt-0.5">তারিখ: {dateStr}</p>
           </div>
 
-          {/* Software Company Branding & Promotion Footer */}
-          <div className="pt-2 border-t border-dashed border-slate-300 flex items-center justify-between text-[10px] font-bold text-slate-500">
-            <div className="flex items-center gap-1.5">
-              <span className="bg-slate-900 text-white text-[9px] px-1.5 py-0.5 rounded font-mono font-black uppercase tracking-wider">DEV</span>
-              <span>Software Developed By: <strong className="text-black font-black">{shop.softwareCompany || shop.software || 'Hasanah Tech Solution'}</strong></span>
-            </div>
-            <div className="flex items-center gap-3">
-              {shop.softwareWebsite && (
-                <span>🌐 <strong className="text-slate-800 font-mono font-bold">{shop.softwareWebsite}</strong></span>
-              )}
-              {shop.softwarePhone && (
-                <span>📞 ডেভেলপার হেল্পলাইন: <strong className="text-black font-mono font-black">{shop.softwarePhone}</strong></span>
-              )}
-            </div>
+          <div>
+            <p className="font-bold text-slate-900 font-bengali">ব্যবস্থাপকের স্বাক্ষর</p>
+            <p className="text-[10px] text-slate-500 font-bengali font-semibold">(অনুমোদিত)</p>
+            <div className="w-28 mx-auto border-b border-dashed border-slate-400 my-2" />
+            <p className="font-bold text-slate-800 font-bengali">{effectiveReceivedBy}</p>
+            <p className="text-[10px] text-slate-600 font-mono font-medium mt-0.5">তারিখ: {dateStr}</p>
           </div>
+
+          <div>
+            <p className="font-bold text-slate-900 font-bengali">সরবরাহকারীর স্বাক্ষর</p>
+            <p className="text-[10px] text-slate-500 font-bengali font-semibold">(গ্রহীতার সই)</p>
+            <div className="w-28 mx-auto border-b border-slate-400 my-2" />
+            <p className="text-[10px] text-slate-600 font-mono font-medium mt-2">তারিখ: ____________</p>
+          </div>
+
         </div>
+
+        {/* --- 6. FOOTER (QR CODE, SOFTWARE BRANDING & BARCODE) --- */}
+        <div className="border-t border-slate-300 pt-3 flex items-center justify-between text-[11px] font-bold text-slate-700 keep-together">
+          
+          {/* Left QR Code & Thank You */}
+          <div className="flex items-center gap-2">
+            {/* SVG QR Code */}
+            <svg className="w-10 h-10 shrink-0 border border-slate-300 p-0.5 rounded" viewBox="0 0 32 32" fill="currentColor">
+              <rect x="2" y="2" width="10" height="10" fill="#000" />
+              <rect x="4" y="4" width="6" height="6" fill="#fff" />
+              <rect x="5" y="5" width="4" height="4" fill="#000" />
+              <rect x="20" y="2" width="10" height="10" fill="#000" />
+              <rect x="22" y="4" width="6" height="6" fill="#fff" />
+              <rect x="23" y="5" width="4" height="4" fill="#000" />
+              <rect x="2" y="20" width="10" height="10" fill="#000" />
+              <rect x="4" y="22" width="6" height="6" fill="#fff" />
+              <rect x="5" y="23" width="4" height="4" fill="#000" />
+              <rect x="14" y="2" width="4" height="4" fill="#000" />
+              <rect x="14" y="8" width="4" height="4" fill="#000" />
+              <rect x="14" y="14" width="4" height="4" fill="#000" />
+              <rect x="2" y="14" width="4" height="4" fill="#000" />
+              <rect x="20" y="14" width="4" height="4" fill="#000" />
+              <rect x="26" y="14" width="4" height="4" fill="#000" />
+              <rect x="14" y="20" width="4" height="4" fill="#000" />
+              <rect x="20" y="20" width="10" height="4" fill="#000" />
+            </svg>
+            <div>
+              <p className="font-bengali font-bold text-slate-900">ধন্যবাদ!</p>
+              <p className="text-[10px] text-slate-500 font-medium">আমদানিকৃত ও স্থানীয় নির্মাণ সামগ্রী সরবরাহকারী</p>
+            </div>
+          </div>
+
+          {/* Center Software Branding */}
+          <div className="text-center space-y-0.5">
+            <p className="text-[10px] text-slate-500 font-medium">Software Developed By:</p>
+            <p className="font-bold text-slate-900">{shop.softwareCompany || 'Hasanah Tech Solution'}</p>
+            <p className="text-[10px] font-mono text-slate-600">
+              📞 {toBengaliDigits(shop.softwarePhone || '01349345353')} | {shop.softwareWebsite || 'www.hasanahtech.vercel.app'}
+            </p>
+          </div>
+
+          {/* Right Barcode Simulation */}
+          <div className="text-right shrink-0">
+            <div className="inline-block bg-slate-900 px-2 py-1 rounded text-white font-mono text-[9px] tracking-widest font-black">
+              ||||| | |||| ||| ||||| |||||
+            </div>
+            <p className="text-[9px] font-mono text-slate-600 font-bold mt-0.5">
+              {memoNo}
+            </p>
+          </div>
+
+        </div>
+
       </div>
     </div>
   );

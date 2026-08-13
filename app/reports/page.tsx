@@ -21,7 +21,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { cn, fixMiliName, toBnNum, formatBnCurrency, formatDualStock } from '@/lib/utils';
-import { isToday, isSameMonth, isSameYear } from 'date-fns';
+import { isToday, isSameMonth, isSameYear, format } from 'date-fns';
+import { printElement } from '@/lib/printUtils';
 
 interface OrderItem {
   id?: string;
@@ -159,6 +160,11 @@ function MasterReportsContent() {
   const [filterCustomer, setFilterCustomer] = useState<string>('all');
 
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Daily Topsheet & Daily Sales Statement States
+  const [topsheetDate, setTopsheetDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
+  const [salesStatementDate, setSalesStatementDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
+  const [salesCategoryFilter, setSalesCategoryFilter] = useState<string>('all');
 
   const [tradeTab, setTradeTab] = useState<'rod_buy' | 'rod_sell' | 'cement_buy' | 'cement_sell'>('rod_buy');
 
@@ -869,110 +875,501 @@ function MasterReportsContent() {
 
 
 
-            {/* 3. ডেইলী টপসিট */}
+            {/* 3. ডেইলী টপসিট (Daily Topsheet) */}
             {activeTab === 'daily_topsheet' && (() => {
-              const totalBankBal = banks.reduce((sum, b) => sum + (b.balance || 0), 0);
-              const totalCustDue = customers.reduce((sum, c) => sum + (c.totalDue || 0), 0);
-              const totalSuppDue = suppliers.reduce((sum, s) => sum + (s.totalDue || 0), 0);
-              const totalStockVal = products.reduce((sum, p) => sum + (p.stock * p.sellPrice), 0);
-              const totalAssets = totalBankBal + totalCustDue + totalStockVal;
-              const netProfitLoss = orders.reduce((s, o) => s + o.totalAmount, 0) - purchases.reduce((s, p) => s + (p.totalAmount || 0), 0) - expenses.reduce((s, e) => s + e.amount, 0);
+              const selectedDateStr = topsheetDate || format(new Date(), 'yyyy-MM-dd');
+              
+              // Filter orders/sales on selected date
+              const dayOrders = orders.filter(o => {
+                if (!o.createdAt) return false;
+                const d = new Date(o.createdAt);
+                return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === selectedDateStr;
+              });
+
+              // Filter purchases on selected date
+              const dayPurchases = purchases.filter(p => {
+                if (!p.createdAt) return false;
+                const d = new Date(p.createdAt);
+                return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === selectedDateStr;
+              });
+
+              // Filter expenses on selected date
+              const dayExpenses = expenses.filter(e => {
+                if (!e.createdAt && !e.date) return false;
+                const d = new Date(e.createdAt || e.date);
+                return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === selectedDateStr;
+              });
+
+              // Cash Inflows & Outflows
+              const cashSalesInflow = dayOrders.reduce((sum, o) => sum + (o.paidAmount || 0), 0);
+              const dueSalesTotal = dayOrders.reduce((sum, o) => sum + (o.dueAmount || 0), 0);
+              const totalDailySalesVal = dayOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+
+              const cashPurchaseOutflow = dayPurchases.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+              const expenseOutflow = dayExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+              const totalOutflow = cashPurchaseOutflow + expenseOutflow;
+              
+              const netCashDifference = cashSalesInflow - totalOutflow;
+
+              // Quantity summaries for Rod & Cement
+              let rodSoldKg = 0;
+              let cementSoldBags = 0;
+              dayOrders.forEach(o => {
+                (o.items || []).forEach(i => {
+                  const nameLower = (i.name || '').toLowerCase();
+                  const unitLower = (i.unit || '').toLowerCase();
+                  if (nameLower.includes('রড') || nameLower.includes('rod') || nameLower.includes('রিং') || unitLower.includes('কেজি') || unitLower.includes('টন')) {
+                    rodSoldKg += unitLower.includes('টন') ? i.quantity * 1000 : i.quantity;
+                  }
+                  if (nameLower.includes('সিমেন্ট') || nameLower.includes('cement') || unitLower.includes('বস্তা') || unitLower.includes('bag')) {
+                    cementSoldBags += i.quantity;
+                  }
+                });
+              });
+
+              let rodBoughtKg = 0;
+              let cementBoughtBags = 0;
+              dayPurchases.forEach(p => {
+                (p.items || []).forEach(i => {
+                  const nameLower = (i.name || '').toLowerCase();
+                  const unitLower = (i.unit || '').toLowerCase();
+                  if (nameLower.includes('রড') || nameLower.includes('rod') || nameLower.includes('রিং') || unitLower.includes('কেজি') || unitLower.includes('টন')) {
+                    rodBoughtKg += unitLower.includes('টন') ? i.quantity * 1000 : i.quantity;
+                  }
+                  if (nameLower.includes('সিমেন্ট') || nameLower.includes('cement') || unitLower.includes('বস্তা') || unitLower.includes('bag')) {
+                    cementBoughtBags += i.quantity;
+                  }
+                });
+              });
 
               return (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="space-y-6 animate-in fade-in duration-300 font-bengali">
+                  {/* TOP TOOLBAR & BREADCRUMB */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs">
                     <div>
-                      <h1 className="text-2xl font-black text-slate-900 tracking-tight">ডেইলী টপসিট</h1>
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold mt-1">
-                        <span>রিপোর্ট</span><span>&rsaquo;</span><span className="text-slate-900 font-bold">ডেইলী টপসিট</span>
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-black">
+                          <FileText className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h1 className="text-2xl font-black text-slate-900 tracking-tight">দৈনিক টপশিট (Daily Cash & Business Summary)</h1>
+                          <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                            নির্ধারিত তারিখের সকল ক্যাশ জমা, পেমেন্ট ও মালামালের সংক্ষেপ
+                          </p>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" onClick={() => window.print()} className="h-9 px-3 rounded-xl text-xs font-bold border-slate-200"><Printer className="w-4 h-4 mr-1" /> প্রিন্ট</Button>
-                      <button onClick={() => setActiveTab('hub')} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1"><ArrowLeft className="w-4 h-4 text-orange-500" /> সকল রিপোর্ট</button>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      {/* DATE PICKER */}
+                      <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-2xl border border-slate-200">
+                        <Calendar className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span className="text-xs font-bold text-slate-600">তারিখ:</span>
+                        <input
+                          type="date"
+                          value={selectedDateStr}
+                          onChange={e => setTopsheetDate(e.target.value)}
+                          className="bg-transparent text-xs font-black text-slate-900 focus:outline-none cursor-pointer"
+                        />
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        onClick={() => setTopsheetDate(format(new Date(), 'yyyy-MM-dd'))}
+                        className="h-9 px-3 rounded-xl text-xs font-bold border-slate-200 text-slate-700 bg-white"
+                      >
+                        আজকের দিন
+                      </Button>
+
+                      <Button
+                        onClick={() => printElement('printable-topsheet-wrapper')}
+                        className="h-9 px-4 rounded-xl text-xs font-black bg-slate-900 hover:bg-slate-800 text-white shadow-md flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Printer className="w-4 h-4 text-amber-400" /> প্রিন্ট টপশিট
+                      </Button>
+
+                      <button onClick={() => setActiveTab('hub')} className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1">
+                        <ArrowLeft className="w-4 h-4 text-orange-500" /> সকল রিপোর্ট
+                      </button>
                     </div>
                   </div>
 
+                  {/* 4 SUMMARY METRIC CARDS */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-center">
-                    <Card className="p-5 border-emerald-200 bg-emerald-50/40 rounded-2xl"><p className="text-xs font-bold text-emerald-800">মোট সম্পদ</p><p className="text-2xl font-black text-emerald-600 mt-1">{formatBnCurrency(totalAssets)}</p></Card>
-                    <Card className="p-5 border-rose-200 bg-rose-50/40 rounded-2xl"><p className="text-xs font-bold text-rose-800">মোট দায় (সাপ্লায়ার)</p><p className="text-2xl font-black text-rose-600 mt-1">{formatBnCurrency(totalSuppDue)}</p></Card>
-                    <Card className="p-5 border-blue-200 bg-blue-50/40 rounded-2xl"><p className="text-xs font-bold text-blue-800">মোট কাস্টমার পাওনা</p><p className="text-2xl font-black text-blue-600 mt-1">{formatBnCurrency(totalCustDue)}</p></Card>
-                    <Card className="p-5 border-teal-200 bg-teal-50/40 rounded-2xl"><p className="text-xs font-bold text-teal-800">নিট লাভ/ক্ষতি</p><p className="text-2xl font-black text-teal-600 mt-1">{formatBnCurrency(netProfitLoss)}</p></Card>
+                    <Card className="p-5 border-emerald-200 bg-gradient-to-br from-emerald-50 to-emerald-100/30 rounded-3xl shadow-xs">
+                      <p className="text-xs font-bold text-emerald-800">আজকের মোট ক্যাশ জমা (Inflow)</p>
+                      <p className="text-2xl font-black text-emerald-700 mt-1">{formatBnCurrency(cashSalesInflow)}</p>
+                      <p className="text-[10px] font-semibold text-emerald-600 mt-1">নগদ বিক্রি জমা</p>
+                    </Card>
+
+                    <Card className="p-5 border-rose-200 bg-gradient-to-br from-rose-50 to-rose-100/30 rounded-3xl shadow-xs">
+                      <p className="text-xs font-bold text-rose-800">আজকের মোট ক্যাশ খরচ (Outflow)</p>
+                      <p className="text-2xl font-black text-rose-700 mt-1">{formatBnCurrency(totalOutflow)}</p>
+                      <p className="text-[10px] font-semibold text-rose-600 mt-1">নগদ ক্রয় + দোকান খরচ</p>
+                    </Card>
+
+                    <Card className="p-5 border-indigo-200 bg-gradient-to-br from-indigo-50 to-indigo-100/30 rounded-3xl shadow-xs">
+                      <p className="text-xs font-bold text-indigo-800">আজকের নিট ক্যাশ উদ্বৃত্ত</p>
+                      <p className={`text-2xl font-black mt-1 ${netCashDifference >= 0 ? 'text-indigo-700' : 'text-rose-700'}`}>
+                        {formatBnCurrency(netCashDifference)}
+                      </p>
+                      <p className="text-[10px] font-semibold text-indigo-600 mt-1">জমা - খরচ</p>
+                    </Card>
+
+                    <Card className="p-5 border-amber-200 bg-gradient-to-br from-amber-50 to-amber-100/30 rounded-3xl shadow-xs">
+                      <p className="text-xs font-bold text-amber-800">আজকের সর্বমোট সেলস (বিক্রয়)</p>
+                      <p className="text-2xl font-black text-amber-700 mt-1">{formatBnCurrency(totalDailySalesVal)}</p>
+                      <p className="text-[10px] font-semibold text-amber-600 mt-1">নগদ + বাকী মোট ইনভয়েস বিল</p>
+                    </Card>
                   </div>
 
-                  <Card className="border-slate-200/90 rounded-2xl bg-white overflow-hidden shadow-xs">
-                    <Table>
-                      <TableHeader className="bg-slate-50 border-b border-slate-200">
-                        <TableRow>
-                          <TableHead className="font-black text-xs">অ্যাকাউন্ট কোড</TableHead>
-                          <TableHead className="font-black text-xs">অ্যাকাউন্ট নাম</TableHead>
-                          <TableHead className="font-black text-xs text-right px-6">শেষ ব্যালেন্স (৳)</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        <TableRow className="bg-slate-100/80 font-black text-xs text-slate-900"><TableCell colSpan={3} className="py-2.5 px-4">সম্পদ (Assets)</TableCell></TableRow>
-                        <TableRow className="border-b border-slate-100 text-xs"><TableCell className="font-mono font-bold text-slate-500">1020</TableCell><TableCell className="font-bold text-slate-900">ব্যাংক ব্যালেন্স</TableCell><TableCell className="text-right font-bold text-slate-900 px-6">{formatBnCurrency(totalBankBal)}</TableCell></TableRow>
-                        <TableRow className="border-b border-slate-100 text-xs"><TableCell className="font-mono font-bold text-slate-500">1030</TableCell><TableCell className="font-bold text-slate-900">কাস্টমারের পাওনা</TableCell><TableCell className="text-right font-bold text-slate-900 px-6">{formatBnCurrency(totalCustDue)}</TableCell></TableRow>
-                        <TableRow className="border-b border-slate-100 text-xs"><TableCell className="font-mono font-bold text-slate-500">1040</TableCell><TableCell className="font-bold text-slate-900">স্টক (পণ্য)</TableCell><TableCell className="text-right font-bold text-slate-900 px-6">{formatBnCurrency(totalStockVal)}</TableCell></TableRow>
+                  {/* MAIN SIDE-BY-SIDE TOPSHEET TABLE (INFLOW vs OUTFLOW) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* INFLOW TABLE */}
+                    <Card className="border-slate-200 rounded-3xl overflow-hidden bg-white shadow-xs">
+                      <div className="p-4 bg-emerald-600 text-white flex items-center justify-between">
+                        <h3 className="font-black text-base flex items-center gap-2">
+                          <TrendingUp className="w-5 h-5 text-emerald-200" /> ১. ক্যাশ জমা ও আয় বিবরণী (Inflow)
+                        </h3>
+                        <span className="text-xs font-bold bg-emerald-700 px-2.5 py-1 rounded-lg">জমা খাত</span>
+                      </div>
+                      <Table>
+                        <TableHeader className="bg-slate-50">
+                          <TableRow>
+                            <TableHead className="font-black text-xs">জমার খাত / বিবরণ</TableHead>
+                            <TableHead className="font-black text-xs text-right px-6">পরিমাণ (৳)</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          <TableRow className="border-b border-slate-100 text-xs">
+                            <TableCell className="font-bold text-slate-800">নগদ পণ্য বিক্রয় জমা (Cash Sales)</TableCell>
+                            <TableCell className="text-right font-black text-emerald-700 px-6">{formatBnCurrency(cashSalesInflow)}</TableCell>
+                          </TableRow>
+                          <TableRow className="border-b border-slate-100 text-xs">
+                            <TableCell className="font-bold text-slate-800">আজকের তৈরি বকেয়া (Customer Due Created)</TableCell>
+                            <TableCell className="text-right font-black text-slate-600 px-6">{formatBnCurrency(dueSalesTotal)}</TableCell>
+                          </TableRow>
+                          <TableRow className="bg-emerald-50/80 font-black text-xs text-emerald-900 border-t border-emerald-200">
+                            <TableCell className="py-3 px-4 font-black">সর্বমোট ক্যাশ কালেকশন (Cash Inflow)</TableCell>
+                            <TableCell className="text-right text-emerald-700 text-sm px-6 font-black">{formatBnCurrency(cashSalesInflow)}</TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </Card>
 
-                        <TableRow className="bg-slate-100/80 font-black text-xs text-slate-900"><TableCell colSpan={3} className="py-2.5 px-4">দায় (Liabilities)</TableCell></TableRow>
-                        <TableRow className="border-b border-slate-100 text-xs"><TableCell className="font-mono font-bold text-slate-500">2010</TableCell><TableCell className="font-bold text-slate-900">সাপ্লায়ারের পাওনা</TableCell><TableCell className="text-right font-bold text-rose-600 px-6">{formatBnCurrency(totalSuppDue)}</TableCell></TableRow>
-                      </TableBody>
-                    </Table>
+                    {/* OUTFLOW TABLE */}
+                    <Card className="border-slate-200 rounded-3xl overflow-hidden bg-white shadow-xs">
+                      <div className="p-4 bg-rose-600 text-white flex items-center justify-between">
+                        <h3 className="font-black text-base flex items-center gap-2">
+                          <Wallet className="w-5 h-5 text-rose-200" /> ২. ক্যাশ খরচ ও প্রদান বিবরণী (Outflow)
+                        </h3>
+                        <span className="text-xs font-bold bg-rose-700 px-2.5 py-1 rounded-lg">খরচ খাত</span>
+                      </div>
+                      <Table>
+                        <TableHeader className="bg-slate-50">
+                          <TableRow>
+                            <TableHead className="font-black text-xs">খরচের খাত / বিবরণ</TableHead>
+                            <TableHead className="font-black text-xs text-right px-6">পরিমাণ (৳)</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          <TableRow className="border-b border-slate-100 text-xs">
+                            <TableCell className="font-bold text-slate-800">নগদ পণ্য ক্রয় পরিশোধ (Cash Purchase)</TableCell>
+                            <TableCell className="text-right font-black text-rose-700 px-6">{formatBnCurrency(cashPurchaseOutflow)}</TableCell>
+                          </TableRow>
+                          <TableRow className="border-b border-slate-100 text-xs">
+                            <TableCell className="font-bold text-slate-800">দৈনন্দিন দোকান খরচ (Expenses)</TableCell>
+                            <TableCell className="text-right font-black text-rose-700 px-6">{formatBnCurrency(expenseOutflow)}</TableCell>
+                          </TableRow>
+                          <TableRow className="bg-rose-50/80 font-black text-xs text-rose-900 border-t border-rose-200">
+                            <TableCell className="py-3 px-4 font-black">সর্বমোট ক্যাশ প্রদান (Cash Outflow)</TableCell>
+                            <TableCell className="text-right text-rose-700 text-sm px-6 font-black">{formatBnCurrency(totalOutflow)}</TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </Card>
+                  </div>
+
+                  {/* ITEM MOVEMENT SUMMARY (ROD & CEMENT) */}
+                  <Card className="border-slate-200/90 rounded-3xl bg-white p-5 shadow-xs space-y-4">
+                    <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
+                      <Truck className="w-5 h-5 text-orange-600" /> আজকের মালামাল আদান-প্রদান সামারি (Daily Item Movement)
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="p-4 rounded-2xl bg-orange-50/70 border border-orange-200 space-y-1">
+                        <p className="text-xs font-bold text-orange-800">রড বিক্রয় (Rod Sold)</p>
+                        <p className="text-xl font-black text-orange-600">{formatDualStock(rodSoldKg, 'কেজি', 'রড').main}</p>
+                      </div>
+                      <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 space-y-1">
+                        <p className="text-xs font-bold text-blue-800">সিমেন্ট বিক্রয় (Cement Sold)</p>
+                        <p className="text-xl font-black text-blue-600">{toBnNum(cementSoldBags)} বস্তা</p>
+                      </div>
+                      <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-1">
+                        <p className="text-xs font-bold text-emerald-800">রড আগমন/ক্রয় (Rod Purchase)</p>
+                        <p className="text-xl font-black text-emerald-600">{formatDualStock(rodBoughtKg, 'কেজি', 'রড').main}</p>
+                      </div>
+                      <div className="p-4 rounded-2xl bg-purple-50/70 border border-purple-200 space-y-1">
+                        <p className="text-xs font-bold text-purple-800">সিমেন্ট আগমন/ক্রয় (Cement Purchase)</p>
+                        <p className="text-xl font-black text-purple-600">{toBnNum(cementBoughtBags)} বস্তা</p>
+                      </div>
+                    </div>
                   </Card>
+
+                  {/* PRINTABLE MEMO TEMPLATE WRAPPER */}
+                  <div className="hidden">
+                    <div id="printable-topsheet-wrapper" className="p-8 bg-white text-black font-bengali space-y-6">
+                      <div className="text-center border-b-2 border-black pb-4">
+                        <h1 className="text-2xl font-black uppercase tracking-wide">মেসার্স ডকান ট্রেডার্স</h1>
+                        <p className="text-xs font-semibold mt-1">রড, সিমেন্ট ও নির্মাণ সামগ্রী বিক্রেতা</p>
+                        <h2 className="text-lg font-black mt-2 underline">দৈনিক টপশিট রিপোর্ট (DAILY TOPSHEET)</h2>
+                        <p className="text-xs font-bold mt-1">তারিখ: {selectedDateStr}</p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-6">
+                        <div>
+                          <h3 className="font-bold text-sm border-b border-black pb-1 mb-2">১. জমা ও আয় (INFLOW)</h3>
+                          <table className="w-full text-xs border-collapse">
+                            <tbody>
+                              <tr className="border-b"><td className="py-1">নগদ বিক্রয় জমা:</td><td className="text-right font-bold">৳{cashSalesInflow.toLocaleString()}</td></tr>
+                              <tr className="border-b"><td className="py-1">বকেয়া তৈরি:</td><td className="text-right font-bold">৳{dueSalesTotal.toLocaleString()}</td></tr>
+                              <tr className="font-bold"><td className="py-2">মোট জমা:</td><td className="text-right py-2">৳{cashSalesInflow.toLocaleString()}</td></tr>
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div>
+                          <h3 className="font-bold text-sm border-b border-black pb-1 mb-2">২. খরচ ও প্রদান (OUTFLOW)</h3>
+                          <table className="w-full text-xs border-collapse">
+                            <tbody>
+                              <tr className="border-b"><td className="py-1">নগদ পণ্য ক্রয়:</td><td className="text-right font-bold">৳{cashPurchaseOutflow.toLocaleString()}</td></tr>
+                              <tr className="border-b"><td className="py-1">দোকান খরচ:</td><td className="text-right font-bold">৳{expenseOutflow.toLocaleString()}</td></tr>
+                              <tr className="font-bold"><td className="py-2">মোট খরচ:</td><td className="text-right py-2">৳{totalOutflow.toLocaleString()}</td></tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      <div className="pt-4 border-t border-black">
+                        <h3 className="font-bold text-sm mb-2">৩. পণ্য মুভমেন্ট সামারি</h3>
+                        <table className="w-full text-xs border border-black text-center">
+                          <thead className="bg-gray-100 border-b border-black">
+                            <tr>
+                              <th className="p-1.5 border-r border-black">পণ্যের ধরন</th>
+                              <th className="p-1.5 border-r border-black">আজকের বিক্রি</th>
+                              <th className="p-1.5">আজকের ক্রয়/আগমন</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr className="border-b border-black">
+                              <td className="p-1.5 font-bold border-r border-black">রড (Rod & Ring)</td>
+                              <td className="p-1.5 border-r border-black">{formatDualStock(rodSoldKg, 'কেজি', 'রড').main}</td>
+                              <td className="p-1.5">{formatDualStock(rodBoughtKg, 'কেজি', 'রড').main}</td>
+                            </tr>
+                            <tr>
+                              <td className="p-1.5 font-bold border-r border-black">সিমেন্ট (Cement)</td>
+                              <td className="p-1.5 border-r border-black">{toBnNum(cementSoldBags)} বস্তা</td>
+                              <td className="p-1.5">{toBnNum(cementBoughtBags)} বস্তা</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="pt-16 flex justify-between text-xs font-bold">
+                        <div className="border-t border-black px-6 pt-1">ক্যাশিয়ার / হিসাবরক্ষক</div>
+                        <div className="border-t border-black px-6 pt-1">ম্যানেজার / প্রোপ্রাইটর</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               );
             })()}
 
-            {/* 4. ডেইলী সেলস স্টেটমেন্ট */}
+            {/* 4. ডেইলী সেলস স্টেটমেন্ট (Daily Sales Statement) */}
             {activeTab === 'daily_sales' && (() => {
-              const totalSales = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-              const totalPaid = orders.reduce((sum, o) => sum + (o.paidAmount || 0), 0);
-              const totalDue = orders.reduce((sum, o) => sum + (o.dueAmount || 0), 0);
-              const invoiceCount = orders.length;
+              const selectedDateStr = salesStatementDate || format(new Date(), 'yyyy-MM-dd');
+              
+              // Filter sales orders for selected date and category
+              const dayOrders = orders.filter(o => {
+                if (!o.createdAt) return false;
+                const d = new Date(o.createdAt);
+                const matchesDate = !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === selectedDateStr;
+                if (!matchesDate) return false;
+
+                if (salesCategoryFilter === 'rod') {
+                  return (o.items || []).some(i => {
+                    const n = (i.name || '').toLowerCase();
+                    const u = (i.unit || '').toLowerCase();
+                    return n.includes('রড') || n.includes('rod') || n.includes('রিং') || u.includes('কেজি') || u.includes('টন');
+                  });
+                }
+                if (salesCategoryFilter === 'cement') {
+                  return (o.items || []).some(i => {
+                    const n = (i.name || '').toLowerCase();
+                    const u = (i.unit || '').toLowerCase();
+                    return n.includes('সিমেন্ট') || n.includes('cement') || u.includes('বস্তা') || u.includes('bag');
+                  });
+                }
+                return true;
+              });
+
+              const totalSalesVal = dayOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+              const totalPaidVal = dayOrders.reduce((sum, o) => sum + (o.paidAmount || 0), 0);
+              const totalDueVal = dayOrders.reduce((sum, o) => sum + (o.dueAmount || 0), 0);
+              const invoiceCount = dayOrders.length;
+
+              // Product-wise summary calculation
+              const productSummaryMap: { [key: string]: { name: string; qty: number; unit: string; totalVal: number } } = {};
+              dayOrders.forEach(o => {
+                (o.items || []).forEach(i => {
+                  const key = `${i.name}_${i.unit || 'পিস'}`;
+                  if (!productSummaryMap[key]) {
+                    productSummaryMap[key] = { name: i.name, qty: 0, unit: i.unit || 'পিস', totalVal: 0 };
+                  }
+                  productSummaryMap[key].qty += i.quantity;
+                  productSummaryMap[key].totalVal += (i.price * i.quantity);
+                });
+              });
+              const productSummaryList = Object.values(productSummaryMap);
 
               return (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="space-y-6 animate-in fade-in duration-300 font-bengali">
+                  {/* TOP TOOLBAR & BREADCRUMB */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs">
                     <div>
-                      <h1 className="text-2xl font-black text-slate-900 tracking-tight">ডেইলী সেলস স্টেটমেন্ট</h1>
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold mt-1">
-                        <span>রিপোর্ট</span><span>&rsaquo;</span><span className="text-slate-900 font-bold">ডেইলী সেলস স্টেটমেন্ট</span>
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-black">
+                          <TrendingUp className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h1 className="text-2xl font-black text-slate-900 tracking-tight">ডেইলী সেলস স্টেটমেন্ট (Daily Sales Statement)</h1>
+                          <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                            নির্ধারিত দিনের প্রতিটি ইনভয়েস ও পণ্যভিত্তিক মোট বিক্রয়ের বিবরণী
+                          </p>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" onClick={() => window.print()} className="h-9 px-3 rounded-xl text-xs font-bold border-slate-200"><Printer className="w-4 h-4 mr-1" /> প্রিন্ট</Button>
-                      <button onClick={() => setActiveTab('hub')} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1"><ArrowLeft className="w-4 h-4 text-orange-500" /> সকল রিপোর্ট</button>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      {/* DATE PICKER */}
+                      <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-2xl border border-slate-200">
+                        <Calendar className="w-4 h-4 text-purple-600 shrink-0" />
+                        <span className="text-xs font-bold text-slate-600">তারিখ:</span>
+                        <input
+                          type="date"
+                          value={selectedDateStr}
+                          onChange={e => setSalesStatementDate(e.target.value)}
+                          className="bg-transparent text-xs font-black text-slate-900 focus:outline-none cursor-pointer"
+                        />
+                      </div>
+
+                      {/* CATEGORY FILTER */}
+                      <Select value={salesCategoryFilter} onValueChange={(val: any) => setSalesCategoryFilter(val || 'all')}>
+                        <SelectTrigger className="h-9 w-32 text-xs font-bold rounded-xl bg-slate-50 border-slate-200">
+                          <SelectValue placeholder="সব ক্যাটাগরি" />
+                        </SelectTrigger>
+                        <SelectContent className="font-bengali">
+                          <SelectItem value="all">সব পণ্য</SelectItem>
+                          <SelectItem value="rod">রড ও রিং</SelectItem>
+                          <SelectItem value="cement">সিমেন্ট</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <Button
+                        onClick={() => printElement('printable-sales-statement-wrapper')}
+                        className="h-9 px-4 rounded-xl text-xs font-black bg-slate-900 hover:bg-slate-800 text-white shadow-md flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Printer className="w-4 h-4 text-amber-400" /> প্রিন্ট স্টেটমেন্ট
+                      </Button>
+
+                      <button onClick={() => setActiveTab('hub')} className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1">
+                        <ArrowLeft className="w-4 h-4 text-orange-500" /> সকল রিপোর্ট
+                      </button>
                     </div>
                   </div>
 
+                  {/* 4 SUMMARY CARDS */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-center">
-                    <Card className="p-5 border-emerald-200 bg-emerald-50/40 rounded-2xl"><p className="text-xs font-bold text-emerald-800">মোট বিক্রয়</p><p className="text-2xl font-black text-emerald-600 mt-1">{formatBnCurrency(totalSales)}</p></Card>
-                    <Card className="p-5 border-blue-200 bg-blue-50/40 rounded-2xl"><p className="text-xs font-bold text-blue-800">মোট আদায়</p><p className="text-2xl font-black text-blue-600 mt-1">{formatBnCurrency(totalPaid)}</p></Card>
-                    <Card className="p-5 border-rose-200 bg-rose-50/40 rounded-2xl"><p className="text-xs font-bold text-rose-800">মোট বাকী</p><p className="text-2xl font-black text-rose-600 mt-1">{formatBnCurrency(totalDue)}</p></Card>
-                    <Card className="p-5 border-purple-200 bg-purple-50/40 rounded-2xl"><p className="text-xs font-bold text-purple-800">মোট ইনভয়েস সংখ্যা</p><p className="text-2xl font-black text-purple-600 mt-1">{toBnNum(invoiceCount)} টি</p></Card>
+                    <Card className="p-5 border-emerald-200 bg-emerald-50/40 rounded-3xl shadow-xs">
+                      <p className="text-xs font-bold text-emerald-800">আজকের মোট বিক্রয় (Total Sales)</p>
+                      <p className="text-2xl font-black text-emerald-600 mt-1">{formatBnCurrency(totalSalesVal)}</p>
+                    </Card>
+
+                    <Card className="p-5 border-blue-200 bg-blue-50/40 rounded-3xl shadow-xs">
+                      <p className="text-xs font-bold text-blue-800">আজকের নগদ আদায় (Cash Received)</p>
+                      <p className="text-2xl font-black text-blue-600 mt-1">{formatBnCurrency(totalPaidVal)}</p>
+                    </Card>
+
+                    <Card className="p-5 border-rose-200 bg-rose-50/40 rounded-3xl shadow-xs">
+                      <p className="text-xs font-bold text-rose-800">আজকের মোট বাকী (Due Created)</p>
+                      <p className="text-2xl font-black text-rose-600 mt-1">{formatBnCurrency(totalDueVal)}</p>
+                    </Card>
+
+                    <Card className="p-5 border-purple-200 bg-purple-50/40 rounded-3xl shadow-xs">
+                      <p className="text-xs font-bold text-purple-800">মোট ইনভয়েস সংখ্যা</p>
+                      <p className="text-2xl font-black text-purple-600 mt-1">{toBnNum(invoiceCount)} টি</p>
+                    </Card>
                   </div>
 
-                  <Card className="border-slate-200/90 rounded-2xl bg-white overflow-hidden shadow-xs">
+                  {/* PRODUCT BREAKDOWN SUMMARY TABLE */}
+                  {productSummaryList.length > 0 && (
+                    <Card className="border-slate-200/90 rounded-3xl bg-white p-5 shadow-xs space-y-3">
+                      <h3 className="font-black text-slate-900 text-sm flex items-center gap-2">
+                        <ShoppingBag className="w-4 h-4 text-purple-600" /> পণ্যভিত্তিক বিক্রয় সারসংক্ষেপ (Product Category Summary)
+                      </h3>
+                      <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                        <Table>
+                          <TableHeader className="bg-slate-50">
+                            <TableRow>
+                              <TableHead className="font-black text-xs">পণ্যের নাম</TableHead>
+                              <TableHead className="font-black text-xs text-center">মোট পরিমাণ</TableHead>
+                              <TableHead className="font-black text-xs text-right px-6">মোট বিক্রি মূল্য (৳)</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {productSummaryList.map((p, i) => (
+                              <TableRow key={i} className="border-b border-slate-100 text-xs">
+                                <TableCell className="font-bold text-slate-800">{p.name}</TableCell>
+                                <TableCell className="text-center font-bold text-purple-700">
+                                  {p.unit.includes('কেজি') ? formatDualStock(p.qty, p.unit, p.name).main : `${toBnNum(p.qty)} ${p.unit}`}
+                                </TableCell>
+                                <TableCell className="text-right font-black text-slate-900 px-6">{formatBnCurrency(p.totalVal)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* INVOICE WISE DETAILED SALES TABLE */}
+                  <Card className="border-slate-200/90 rounded-3xl bg-white overflow-hidden shadow-xs">
+                    <div className="p-4 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
+                      <h3 className="font-black text-slate-900 text-sm">ইনভয়েস ভিত্তিক বিস্তারিত বিক্রীত চালানের তালিকা</h3>
+                      <span className="text-xs font-bold text-slate-500">মোট {toBnNum(invoiceCount)} টি চালান</span>
+                    </div>
                     <Table>
                       <TableHeader className="bg-slate-50 border-b border-slate-200">
                         <TableRow>
                           <TableHead className="font-black text-xs text-center w-16">ক্রমিক</TableHead>
-                          <TableHead className="font-black text-xs">ইনভয়েস নং</TableHead>
+                          <TableHead className="font-black text-xs">চালান নং</TableHead>
                           <TableHead className="font-black text-xs">কাস্টমারের নাম</TableHead>
-                          <TableHead className="font-black text-xs text-right">বিক্রয় পরিমাণ (৳)</TableHead>
-                          <TableHead className="font-black text-xs text-right">আদায় (৳)</TableHead>
+                          <TableHead className="font-black text-xs">পণ্য বিবরণ</TableHead>
+                          <TableHead className="font-black text-xs text-right">মোট বিল (৳)</TableHead>
+                          <TableHead className="font-black text-xs text-right">নগদ জমা (৳)</TableHead>
                           <TableHead className="font-black text-xs text-right px-6">বাকী (৳)</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {orders.length === 0 ? (
-                          <TableRow><TableCell colSpan={6} className="text-center py-8 text-slate-400 font-bengali">কোনো বিক্রয় ভাউচার নেই</TableCell></TableRow>
-                        ) : orders.map((s, idx) => (
-                          <TableRow key={s.id} className="border-b border-slate-100 text-xs">
+                        {dayOrders.length === 0 ? (
+                          <TableRow><TableCell colSpan={7} className="text-center py-10 text-slate-400 font-bengali font-bold">এই তারিখে কোনো বিক্রয় চালান পাওয়া যায়নি</TableCell></TableRow>
+                        ) : dayOrders.map((s, idx) => (
+                          <TableRow key={s.id} className="border-b border-slate-100 text-xs hover:bg-slate-50/50">
                             <TableCell className="text-center font-bold text-slate-500">{toBnNum(idx + 1)}</TableCell>
-                            <TableCell className="font-bold text-slate-800">INV-{toBnNum(s.id)}</TableCell>
+                            <TableCell className="font-mono font-bold text-slate-800">{s.id}</TableCell>
                             <TableCell className="font-black text-slate-900">{s.customerName || 'সাধারণ কাস্টমার'}</TableCell>
+                            <TableCell className="text-slate-600 text-[11px]">
+                              {(s.items || []).map(i => `${i.name} (${i.quantity} ${i.unit})`).join(', ')}
+                            </TableCell>
                             <TableCell className="text-right font-bold">{formatBnCurrency(s.totalAmount)}</TableCell>
                             <TableCell className="text-right font-bold text-emerald-600">{formatBnCurrency(s.paidAmount)}</TableCell>
                             <TableCell className="text-right font-black text-rose-600 px-6">{formatBnCurrency(s.dueAmount)}</TableCell>
@@ -981,15 +1378,86 @@ function MasterReportsContent() {
                       </TableBody>
                     </Table>
 
-                    <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center text-xs font-black">
-                      <span>মোট:</span>
+                    <div className="p-4 bg-slate-100/80 border-t border-slate-200 flex justify-between items-center text-xs font-black text-slate-900">
+                      <span>সর্বমোট:</span>
                       <div className="flex gap-6">
-                        <span className="text-emerald-600">{formatBnCurrency(totalSales)}</span>
-                        <span className="text-blue-600">{formatBnCurrency(totalPaid)}</span>
-                        <span className="text-rose-600">{formatBnCurrency(totalDue)}</span>
+                        <span>বিক্রি: <span className="text-emerald-700">{formatBnCurrency(totalSalesVal)}</span></span>
+                        <span>জমা: <span className="text-blue-700">{formatBnCurrency(totalPaidVal)}</span></span>
+                        <span>বাকী: <span className="text-rose-700">{formatBnCurrency(totalDueVal)}</span></span>
                       </div>
                     </div>
                   </Card>
+
+                  {/* PRINTABLE SALES STATEMENT WRAPPER */}
+                  <div className="hidden">
+                    <div id="printable-sales-statement-wrapper" className="p-8 bg-white text-black font-bengali space-y-6">
+                      <div className="text-center border-b-2 border-black pb-4">
+                        <h1 className="text-2xl font-black uppercase">মেসার্স ডকান ট্রেডার্স</h1>
+                        <p className="text-xs font-semibold mt-1">রড, সিমেন্ট ও নির্মাণ সামগ্রী বিক্রেতা</p>
+                        <h2 className="text-lg font-black mt-2 underline">দৈনিক সেলস স্টেটমেন্ট (DAILY SALES STATEMENT)</h2>
+                        <p className="text-xs font-bold mt-1">তারিখ: {selectedDateStr}</p>
+                      </div>
+
+                      <div>
+                        <h3 className="font-bold text-xs mb-2">পণ্যভিত্তিক বিক্রয় সারসংক্ষেপ:</h3>
+                        <table className="w-full text-xs border border-black text-center mb-4">
+                          <thead className="bg-gray-100 border-b border-black">
+                            <tr>
+                              <th className="p-1 border-r border-black">পণ্যের নাম</th>
+                              <th className="p-1 border-r border-black">মোট পরিমাণ</th>
+                              <th className="p-1">মোট বিক্রয়মূল্য</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {productSummaryList.map((p, idx) => (
+                              <tr key={idx} className="border-b border-black">
+                                <td className="p-1 border-r border-black text-left font-bold">{p.name}</td>
+                                <td className="p-1 border-r border-black">{p.unit.includes('কেজি') ? formatDualStock(p.qty, p.unit, p.name).main : `${p.qty} ${p.unit}`}</td>
+                                <td className="p-1 font-bold text-right">৳{p.totalVal.toLocaleString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+
+                        <h3 className="font-bold text-xs mb-2">ইনভয়েস ভিত্তিক চালান বিবরণী:</h3>
+                        <table className="w-full text-xs border border-black">
+                          <thead className="bg-gray-100 border-b border-black">
+                            <tr>
+                              <th className="p-1 border-r border-black text-center">#</th>
+                              <th className="p-1 border-r border-black">ইনভয়েস</th>
+                              <th className="p-1 border-r border-black">কাস্টমার</th>
+                              <th className="p-1 border-r border-black text-right">মোট বিল</th>
+                              <th className="p-1 border-r border-black text-right">জমা</th>
+                              <th className="p-1 text-right">বাকী</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dayOrders.map((o, idx) => (
+                              <tr key={o.id} className="border-b border-black">
+                                <td className="p-1 text-center border-r border-black">{idx + 1}</td>
+                                <td className="p-1 border-r border-black font-bold">{o.id}</td>
+                                <td className="p-1 border-r border-black">{o.customerName || 'সাধারণ কাস্টমার'}</td>
+                                <td className="p-1 text-right border-r border-black font-bold">৳{o.totalAmount.toLocaleString()}</td>
+                                <td className="p-1 text-right border-r border-black">৳{o.paidAmount.toLocaleString()}</td>
+                                <td className="p-1 text-right font-bold text-red-700">৳{o.dueAmount.toLocaleString()}</td>
+                              </tr>
+                            ))}
+                            <tr className="font-black bg-gray-100">
+                              <td colSpan={3} className="p-1.5 border-r border-black text-right">সর্বমোট:</td>
+                              <td className="p-1.5 text-right border-r border-black">৳{totalSalesVal.toLocaleString()}</td>
+                              <td className="p-1.5 text-right border-r border-black">৳{totalPaidVal.toLocaleString()}</td>
+                              <td className="p-1.5 text-right">৳{totalDueVal.toLocaleString()}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="pt-16 flex justify-between text-xs font-bold">
+                        <div className="border-t border-black px-6 pt-1">বিক্রেতার স্বাক্ষর</div>
+                        <div className="border-t border-black px-6 pt-1">ম্যানেজার স্বাক্ষর</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               );
             })()}

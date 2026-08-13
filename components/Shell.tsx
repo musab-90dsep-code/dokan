@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { api, TransactionData } from '@/lib/api';
 import { Button } from './ui/button';
-import { HardHat, Search, Bell, Landmark, CheckCircle2, Calendar, FileText, ShoppingCart, ArrowRight, NotebookPen, Plus, Trash2, X, Info } from 'lucide-react';
+import { HardHat, Truck, Search, Bell, Landmark, CheckCircle2, Calendar, FileText, ShoppingCart, ArrowRight, NotebookPen, Plus, Trash2, X, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
@@ -70,6 +70,31 @@ export interface HawlatItem {
   createdAt: string;
 }
 
+export interface ShippingChargeItem {
+  id: string;
+  invoiceId: string;
+  date: string;
+  vehicleNo?: string;
+  driverName?: string;
+  driverPhone?: string;
+  amount: number;
+  status: 'pending' | 'paid';
+  paidAmount?: number;
+  rawTx?: any;
+}
+
+export interface LaborChargeItem {
+  id: string;
+  invoiceId: string;
+  date: string;
+  unloadingSite?: string;
+  operatorName?: string;
+  amount: number;
+  status: 'pending' | 'paid';
+  paidAmount?: number;
+  rawTx?: any;
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const router = useRouter();
   // Admin user context
@@ -102,6 +127,14 @@ export function Shell({ children }: { children: ReactNode }) {
   const [hawlatAmount, setHawlatAmount] = useState('');
   const [hawlatNote, setHawlatNote] = useState('');
   const [hawlatDate, setHawlatDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [showShippingDrawer, setShowShippingDrawer] = useState(false);
+  const [showLaborDrawer, setShowLaborDrawer] = useState(false);
+  const [shippingItems, setShippingItems] = useState<ShippingChargeItem[]>([]);
+  const [laborItems, setLaborItems] = useState<LaborChargeItem[]>([]);
+  const [shippingFilterTab, setShippingFilterTab] = useState<'all' | 'pending' | 'paid'>('pending');
+  const [laborFilterTab, setLaborFilterTab] = useState<'all' | 'pending' | 'paid'>('pending');
+  const [settlingShipping, setSettlingShipping] = useState<ShippingChargeItem | null>(null);
+  const [settlingLabor, setSettlingLabor] = useState<LaborChargeItem | null>(null);
 
   const [cheques, setCheques] = useState<ChequeItem[]>([]);
   const [orders, setOrders] = useState<PendingOrderItem[]>([]);
@@ -149,47 +182,38 @@ export function Shell({ children }: { children: ReactNode }) {
       return;
     }
 
-    const payload = {
-      person_name: hawlatPersonName.trim() || 'সাধারণ হাওলাত',
+    const newHawlat: HawlatItem = {
+      id: `hw_${Date.now()}`,
+      personName: hawlatPersonName.trim() || 'সাধারণ ব্যক্তি',
       amount: numAmount,
-      note: hawlatNote.trim() || 'কোনো বিবরণ দেওয়া হয়নি',
-      date: hawlatDate || format(new Date(), 'yyyy-MM-dd')
+      note: hawlatNote.trim(),
+      date: hawlatDate,
+      isSettled: false,
+      createdAt: new Date().toISOString()
     };
 
     try {
-      const created = await api.hawlats.create(payload);
-      const newItem: HawlatItem = {
-        id: String(created.id || 'hw_' + Date.now()),
-        personName: created.person_name || payload.person_name,
-        amount: Number(created.amount || payload.amount),
-        note: created.note || payload.note,
-        date: created.date || payload.date,
-        isSettled: false,
-        createdAt: created.created_at || new Date().toISOString()
-      };
-      const updated = [newItem, ...hawlatItems.filter(i => i.id !== newItem.id)];
-      saveHawlatItems(updated);
-      toast.success('হাওলাত নোট ডাটাবেজে সংরক্ষণ হয়েছে');
+      const created = await api.hawlats.create({
+        person_name: newHawlat.personName,
+        amount: newHawlat.amount,
+        note: newHawlat.note,
+        date: newHawlat.date,
+        is_settled: false
+      });
+      if (created && created.id) {
+        newHawlat.id = String(created.id);
+      }
     } catch (err) {
-      const newItem: HawlatItem = {
-        id: 'hw_' + Date.now(),
-        personName: payload.person_name,
-        amount: payload.amount,
-        note: payload.note,
-        date: payload.date,
-        isSettled: false,
-        createdAt: new Date().toISOString()
-      };
-      const updated = [newItem, ...hawlatItems];
-      saveHawlatItems(updated);
-      toast.success('হাওলাত নোট যুক্ত করা হয়েছে');
+      console.error('API Hawlat create error:', err);
     }
 
-    // Reset form
+    const updated = [newHawlat, ...hawlatItems];
+    saveHawlatItems(updated);
+    toast.success('হাওলাত এন্ট্রি সফলভাবে সংরক্ষণ করা হয়েছে!');
+
     setHawlatPersonName('');
     setHawlatAmount('');
     setHawlatNote('');
-    setHawlatDate(format(new Date(), 'yyyy-MM-dd'));
     setShowAddHawlatForm(false);
   };
 
@@ -279,6 +303,60 @@ export function Shell({ children }: { children: ReactNode }) {
           stage: t.status || 'pending'
         }));
       setOrders(orderItems);
+
+      // Load shipping & labor charges from purchase transactions
+      const sItems: ShippingChargeItem[] = [];
+      const lItems: LaborChargeItem[] = [];
+
+      safeTxs
+        .filter(t => t.transaction_type === 'purchase')
+        .forEach(t => {
+          let meta: any = {};
+          if (t.notes && typeof t.notes === 'string' && t.notes.trim().startsWith('{')) {
+            try {
+              const firstLine = t.notes.split('\n')[0];
+              meta = JSON.parse(firstLine);
+            } catch {}
+          }
+
+          const tAny = t as any;
+          const shipCost = Number(tAny.shipping_cost !== undefined ? tAny.shipping_cost : (meta.shippingCost || meta.transportCost || 0));
+          const labCost = Number(tAny.labor_cost !== undefined ? tAny.labor_cost : (meta.laborCost || 0));
+          const invNo = t.invoice_no || (t.id ? `PUR-${t.id}` : 'PUR-0001');
+          const txDate = t.created_at || new Date().toISOString();
+
+          if (shipCost > 0) {
+            sItems.push({
+              id: String(t.id),
+              invoiceId: invNo,
+              date: txDate,
+              vehicleNo: tAny.vehicle_no || meta.vehicleNo || '',
+              driverName: tAny.driver_name || meta.driverName || '',
+              driverPhone: tAny.driver_phone || meta.driverPhone || '',
+              amount: shipCost,
+              status: meta.shippingStatus === 'paid' ? 'paid' : 'pending',
+              paidAmount: meta.shippingStatus === 'paid' ? shipCost : 0,
+              rawTx: t
+            });
+          }
+
+          if (labCost > 0) {
+            lItems.push({
+              id: String(t.id),
+              invoiceId: invNo,
+              date: txDate,
+              unloadingSite: tAny.delivery_address || meta.deliveryAddress || meta.unloadingSite || '',
+              operatorName: meta.preparedBy || meta.operatorName || '',
+              amount: labCost,
+              status: meta.laborStatus === 'paid' ? 'paid' : 'pending',
+              paidAmount: meta.laborStatus === 'paid' ? labCost : 0,
+              rawTx: t
+            });
+          }
+        });
+
+      setShippingItems(sItems);
+      setLaborItems(lItems);
     } catch (e) {
       console.error('Error loading Shell data:', e);
     }
@@ -317,6 +395,93 @@ export function Shell({ children }: { children: ReactNode }) {
 
   const pendingOrders = orders.filter(o => !o.invoiced && o.stage !== 'completed' && o.stage !== 'invoiced');
   const pendingOrdersTotal = pendingOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+
+  const pendingShippingItems = shippingItems.filter(s => s.status === 'pending');
+  const pendingLaborItems = laborItems.filter(l => l.status === 'pending');
+
+  const filteredShippingItems = shippingItems.filter(s => {
+    if (shippingFilterTab === 'pending') return s.status === 'pending';
+    if (shippingFilterTab === 'paid') return s.status === 'paid';
+    return true;
+  });
+
+  const filteredLaborItems = laborItems.filter(l => {
+    if (laborFilterTab === 'pending') return l.status === 'pending';
+    if (laborFilterTab === 'paid') return l.status === 'paid';
+    return true;
+  });
+
+  const handleSettleShipping = async (item: ShippingChargeItem) => {
+    try {
+      await api.transactions.create({
+        transaction_type: 'payment_out',
+        total_amount: item.amount,
+        paid_amount: item.amount,
+        due_amount: 0,
+        payment_method: 'cash',
+        notes: `গাড়ি ভাড়া পরিশোধ (চালান: #${item.invoiceId}, গাড়ি নং: ${item.vehicleNo || '—'}, ড্রাইভার: ${item.driverName || '—'})`
+      });
+
+      const t = item.rawTx;
+      let meta: any = {};
+      let userNote = t?.notes || '';
+      if (userNote && typeof userNote === 'string' && userNote.trim().startsWith('{')) {
+        try {
+          const firstLine = userNote.split('\n')[0];
+          meta = JSON.parse(firstLine);
+          userNote = userNote.substring(firstLine.length).trim();
+        } catch {}
+      }
+      meta.shippingStatus = 'paid';
+      meta.shippingPaidAmount = item.amount;
+
+      const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
+      await api.transactions.update(item.id, { notes: newNotes });
+
+      toast.success(`গাড়ি ভাড়া ৳ ${item.amount.toLocaleString('bn-BD')} সফলভাবে পরিশোধিত হয়েছে!`);
+      setSettlingShipping(null);
+      void loadChequesAndOrders();
+    } catch (err) {
+      console.error(err);
+      toast.error('গাড়ি ভাড়া পরিশোধ করতে সমস্যা হয়েছে');
+    }
+  };
+
+  const handleSettleLabor = async (item: LaborChargeItem) => {
+    try {
+      await api.transactions.create({
+        transaction_type: 'payment_out',
+        total_amount: item.amount,
+        paid_amount: item.amount,
+        due_amount: 0,
+        payment_method: 'cash',
+        notes: `লেবার খরচ / আনলোডিং ফি পরিশোধ (চালান: #${item.invoiceId}, স্থান: ${item.unloadingSite || '—'})`
+      });
+
+      const t = item.rawTx;
+      let meta: any = {};
+      let userNote = t?.notes || '';
+      if (userNote && typeof userNote === 'string' && userNote.trim().startsWith('{')) {
+        try {
+          const firstLine = userNote.split('\n')[0];
+          meta = JSON.parse(firstLine);
+          userNote = userNote.substring(firstLine.length).trim();
+        } catch {}
+      }
+      meta.laborStatus = 'paid';
+      meta.laborPaidAmount = item.amount;
+
+      const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
+      await api.transactions.update(item.id, { notes: newNotes });
+
+      toast.success(`লেবার খরচ ৳ ${item.amount.toLocaleString('bn-BD')} সফলভাবে পরিশোধিত হয়েছে!`);
+      setSettlingLabor(null);
+      void loadChequesAndOrders();
+    } catch (err) {
+      console.error(err);
+      toast.error('লেবার খরচ পরিশোধ করতে সমস্যা হয়েছে');
+    }
+  };
 
   const handleClearCheque = async (cheque: ChequeItem) => {
     try {
@@ -364,6 +529,36 @@ export function Shell({ children }: { children: ReactNode }) {
 
           {/* Right: Quick Triggers & User Profile */}
           <div className="flex items-center gap-2 md:gap-3">
+            {/* Shipping Charges Drawer Trigger */}
+            <button
+              onClick={() => setShowShippingDrawer(!showShippingDrawer)}
+              className="relative p-2 px-2.5 text-slate-700 hover:text-slate-900 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl transition-all flex items-center gap-1.5 font-bengali font-semibold text-xs shadow-2xs cursor-pointer"
+              title="গাড়ি ভাড়া খাতা (ট্রাক / পরিবহন খরচ)"
+            >
+              <Truck className="h-4.5 w-4.5 text-blue-600" />
+              <span className="hidden sm:inline text-slate-800 font-bold">গাড়ি ভাড়া</span>
+              {pendingShippingItems.length > 0 && (
+                <span className="flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-full min-w-[18px]">
+                  {toBnDigits(pendingShippingItems.length)}
+                </span>
+              )}
+            </button>
+
+            {/* Labor Charges Drawer Trigger */}
+            <button
+              onClick={() => setShowLaborDrawer(!showLaborDrawer)}
+              className="relative p-2 px-2.5 text-slate-700 hover:text-slate-900 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 rounded-xl transition-all flex items-center gap-1.5 font-bengali font-semibold text-xs shadow-2xs cursor-pointer"
+              title="লেবার খরচ খাতা (আনলোডিং / শ্রমিক মজুরি)"
+            >
+              <HardHat className="h-4.5 w-4.5 text-amber-600" />
+              <span className="hidden sm:inline text-slate-800 font-bold">লেবার খরচ</span>
+              {pendingLaborItems.length > 0 && (
+                <span className="flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-amber-600 text-white rounded-full min-w-[18px]">
+                  {toBnDigits(pendingLaborItems.length)}
+                </span>
+              )}
+            </button>
+
             {/* Pending Orders Drawer Trigger */}
             <button
               onClick={() => setShowOrdersDrawer(!showOrdersDrawer)}
@@ -927,6 +1122,393 @@ export function Shell({ children }: { children: ReactNode }) {
               </motion.div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* Shipping Charges Drawer (গাড়ি ভাড়া খাতা) */}
+      <AnimatePresence>
+        {showShippingDrawer && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowShippingDrawer(false)}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs font-bengali"
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 z-50 h-full w-full max-w-xl bg-slate-900 text-white shadow-2xl flex flex-col border-l border-slate-800 font-bengali"
+            >
+              <div className="p-5 bg-gradient-to-r from-blue-900/40 via-slate-900 to-slate-900 border-b border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-500/20 rounded-2xl border border-blue-500/30 text-blue-400">
+                    <Truck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-white flex items-center gap-2">
+                      গাড়ি ভাড়া খাতা <span className="text-xs font-normal text-blue-400">(পরিবহন খরচ)</span>
+                    </h3>
+                    <p className="text-xs text-slate-400">ক্রয় ইনভয়েসের ড্রাইভার ও গাড়ি ভাড়ার হিসাব</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowShippingDrawer(false)}
+                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 bg-slate-800/50 border-b border-slate-800 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                  <button
+                    onClick={() => setShippingFilterTab('pending')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg font-bold transition-all",
+                      shippingFilterTab === 'pending' ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                    )}
+                  >
+                    বকেয়া ({toBnDigits(pendingShippingItems.length)})
+                  </button>
+                  <button
+                    onClick={() => setShippingFilterTab('paid')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg font-bold transition-all",
+                      shippingFilterTab === 'paid' ? "bg-emerald-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                    )}
+                  >
+                    পরিশোধিত
+                  </button>
+                  <button
+                    onClick={() => setShippingFilterTab('all')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg font-bold transition-all",
+                      shippingFilterTab === 'all' ? "bg-slate-700 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                    )}
+                  >
+                    সকল
+                  </button>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 block font-medium">মোট বকেয়া গাড়ি ভাড়া</span>
+                  <span className="text-base font-black text-blue-400">
+                    ৳ {pendingShippingItems.reduce((a, b) => a + b.amount, 0).toLocaleString('bn-BD')}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {filteredShippingItems.length === 0 ? (
+                  <div className="text-center text-slate-500 py-20 space-y-3 bg-slate-800/30 border border-slate-800/60 rounded-2xl">
+                    <Truck className="w-12 h-12 text-slate-600/40 mx-auto" />
+                    <p className="font-bold text-slate-300 text-sm">কোনো গাড়ি ভাড়া রেকর্ড পাওয়া যায়নি</p>
+                  </div>
+                ) : (
+                  filteredShippingItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-2xl transition-all space-y-2.5"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-md border border-blue-500/20">
+                              #{item.invoiceId}
+                            </span>
+                            <span className="text-xs text-slate-400 font-sans">
+                              {formatBnDate(item.date, 'dd/MM/yyyy')}
+                            </span>
+                          </div>
+                          <p className="font-bold text-slate-200 text-sm mt-1">
+                            গাড়ি নং: <span className="text-white">{item.vehicleNo || '—'}</span>
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-base font-black text-amber-400">
+                            ৳ {item.amount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
+                          </p>
+                          {item.status === 'paid' ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md mt-0.5">
+                              <CheckCircle2 className="w-3 h-3" /> পরিশোধিত
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-md mt-0.5">
+                              বকেয়া গাড়ি ভাড়া
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {(item.driverName || item.driverPhone) && (
+                        <div className="text-xs text-slate-400 bg-slate-900/60 p-2 rounded-xl border border-slate-800 flex items-center justify-between">
+                          <span>ড্রাইভার: <strong className="text-slate-200">{item.driverName || '—'}</strong></span>
+                          <span>মোবাইল: <strong className="text-slate-200">{item.driverPhone || '—'}</strong></span>
+                        </div>
+                      )}
+
+                      {item.status === 'pending' && (
+                        <div className="pt-2 flex justify-end">
+                          <Button
+                            size="sm"
+                            onClick={() => setSettlingShipping(item)}
+                            className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 rounded-xl shadow-md cursor-pointer"
+                          >
+                            গাড়ি ভাড়া পরিশোধ করুন
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Labor Charges Drawer (লেবার খরচ খাতা) */}
+      <AnimatePresence>
+        {showLaborDrawer && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowLaborDrawer(false)}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs font-bengali"
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 z-50 h-full w-full max-w-xl bg-slate-900 text-white shadow-2xl flex flex-col border-l border-slate-800 font-bengali"
+            >
+              <div className="p-5 bg-gradient-to-r from-amber-900/40 via-slate-900 to-slate-900 border-b border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-500/20 rounded-2xl border border-amber-500/30 text-amber-400">
+                    <HardHat className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-white flex items-center gap-2">
+                      লেবার খরচ খাতা <span className="text-xs font-normal text-amber-400">(আনলোডিং ও মজুরি)</span>
+                    </h3>
+                    <p className="text-xs text-slate-400">ক্রয় ইনভয়েসের আনলোডিং শ্রমিক ও মজুরির হিসাব</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowLaborDrawer(false)}
+                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 bg-slate-800/50 border-b border-slate-800 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                  <button
+                    onClick={() => setLaborFilterTab('pending')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg font-bold transition-all",
+                      laborFilterTab === 'pending' ? "bg-amber-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                    )}
+                  >
+                    বকেয়া ({toBnDigits(pendingLaborItems.length)})
+                  </button>
+                  <button
+                    onClick={() => setLaborFilterTab('paid')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg font-bold transition-all",
+                      laborFilterTab === 'paid' ? "bg-emerald-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                    )}
+                  >
+                    পরিশোধিত
+                  </button>
+                  <button
+                    onClick={() => setLaborFilterTab('all')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg font-bold transition-all",
+                      laborFilterTab === 'all' ? "bg-slate-700 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                    )}
+                  >
+                    সকল
+                  </button>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 block font-medium">মোট বকেয়া লেবার খরচ</span>
+                  <span className="text-base font-black text-amber-400">
+                    ৳ {pendingLaborItems.reduce((a, b) => a + b.amount, 0).toLocaleString('bn-BD')}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {filteredLaborItems.length === 0 ? (
+                  <div className="text-center text-slate-500 py-20 space-y-3 bg-slate-800/30 border border-slate-800/60 rounded-2xl">
+                    <HardHat className="w-12 h-12 text-slate-600/40 mx-auto" />
+                    <p className="font-bold text-slate-300 text-sm">কোনো লেবার খরচ রেকর্ড পাওয়া যায়নি</p>
+                  </div>
+                ) : (
+                  filteredLaborItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-2xl transition-all space-y-2.5"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                              #{item.invoiceId}
+                            </span>
+                            <span className="text-xs text-slate-400 font-sans">
+                              {formatBnDate(item.date, 'dd/MM/yyyy')}
+                            </span>
+                          </div>
+                          <p className="font-bold text-slate-200 text-sm mt-1">
+                            আনলোডিং স্থান: <span className="text-white">{item.unloadingSite || 'প্রধান গুদাম'}</span>
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-base font-black text-amber-400">
+                            ৳ {item.amount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
+                          </p>
+                          {item.status === 'paid' ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md mt-0.5">
+                              <CheckCircle2 className="w-3 h-3" /> পরিশোধিত
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md mt-0.5">
+                              বকেয়া লেবার খরচ
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {item.status === 'pending' && (
+                        <div className="pt-2 flex justify-end">
+                          <Button
+                            size="sm"
+                            onClick={() => setSettlingLabor(item)}
+                            className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-4 rounded-xl shadow-md cursor-pointer"
+                          >
+                            লেবার খরচ পরিশোধ করুন
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Shipping Settlement Confirmation Modal */}
+      <AnimatePresence>
+        {settlingShipping && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 font-bengali">
+            <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-6 max-w-sm w-full text-slate-100 shadow-2xl space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-blue-500/20 rounded-2xl border border-blue-500/30">
+                  <Truck className="w-6 h-6 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">গাড়ি ভাড়া পরিশোধ নিশ্চিতকরণ</h3>
+                  <p className="text-xs text-slate-400">এই গাড়ি ভাড়াটি কি পরিশোধ করা হয়েছে?</p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-800/80 border border-slate-700/60 rounded-xl space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">ইনভয়েস নং:</span>
+                  <span className="font-bold text-white">#{settlingShipping.invoiceId}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">গাড়ি / ড্রাইভার:</span>
+                  <span className="font-bold text-slate-200">{settlingShipping.vehicleNo || settlingShipping.driverName || '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">টাকার পরিমাণ:</span>
+                  <span className="font-black text-amber-400">৳ {settlingShipping.amount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSettlingShipping(null)}
+                  className="text-xs text-slate-400 hover:text-white"
+                >
+                  বাতিল
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleSettleShipping(settlingShipping)}
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 rounded-xl"
+                >
+                  হ্যাঁ, পরিশোধিত নিশ্চিত করুন
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Labor Settlement Confirmation Modal */}
+      <AnimatePresence>
+        {settlingLabor && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 font-bengali">
+            <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-6 max-w-sm w-full text-slate-100 shadow-2xl space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-amber-500/20 rounded-2xl border border-amber-500/30">
+                  <HardHat className="w-6 h-6 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">লেবার খরচ পরিশোধ নিশ্চিতকরণ</h3>
+                  <p className="text-xs text-slate-400">এই আনলোডিং লেবার ফি কি পরিশোধ করা হয়েছে?</p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-800/80 border border-slate-700/60 rounded-xl space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">ইনভয়েস নং:</span>
+                  <span className="font-bold text-white">#{settlingLabor.invoiceId}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">আনলোডিং স্থান:</span>
+                  <span className="font-bold text-slate-200">{settlingLabor.unloadingSite || 'প্রধান গুদাম'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">টাকার পরিমাণ:</span>
+                  <span className="font-black text-amber-400">৳ {settlingLabor.amount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSettlingLabor(null)}
+                  className="text-xs text-slate-400 hover:text-white"
+                >
+                  বাতিল
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleSettleLabor(settlingLabor)}
+                  className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-4 rounded-xl"
+                >
+                  হ্যাঁ, পরিশোধিত নিশ্চিত করুন
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
       </AnimatePresence>
     </div>
