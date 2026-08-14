@@ -79,8 +79,10 @@ export interface ShippingChargeItem {
   driverName?: string;
   driverPhone?: string;
   amount: number;
-  status: 'pending' | 'paid';
+  status: 'pending' | 'paid' | 'partial' | 'overpaid';
   paidAmount?: number;
+  dueAmount?: number;
+  overpaidAmount?: number;
   rawTx?: any;
 }
 
@@ -91,8 +93,10 @@ export interface LaborChargeItem {
   unloadingSite?: string;
   operatorName?: string;
   amount: number;
-  status: 'pending' | 'paid';
+  status: 'pending' | 'paid' | 'partial' | 'overpaid';
   paidAmount?: number;
+  dueAmount?: number;
+  overpaidAmount?: number;
   rawTx?: any;
 }
 
@@ -326,7 +330,21 @@ export function Shell({ children }: { children: ReactNode }) {
           const invNo = t.invoice_no || (t.id ? `PUR-${t.id}` : 'PUR-0001');
           const txDate = t.created_at || new Date().toISOString();
 
-          if (shipCost > 0) {
+          const shipPaidAmt = Number(meta.shippingPaidAmount !== undefined ? meta.shippingPaidAmount : (meta.shippingStatus === 'paid' ? shipCost : 0));
+          const labPaidAmt = Number(meta.laborPaidAmount !== undefined ? meta.laborPaidAmount : (meta.laborStatus === 'paid' ? labCost : 0));
+
+          const shipDue = Math.max(0, Math.round((shipCost - shipPaidAmt) * 100) / 100);
+          const shipOver = Math.max(0, Math.round((shipPaidAmt - shipCost) * 100) / 100);
+          let shipStatus: 'pending' | 'paid' | 'partial' | 'overpaid' = 'pending';
+          if (shipDue > 0) {
+            shipStatus = shipPaidAmt > 0 ? 'partial' : 'pending';
+          } else if (shipOver > 0) {
+            shipStatus = 'overpaid';
+          } else {
+            shipStatus = 'paid';
+          }
+
+          if (shipCost > 0 || shipPaidAmt > 0) {
             sItems.push({
               id: String(t.id),
               invoiceId: invNo,
@@ -335,13 +353,26 @@ export function Shell({ children }: { children: ReactNode }) {
               driverName: tAny.driver_name || meta.driverName || '',
               driverPhone: tAny.driver_phone || meta.driverPhone || '',
               amount: shipCost,
-              status: meta.shippingStatus === 'paid' ? 'paid' : 'pending',
-              paidAmount: meta.shippingStatus === 'paid' ? shipCost : 0,
+              status: shipStatus,
+              paidAmount: shipPaidAmt,
+              dueAmount: shipDue,
+              overpaidAmount: shipOver,
               rawTx: t
             });
           }
 
-          if (labCost > 0) {
+          const labDue = Math.max(0, Math.round((labCost - labPaidAmt) * 100) / 100);
+          const labOver = Math.max(0, Math.round((labPaidAmt - labCost) * 100) / 100);
+          let labStatus: 'pending' | 'paid' | 'partial' | 'overpaid' = 'pending';
+          if (labDue > 0) {
+            labStatus = labPaidAmt > 0 ? 'partial' : 'pending';
+          } else if (labOver > 0) {
+            labStatus = 'overpaid';
+          } else {
+            labStatus = 'paid';
+          }
+
+          if (labCost > 0 || labPaidAmt > 0) {
             lItems.push({
               id: String(t.id),
               invoiceId: invNo,
@@ -349,8 +380,10 @@ export function Shell({ children }: { children: ReactNode }) {
               unloadingSite: tAny.delivery_address || meta.deliveryAddress || meta.unloadingSite || '',
               operatorName: meta.preparedBy || meta.operatorName || '',
               amount: labCost,
-              status: meta.laborStatus === 'paid' ? 'paid' : 'pending',
-              paidAmount: meta.laborStatus === 'paid' ? labCost : 0,
+              status: labStatus,
+              paidAmount: labPaidAmt,
+              dueAmount: labDue,
+              overpaidAmount: labOver,
               rawTx: t
             });
           }
@@ -397,31 +430,34 @@ export function Shell({ children }: { children: ReactNode }) {
   const pendingOrders = orders.filter(o => !o.invoiced && o.stage !== 'completed' && o.stage !== 'invoiced');
   const pendingOrdersTotal = pendingOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
 
-  const pendingShippingItems = shippingItems.filter(s => s.status === 'pending');
-  const pendingLaborItems = laborItems.filter(l => l.status === 'pending');
+  const pendingShippingItems = shippingItems.filter(s => (s.dueAmount || 0) > 0 || (s.overpaidAmount || 0) > 0);
+  const pendingLaborItems = laborItems.filter(l => (l.dueAmount || 0) > 0 || (l.overpaidAmount || 0) > 0);
 
   const filteredShippingItems = shippingItems.filter(s => {
-    if (shippingFilterTab === 'pending') return s.status === 'pending';
-    if (shippingFilterTab === 'paid') return s.status === 'paid';
+    if (shippingFilterTab === 'pending') return (s.dueAmount || 0) > 0 || (s.overpaidAmount || 0) > 0;
+    if (shippingFilterTab === 'paid') return s.status === 'paid' && (s.dueAmount || 0) === 0 && (s.overpaidAmount || 0) === 0;
     return true;
   });
 
   const filteredLaborItems = laborItems.filter(l => {
-    if (laborFilterTab === 'pending') return l.status === 'pending';
-    if (laborFilterTab === 'paid') return l.status === 'paid';
+    if (laborFilterTab === 'pending') return (l.dueAmount || 0) > 0 || (l.overpaidAmount || 0) > 0;
+    if (laborFilterTab === 'paid') return l.status === 'paid' && (l.dueAmount || 0) === 0 && (l.overpaidAmount || 0) === 0;
     return true;
   });
 
   const handleSettleShipping = async (item: ShippingChargeItem) => {
     try {
-      await api.transactions.create({
-        transaction_type: 'payment_out',
-        total_amount: item.amount,
-        paid_amount: item.amount,
-        due_amount: 0,
-        payment_method: 'cash',
-        notes: `গাড়ি ভাড়া পরিশোধ (চালান: #${item.invoiceId}, গাড়ি নং: ${item.vehicleNo || '—'}, ড্রাইভার: ${item.driverName || '—'})`
-      });
+      const payAmount = item.dueAmount !== undefined ? item.dueAmount : item.amount;
+      if (payAmount > 0) {
+        await api.transactions.create({
+          transaction_type: 'payment_out',
+          total_amount: payAmount,
+          paid_amount: payAmount,
+          due_amount: 0,
+          payment_method: 'cash',
+          notes: `গাড়ি ভাড়া পরিশোধ (চালান: #${item.invoiceId}, গাড়ি নং: ${item.vehicleNo || '—'}, ড্রাইভার: ${item.driverName || '—'})${item.paidAmount ? ` [পূর্বে পরিশোধিত: ৳${item.paidAmount}, বাকি পরিশোধ: ৳${payAmount}]` : ''}`
+        });
+      }
 
       const t = item.rawTx;
       let meta: any = {};
@@ -439,7 +475,7 @@ export function Shell({ children }: { children: ReactNode }) {
       const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
       await api.transactions.update(item.id, { notes: newNotes });
 
-      toast.success(`গাড়ি ভাড়া ৳ ${item.amount.toLocaleString('bn-BD')} সফলভাবে পরিশোধিত হয়েছে!`);
+      toast.success(`গাড়ি ভাড়া ৳ ${payAmount.toLocaleString('bn-BD')} সফলভাবে পরিশোধিত হয়েছে!`);
       setSettlingShipping(null);
       void loadChequesAndOrders();
     } catch (err) {
@@ -448,16 +484,58 @@ export function Shell({ children }: { children: ReactNode }) {
     }
   };
 
+  const handleAdjustOverpaidShipping = async (item: ShippingChargeItem) => {
+    try {
+      const refundAmount = item.overpaidAmount || 0;
+      if (refundAmount > 0) {
+        await api.transactions.create({
+          transaction_type: 'payment_in',
+          total_amount: refundAmount,
+          paid_amount: refundAmount,
+          due_amount: 0,
+          payment_method: 'cash',
+          notes: `গাড়ি ভাড়া হ্রাস সমন্বয় / ক্যাশ ফেরত (চালান: #${item.invoiceId}, গাড়ি নং: ${item.vehicleNo || '—'}) [পূর্বে পরিশোধিত: ৳${item.paidAmount}, সংশোধিত খরচ: ৳${item.amount}, অতিরিক্ত ফেরত: ৳${refundAmount}]`
+        });
+      }
+
+      const t = item.rawTx;
+      let meta: any = {};
+      let userNote = t?.notes || '';
+      if (userNote && typeof userNote === 'string' && userNote.trim().startsWith('{')) {
+        try {
+          const firstLine = userNote.split('\n')[0];
+          meta = JSON.parse(firstLine);
+          userNote = userNote.substring(firstLine.length).trim();
+        } catch {}
+      }
+      meta.shippingStatus = 'paid';
+      meta.shippingPaidAmount = item.amount;
+
+      const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
+      await api.transactions.update(item.id, { notes: newNotes });
+
+      toast.success(`অতিরিক্ত গাড়ি ভাড়া ৳ ${refundAmount.toLocaleString('bn-BD')} সফলভাবে ERP-তে সমন্বয় করা হয়েছে!`);
+      setSettlingShipping(null);
+      void loadChequesAndOrders();
+    } catch (err) {
+      console.error(err);
+      toast.error('গাড়ি ভাড়া সমন্বয় করতে সমস্যা হয়েছে');
+    }
+  };
+
   const handleSettleLabor = async (item: LaborChargeItem) => {
     try {
-      await api.transactions.create({
-        transaction_type: 'payment_out',
-        total_amount: item.amount,
-        paid_amount: item.amount,
-        due_amount: 0,
-        payment_method: 'cash',
-        notes: `লেবার খরচ / আনলোডিং ফি পরিশোধ (চালান: #${item.invoiceId}, স্থান: ${item.unloadingSite || '—'})`
-      });
+      const payAmount = item.dueAmount !== undefined ? item.dueAmount : item.amount;
+      if (payAmount > 0) {
+        await api.transactions.create({
+          transaction_type: 'payment_out',
+          total_amount: payAmount,
+          paid_amount: payAmount,
+          due_amount: 0,
+          payment_method: 'cash',
+          notes: `লেবার খরচ / আনলোডিং ফি পরিশোধ (চালান: #${item.invoiceId}, স্থান: ${item.unloadingSite || '—'})${item.paidAmount ? ` [পূর্বে পরিশোধিত: ৳${item.paidAmount}, বাকি পরিশোধ: ৳${payAmount}]` : ''}`
+        });
+      }
 
       const t = item.rawTx;
       let meta: any = {};
@@ -475,12 +553,51 @@ export function Shell({ children }: { children: ReactNode }) {
       const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
       await api.transactions.update(item.id, { notes: newNotes });
 
-      toast.success(`লেবার খরচ ৳ ${item.amount.toLocaleString('bn-BD')} সফলভাবে পরিশোধিত হয়েছে!`);
+      toast.success(`লেবার খরচ ৳ ${payAmount.toLocaleString('bn-BD')} সফলভাবে পরিশোধিত হয়েছে!`);
       setSettlingLabor(null);
       void loadChequesAndOrders();
     } catch (err) {
       console.error(err);
       toast.error('লেবার খরচ পরিশোধ করতে সমস্যা হয়েছে');
+    }
+  };
+
+  const handleAdjustOverpaidLabor = async (item: LaborChargeItem) => {
+    try {
+      const refundAmount = item.overpaidAmount || 0;
+      if (refundAmount > 0) {
+        await api.transactions.create({
+          transaction_type: 'payment_in',
+          total_amount: refundAmount,
+          paid_amount: refundAmount,
+          due_amount: 0,
+          payment_method: 'cash',
+          notes: `লেবার খরচ হ্রাস সমন্বয় / ক্যাশ ফেরত (চালান: #${item.invoiceId}, স্থান: ${item.unloadingSite || '—'}) [পূর্বে পরিশোধিত: ৳${item.paidAmount}, সংশোধিত খরচ: ৳${item.amount}, অতিরিক্ত ফেরত: ৳${refundAmount}]`
+        });
+      }
+
+      const t = item.rawTx;
+      let meta: any = {};
+      let userNote = t?.notes || '';
+      if (userNote && typeof userNote === 'string' && userNote.trim().startsWith('{')) {
+        try {
+          const firstLine = userNote.split('\n')[0];
+          meta = JSON.parse(firstLine);
+          userNote = userNote.substring(firstLine.length).trim();
+        } catch {}
+      }
+      meta.laborStatus = 'paid';
+      meta.laborPaidAmount = item.amount;
+
+      const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
+      await api.transactions.update(item.id, { notes: newNotes });
+
+      toast.success(`অতিরিক্ত লেবার খরচ ৳ ${refundAmount.toLocaleString('bn-BD')} সফলভাবে ERP-তে সমন্বয় করা হয়েছে!`);
+      setSettlingLabor(null);
+      void loadChequesAndOrders();
+    } catch (err) {
+      console.error(err);
+      toast.error('লেবার খরচ সমন্বয় করতে সমস্যা হয়েছে');
     }
   };
 
@@ -1173,7 +1290,7 @@ export function Shell({ children }: { children: ReactNode }) {
                       shippingFilterTab === 'pending' ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
                     )}
                   >
-                    বকেয়া ({toBnDigits(pendingShippingItems.length)})
+                    বকেয়া/সমন্বয় ({toBnDigits(pendingShippingItems.length)})
                   </button>
                   <button
                     onClick={() => setShippingFilterTab('paid')}
@@ -1197,7 +1314,7 @@ export function Shell({ children }: { children: ReactNode }) {
                 <div className="text-right">
                   <span className="text-[10px] text-slate-400 block font-medium">মোট বকেয়া গাড়ি ভাড়া</span>
                   <span className="text-base font-black text-blue-400">
-                    ৳ {pendingShippingItems.reduce((a, b) => a + b.amount, 0).toLocaleString('bn-BD')}
+                    ৳ {pendingShippingItems.reduce((a, b) => a + (b.dueAmount || 0), 0).toLocaleString('bn-BD')}
                   </span>
                 </div>
               </div>
@@ -1232,17 +1349,28 @@ export function Shell({ children }: { children: ReactNode }) {
                           <p className="text-base font-black text-amber-400">
                             ৳ {item.amount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
                           </p>
-                          {item.status === 'paid' ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md mt-0.5">
-                              <CheckCircle2 className="w-3 h-3" /> পরিশোধিত
+                          {(item.dueAmount || 0) > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-md mt-0.5">
+                              বকেয়া: ৳ {(item.dueAmount || 0).toLocaleString('bn-BD')}
+                            </span>
+                          ) : (item.overpaidAmount || 0) > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md mt-0.5">
+                              অতিরিক্ত: ৳ {(item.overpaidAmount || 0).toLocaleString('bn-BD')}
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-md mt-0.5">
-                              বকেয়া গাড়ি ভাড়া
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md mt-0.5">
+                              <CheckCircle2 className="w-3 h-3" /> পরিশোধিত
                             </span>
                           )}
                         </div>
                       </div>
+
+                      {item.paidAmount !== undefined && item.paidAmount > 0 && (
+                        <div className="text-xs text-slate-400 bg-slate-900/40 px-2.5 py-1.5 rounded-lg flex justify-between">
+                          <span>পূর্বে পরিশোধিত: <strong className="text-slate-200">৳ {item.paidAmount.toLocaleString('bn-BD')}</strong></span>
+                          <span>সংশোধিত খরচ: <strong className="text-slate-200">৳ {item.amount.toLocaleString('bn-BD')}</strong></span>
+                        </div>
+                      )}
 
                       {(item.driverName || item.driverPhone) && (
                         <div className="text-xs text-slate-400 bg-slate-900/60 p-2 rounded-xl border border-slate-800 flex items-center justify-between">
@@ -1251,14 +1379,26 @@ export function Shell({ children }: { children: ReactNode }) {
                         </div>
                       )}
 
-                      {item.status === 'pending' && (
+                      {(item.dueAmount || 0) > 0 && (
                         <div className="pt-2 flex justify-end">
                           <Button
                             size="sm"
                             onClick={() => setSettlingShipping(item)}
                             className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 rounded-xl shadow-md cursor-pointer"
                           >
-                            গাড়ি ভাড়া পরিশোধ করুন
+                            বাকি ৳ {(item.dueAmount || 0).toLocaleString('bn-BD')} পরিশোধ করুন
+                          </Button>
+                        </div>
+                      )}
+
+                      {(item.overpaidAmount || 0) > 0 && (
+                        <div className="pt-2 flex justify-end">
+                          <Button
+                            size="sm"
+                            onClick={() => setSettlingShipping(item)}
+                            className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-4 rounded-xl shadow-md cursor-pointer"
+                          >
+                            অতিরিক্ত ৳ {(item.overpaidAmount || 0).toLocaleString('bn-BD')} ERP-তে সমন্বয় করুন
                           </Button>
                         </div>
                       )}
@@ -1318,7 +1458,7 @@ export function Shell({ children }: { children: ReactNode }) {
                       laborFilterTab === 'pending' ? "bg-amber-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
                     )}
                   >
-                    বকেয়া ({toBnDigits(pendingLaborItems.length)})
+                    বকেয়া/সমন্বয় ({toBnDigits(pendingLaborItems.length)})
                   </button>
                   <button
                     onClick={() => setLaborFilterTab('paid')}
@@ -1342,7 +1482,7 @@ export function Shell({ children }: { children: ReactNode }) {
                 <div className="text-right">
                   <span className="text-[10px] text-slate-400 block font-medium">মোট বকেয়া লেবার খরচ</span>
                   <span className="text-base font-black text-amber-400">
-                    ৳ {pendingLaborItems.reduce((a, b) => a + b.amount, 0).toLocaleString('bn-BD')}
+                    ৳ {pendingLaborItems.reduce((a, b) => a + (b.dueAmount || 0), 0).toLocaleString('bn-BD')}
                   </span>
                 </div>
               </div>
@@ -1377,26 +1517,49 @@ export function Shell({ children }: { children: ReactNode }) {
                           <p className="text-base font-black text-amber-400">
                             ৳ {item.amount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
                           </p>
-                          {item.status === 'paid' ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md mt-0.5">
-                              <CheckCircle2 className="w-3 h-3" /> পরিশোধিত
+                          {(item.dueAmount || 0) > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md mt-0.5">
+                              বকেয়া: ৳ {(item.dueAmount || 0).toLocaleString('bn-BD')}
+                            </span>
+                          ) : (item.overpaidAmount || 0) > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md mt-0.5">
+                              অতিরিক্ত: ৳ {(item.overpaidAmount || 0).toLocaleString('bn-BD')}
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md mt-0.5">
-                              বকেয়া লেবার খরচ
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md mt-0.5">
+                              <CheckCircle2 className="w-3 h-3" /> পরিশোধিত
                             </span>
                           )}
                         </div>
                       </div>
 
-                      {item.status === 'pending' && (
+                      {item.paidAmount !== undefined && item.paidAmount > 0 && (
+                        <div className="text-xs text-slate-400 bg-slate-900/40 px-2.5 py-1.5 rounded-lg flex justify-between">
+                          <span>পূর্বে পরিশোধিত: <strong className="text-slate-200">৳ {item.paidAmount.toLocaleString('bn-BD')}</strong></span>
+                          <span>সংশোধিত খরচ: <strong className="text-slate-200">৳ {item.amount.toLocaleString('bn-BD')}</strong></span>
+                        </div>
+                      )}
+
+                      {(item.dueAmount || 0) > 0 && (
                         <div className="pt-2 flex justify-end">
                           <Button
                             size="sm"
                             onClick={() => setSettlingLabor(item)}
                             className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-4 rounded-xl shadow-md cursor-pointer"
                           >
-                            লেবার খরচ পরিশোধ করুন
+                            বাকি ৳ {(item.dueAmount || 0).toLocaleString('bn-BD')} লেবার খরচ পরিশোধ করুন
+                          </Button>
+                        </div>
+                      )}
+
+                      {(item.overpaidAmount || 0) > 0 && (
+                        <div className="pt-2 flex justify-end">
+                          <Button
+                            size="sm"
+                            onClick={() => setSettlingLabor(item)}
+                            className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-4 rounded-xl shadow-md cursor-pointer"
+                          >
+                            অতিরিক্ত ৳ {(item.overpaidAmount || 0).toLocaleString('bn-BD')} ERP-তে সমন্বয় করুন
                           </Button>
                         </div>
                       )}
@@ -1409,18 +1572,25 @@ export function Shell({ children }: { children: ReactNode }) {
         )}
       </AnimatePresence>
 
-      {/* Shipping Settlement Confirmation Modal */}
+      {/* Shipping Settlement / Adjustment Confirmation Modal */}
       <AnimatePresence>
         {settlingShipping && (
           <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 font-bengali">
             <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-6 max-w-sm w-full text-slate-100 shadow-2xl space-y-4">
               <div className="flex items-center gap-3">
-                <div className="p-3 bg-blue-500/20 rounded-2xl border border-blue-500/30">
-                  <Truck className="w-6 h-6 text-blue-400" />
+                <div className={cn(
+                  "p-3 rounded-2xl border",
+                  (settlingShipping.overpaidAmount || 0) > 0 ? "bg-rose-500/20 border-rose-500/30" : "bg-blue-500/20 border-blue-500/30"
+                )}>
+                  <Truck className={cn("w-6 h-6", (settlingShipping.overpaidAmount || 0) > 0 ? "text-rose-400" : "text-blue-400")} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-white">গাড়ি ভাড়া পরিশোধ নিশ্চিতকরণ</h3>
-                  <p className="text-xs text-slate-400">এই গাড়ি ভাড়াটি কি পরিশোধ করা হয়েছে?</p>
+                  <h3 className="font-bold text-base text-white">
+                    {(settlingShipping.overpaidAmount || 0) > 0 ? 'অতিরিক্ত গাড়ি ভাড়া সমন্বয়' : 'গাড়ি ভাড়া পরিশোধ নিশ্চিতকরণ'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {(settlingShipping.overpaidAmount || 0) > 0 ? 'খরচ কমানোর ফলে অতিরিক্ত টাকা ERP-তে সমন্বয় করুন' : 'বকেয়া গাড়ি ভাড়া পরিশোধ সম্পন্ন করুন'}
+                  </p>
                 </div>
               </div>
 
@@ -1434,8 +1604,22 @@ export function Shell({ children }: { children: ReactNode }) {
                   <span className="font-bold text-slate-200">{settlingShipping.vehicleNo || settlingShipping.driverName || '—'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">টাকার পরিমাণ:</span>
-                  <span className="font-black text-amber-400">৳ {settlingShipping.amount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                  <span className="text-slate-400">সংশোধিত মোট খরচ:</span>
+                  <span className="font-bold text-slate-200">৳ {settlingShipping.amount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                </div>
+                {settlingShipping.paidAmount !== undefined && settlingShipping.paidAmount > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">পূর্বে পরিশোধিত:</span>
+                    <span className="font-bold text-slate-200">৳ {settlingShipping.paidAmount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-slate-700/80 pt-1.5">
+                  <span className="font-bold text-slate-300">
+                    {(settlingShipping.overpaidAmount || 0) > 0 ? 'সমন্বয়যোগ্য অতিরিক্ত টাকা:' : 'বাকি প্রদেয় টাকা:'}
+                  </span>
+                  <span className={cn("font-black text-sm", (settlingShipping.overpaidAmount || 0) > 0 ? "text-rose-400" : "text-amber-400")}>
+                    ৳ {((settlingShipping.overpaidAmount || 0) > 0 ? settlingShipping.overpaidAmount! : (settlingShipping.dueAmount !== undefined ? settlingShipping.dueAmount : settlingShipping.amount)).toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
+                  </span>
                 </div>
               </div>
 
@@ -1448,31 +1632,48 @@ export function Shell({ children }: { children: ReactNode }) {
                 >
                   বাতিল
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={() => handleSettleShipping(settlingShipping)}
-                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 rounded-xl"
-                >
-                  হ্যাঁ, পরিশোধিত নিশ্চিত করুন
-                </Button>
+                {(settlingShipping.overpaidAmount || 0) > 0 ? (
+                  <Button
+                    size="sm"
+                    onClick={() => handleAdjustOverpaidShipping(settlingShipping)}
+                    className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-4 rounded-xl"
+                  >
+                    হ্যাঁ, অতিরিক্ত ৳ {settlingShipping.overpaidAmount!.toLocaleString('bn-BD')} সমন্বয় করুন
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => handleSettleShipping(settlingShipping)}
+                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 rounded-xl"
+                  >
+                    হ্যাঁ, বাকি ৳ {(settlingShipping.dueAmount !== undefined ? settlingShipping.dueAmount : settlingShipping.amount).toLocaleString('bn-BD')} পরিশোধ করুন
+                  </Button>
+                )}
               </div>
             </div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Labor Settlement Confirmation Modal */}
+      {/* Labor Settlement / Adjustment Confirmation Modal */}
       <AnimatePresence>
         {settlingLabor && (
           <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 font-bengali">
             <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-6 max-w-sm w-full text-slate-100 shadow-2xl space-y-4">
               <div className="flex items-center gap-3">
-                <div className="p-3 bg-amber-500/20 rounded-2xl border border-amber-500/30">
-                  <HardHat className="w-6 h-6 text-amber-400" />
+                <div className={cn(
+                  "p-3 rounded-2xl border",
+                  (settlingLabor.overpaidAmount || 0) > 0 ? "bg-rose-500/20 border-rose-500/30" : "bg-amber-500/20 border-amber-500/30"
+                )}>
+                  <HardHat className={cn("w-6 h-6", (settlingLabor.overpaidAmount || 0) > 0 ? "text-rose-400" : "text-amber-400")} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-white">লেবার খরচ পরিশোধ নিশ্চিতকরণ</h3>
-                  <p className="text-xs text-slate-400">এই আনলোডিং লেবার ফি কি পরিশোধ করা হয়েছে?</p>
+                  <h3 className="font-bold text-base text-white">
+                    {(settlingLabor.overpaidAmount || 0) > 0 ? 'অতিরিক্ত লেবার খরচ সমন্বয়' : 'লেবার খরচ পরিশোধ নিশ্চিতকরণ'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {(settlingLabor.overpaidAmount || 0) > 0 ? 'খরচ কমানোর ফলে অতিরিক্ত টাকা ERP-তে সমন্বয় করুন' : 'বকেয়া লেবার ফি পরিশোধ সম্পন্ন করুন'}
+                  </p>
                 </div>
               </div>
 
@@ -1486,8 +1687,22 @@ export function Shell({ children }: { children: ReactNode }) {
                   <span className="font-bold text-slate-200">{settlingLabor.unloadingSite || 'প্রধান গুদাম'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">টাকার পরিমাণ:</span>
-                  <span className="font-black text-amber-400">৳ {settlingLabor.amount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                  <span className="text-slate-400">সংশোধিত মোট খরচ:</span>
+                  <span className="font-bold text-slate-200">৳ {settlingLabor.amount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                </div>
+                {settlingLabor.paidAmount !== undefined && settlingLabor.paidAmount > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">পূর্বে পরিশোধিত:</span>
+                    <span className="font-bold text-slate-200">৳ {settlingLabor.paidAmount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-slate-700/80 pt-1.5">
+                  <span className="font-bold text-slate-300">
+                    {(settlingLabor.overpaidAmount || 0) > 0 ? 'সমন্বয়যোগ্য অতিরিক্ত টাকা:' : 'বাকি প্রদেয় টাকা:'}
+                  </span>
+                  <span className={cn("font-black text-sm", (settlingLabor.overpaidAmount || 0) > 0 ? "text-rose-400" : "text-amber-400")}>
+                    ৳ {((settlingLabor.overpaidAmount || 0) > 0 ? settlingLabor.overpaidAmount! : (settlingLabor.dueAmount !== undefined ? settlingLabor.dueAmount : settlingLabor.amount)).toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
+                  </span>
                 </div>
               </div>
 
@@ -1500,13 +1715,23 @@ export function Shell({ children }: { children: ReactNode }) {
                 >
                   বাতিল
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={() => handleSettleLabor(settlingLabor)}
-                  className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-4 rounded-xl"
-                >
-                  হ্যাঁ, পরিশোধিত নিশ্চিত করুন
-                </Button>
+                {(settlingLabor.overpaidAmount || 0) > 0 ? (
+                  <Button
+                    size="sm"
+                    onClick={() => handleAdjustOverpaidLabor(settlingLabor)}
+                    className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-4 rounded-xl"
+                  >
+                    হ্যাঁ, অতিরিক্ত ৳ {settlingLabor.overpaidAmount!.toLocaleString('bn-BD')} সমন্বয় করুন
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => handleSettleLabor(settlingLabor)}
+                    className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-4 rounded-xl"
+                  >
+                    হ্যাঁ, বাকি ৳ {(settlingLabor.dueAmount !== undefined ? settlingLabor.dueAmount : settlingLabor.amount).toLocaleString('bn-BD')} পরিশোধ করুন
+                  </Button>
+                )}
               </div>
             </div>
           </div>

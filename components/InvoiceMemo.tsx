@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { Printer, FileText, User, Truck, ClipboardList, CreditCard, Edit3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { toBengaliDigits, numberToBengaliWords } from '@/lib/bengaliUtils';
+import { toBengaliDigits, numberToBengaliWords, parseProductDetails } from '@/lib/bengaliUtils';
 import { printElement } from '@/lib/printUtils';
 
 export interface OrderItem {
@@ -201,10 +201,42 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
   const subtotal = invoice.subtotal || items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
   const totalAmount = invoice.totalAmount || (subtotal - effectiveDiscount + effectiveShippingCost + effectiveLaborCost);
 
-  // Freight & Labor Charges Per Unit
-  const totalExtra = effectiveShippingCost + effectiveLaborCost;
-  const totalQtySum = items.reduce((a: number, i: any) => a + Number(i.quantity || 0), 0);
-  const extraPerUnit = totalQtySum > 0 ? (totalExtra / totalQtySum) : 0;
+  // Category-Specific Freight & Labor Charges Per Unit (Per KG for Rod/Ring, Per Bag for Cement)
+  const rodLaborRate = Number((invoice as any).rodLaborRate !== undefined ? (invoice as any).rodLaborRate : (meta.rodLaborRate || 0));
+  const rodShippingRate = Number((invoice as any).rodShippingRate !== undefined ? (invoice as any).rodShippingRate : (meta.rodShippingRate || 0));
+  const cementLaborRate = Number((invoice as any).cementLaborRate !== undefined ? (invoice as any).cementLaborRate : (meta.cementLaborRate || 0));
+  const cementShippingRate = Number((invoice as any).cementShippingRate !== undefined ? (invoice as any).cementShippingRate : (meta.cementShippingRate || 0));
+
+  const rodRingWeight = items.reduce((sum: number, item: any) => {
+    const parsed = parseProductDetails(item);
+    const isRod = parsed.categoryName === 'রড' || (item.unit || '').includes('কেজি') || (item.unit || '').includes('টন') || (item.name || '').includes('রড') || (item.name || '').includes('মিলি');
+    const isRing = parsed.categoryName === 'রিং' || (item.name || '').includes('রিং');
+    if (isRod || isRing) {
+      const isTon = (item.unit || '').toLowerCase().includes('ton') || (item.unit || '').includes('টন');
+      return sum + (Number(item.quantity) || 0) * (isTon ? 1000 : 1);
+    }
+    return sum;
+  }, 0);
+
+  const cementBags = items.reduce((sum: number, item: any) => {
+    const parsed = parseProductDetails(item);
+    const isCement = parsed.categoryName === 'সিমেন্ট' || (item.unit || '').includes('বস্তা') || (item.unit || '').includes('ব্যাগ') || (item.name || '').includes('সিমেন্ট');
+    if (isCement) {
+      return sum + (Number(item.quantity) || 0);
+    }
+    return sum;
+  }, 0);
+
+  const hasExplicitRates = (rodLaborRate > 0 || rodShippingRate > 0 || cementLaborRate > 0 || cementShippingRate > 0);
+  
+  const rodUnitExtra = hasExplicitRates
+    ? (rodLaborRate + rodShippingRate)
+    : (rodRingWeight > 0 && cementBags === 0 ? (effectiveShippingCost + effectiveLaborCost) / rodRingWeight : 0);
+
+  const cementUnitExtra = hasExplicitRates
+    ? (cementLaborRate + cementShippingRate)
+    : (cementBags > 0 && rodRingWeight === 0 ? (effectiveShippingCost + effectiveLaborCost) / cementBags : 0);
+
   const paidAmount = invoice.paidAmount !== undefined ? invoice.paidAmount : 0;
   const dueAmount = invoice.dueAmount !== undefined ? invoice.dueAmount : Math.max(0, totalAmount - paidAmount);
 
@@ -483,8 +515,18 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                   const itemQty = Number(item.quantity || 0);
                   const itemTotal = Number((itemPrice - Number(item.discount || 0)) * itemQty);
 
-                  const effectiveUnitPrice = itemPrice + extraPerUnit;
-                  const effectiveItemTotal = effectiveUnitPrice * itemQty;
+                  const parsed = parseProductDetails(item);
+                  const isRod = parsed.categoryName === 'রড' || (item.unit || '').includes('কেজি') || (item.unit || '').includes('টন') || (item.name || '').includes('রড') || (item.name || '').includes('মিলি');
+                  const isRing = parsed.categoryName === 'রিং' || (item.name || '').includes('রিং');
+                  const isCement = parsed.categoryName === 'সিমেন্ট' || (item.unit || '').includes('বস্তা') || (item.unit || '').includes('ব্যাগ') || (item.name || '').includes('সিমেন্ট');
+
+                  let itemExtraPerUnit = 0;
+                  if (isRod || isRing) {
+                    itemExtraPerUnit = rodUnitExtra;
+                  } else if (isCement) {
+                    itemExtraPerUnit = cementUnitExtra;
+                  }
+
                   const bundleInfo = item.bundle ? `(${toBengaliDigits(item.bundle)} বান্ডিল)` : item.pieces ? `(${toBengaliDigits(item.pieces)} পিস)` : '';
 
                   return (
@@ -497,21 +539,11 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                       <td className="border border-slate-300 py-1.5 px-2 text-center">{item.variant || '—'}</td>
                       <td className="border border-slate-300 py-1.5 px-2 text-center font-mono font-bold">{toBengaliDigits(itemQty.toLocaleString('en-IN'))}</td>
                       <td className="border border-slate-300 py-1.5 px-2 text-center">{item.unit || 'পিস'}</td>
-                      <td className="border border-slate-300 py-1.5 px-2 text-right font-mono">
-                        <div className="font-bold">৳ {toBengaliDigits(itemPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</div>
-                        {extraPerUnit > 0 && (
-                          <div className="text-[9px] text-blue-700 font-extrabold" title="লেবার ও শিপিং ভাড়া সহ কার্যকর একক দর">
-                            (খরচসহ ৳ {toBengaliDigits(effectiveUnitPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 }))})
-                          </div>
-                        )}
-                      </td>
                       <td className="border border-slate-300 py-1.5 px-2 text-right font-mono font-bold">
-                        <div className="font-bold">৳ {toBengaliDigits(itemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</div>
-                        {extraPerUnit > 0 && (
-                          <div className="text-[9px] text-blue-700 font-extrabold" title="লেবার ও শিপিং ভাড়া সহ কার্যকর মোট বিল">
-                            (খরচসহ ৳ {toBengaliDigits(effectiveItemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }))})
-                          </div>
-                        )}
+                        ৳ {toBengaliDigits(itemPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
+                      </td>
+                      <td className="border border-slate-300 py-1.5 px-2 text-right font-mono font-black text-slate-900">
+                        ৳ {toBengaliDigits(itemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
                       </td>
                     </tr>
                   );
@@ -721,14 +753,30 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
 
               {effectiveLaborCost > 0 && (
                 <div className="flex justify-between items-center p-1.5 px-2">
-                  <span className="text-slate-800 font-medium">আনলোডিং ও লেবার খরচ</span>
+                  <div className="flex flex-col text-left">
+                    <span className="text-slate-800 font-medium">আনলোডিং ও লেবার খরচ</span>
+                    {(rodLaborRate > 0 || cementLaborRate > 0) && (
+                      <span className="text-[9px] text-slate-500 font-normal">
+                        {rodLaborRate > 0 ? `রড: ৳${toBengaliDigits(rodLaborRate)}/কেজি ` : ''}
+                        {cementLaborRate > 0 ? `সিমেন্ট: ৳${toBengaliDigits(cementLaborRate)}/বস্তা` : ''}
+                      </span>
+                    )}
+                  </div>
                   <span className="font-mono">+ ৳ {toBengaliDigits(effectiveLaborCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                 </div>
               )}
 
               {effectiveShippingCost > 0 && (
                 <div className="flex justify-between items-center p-1.5 px-2">
-                  <span className="text-slate-800 font-medium">পরিবহন ভাড়া / গাড়ি ভাড়া</span>
+                  <div className="flex flex-col text-left">
+                    <span className="text-slate-800 font-medium">পরিবহন ভাড়া / গাড়ি ভাড়া</span>
+                    {(rodShippingRate > 0 || cementShippingRate > 0) && (
+                      <span className="text-[9px] text-slate-500 font-normal">
+                        {rodShippingRate > 0 ? `রড: ৳${toBengaliDigits(rodShippingRate)}/কেজি ` : ''}
+                        {cementShippingRate > 0 ? `সিমেন্ট: ৳${toBengaliDigits(cementShippingRate)}/বস্তা` : ''}
+                      </span>
+                    )}
+                  </div>
                   <span className="font-mono">+ ৳ {toBengaliDigits(effectiveShippingCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                 </div>
               )}

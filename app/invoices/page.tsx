@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Shell } from '@/components/Shell';
 import { api } from '@/lib/api';
@@ -56,6 +56,9 @@ interface OrderItem {
   id?: string;
   name: string;
   code?: string;
+  category?: string;
+  brand?: string;
+  mmSize?: string;
   price: number;
   quantity: number;
   unit: string;
@@ -101,8 +104,17 @@ interface Invoice {
   senderTxnRef?: string;
   chequeNo?: string;
   chequeDate?: string;
-  cashPaidAmount?: number;
-  chequePaidAmount?: number;
+  chargeCalcMode?: 'rate' | 'manual';
+  rodLaborRate?: number;
+  rodShippingRate?: number;
+  rodLaborCost?: number;
+  rodShippingCost?: number;
+  rodRingTotalKg?: number;
+  cementLaborRate?: number;
+  cementShippingRate?: number;
+  cementLaborCost?: number;
+  cementShippingCost?: number;
+  cementTotalBags?: number;
 }
 
 function InvoicesContent() {
@@ -181,7 +193,7 @@ function InvoicesContent() {
   const [discountType, setDiscountType] = useState<'percentage' | 'flat'>('percentage');
   const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [discountFlat, setDiscountFlat] = useState<number>(0);
-  const [shippingCost, setShippingCost] = useState<number>(0);
+  const [manualShippingCost, setManualShippingCost] = useState<number>(0);
   const [paymentOption, setPaymentOption] = useState<'now' | 'later'>('now');
   const [preparedBy, setPreparedBy] = useState<string>('');
   const [authorizedBy, setAuthorizedBy] = useState<string>('');
@@ -193,13 +205,39 @@ function InvoicesContent() {
   const [driverName, setDriverName] = useState<string>('');
   const [driverPhone, setDriverPhone] = useState<string>('');
   const [deliveryAddress, setDeliveryAddress] = useState<string>('');
-  const [laborCost, setLaborCost] = useState<number>(() => {
+  
+  // Rate-based vs manual extra charge states
+  const [chargeCalcMode, setChargeCalcMode] = useState<'rate' | 'manual'>('rate');
+  const [rodLaborRate, setRodLaborRate] = useState<number>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('dokan_default_labor_charge');
+      const saved = localStorage.getItem('dokan_sales_rod_labor_rate');
       return saved ? parseFloat(saved) || 0 : 0;
     }
     return 0;
   });
+  const [rodShippingRate, setRodShippingRate] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('dokan_sales_rod_shipping_rate');
+      return saved ? parseFloat(saved) || 0 : 0;
+    }
+    return 0;
+  });
+  const [cementLaborRate, setCementLaborRate] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('dokan_sales_cement_labor_rate');
+      return saved ? parseFloat(saved) || 0 : 0;
+    }
+    return 0;
+  });
+  const [cementShippingRate, setCementShippingRate] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('dokan_sales_cement_shipping_rate');
+      return saved ? parseFloat(saved) || 0 : 0;
+    }
+    return 0;
+  });
+
+  const [manualLaborCost, setManualLaborCost] = useState<number>(0);
   const [isGatePassOpen, setIsGatePassOpen] = useState<boolean>(false);
   const [isPrintMemoOpen, setIsPrintMemoOpen] = useState<boolean>(false);
   const [invoiceViewMode, setInvoiceViewMode] = useState<'details' | 'memo'>('details');
@@ -208,10 +246,13 @@ function InvoicesContent() {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
-  const handleSaveDefaultLabor = (amount: number) => {
+  const handleSaveDefaultCharges = () => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('dokan_default_labor_charge', amount.toString());
-      toast.success(`ডিফল্ট লেবার খরচ ৳${amount.toLocaleString()} হিসেবে সেভ করা হয়েছে!`);
+      localStorage.setItem('dokan_sales_rod_labor_rate', (rodLaborRate || 0).toString());
+      localStorage.setItem('dokan_sales_rod_shipping_rate', (rodShippingRate || 0).toString());
+      localStorage.setItem('dokan_sales_cement_labor_rate', (cementLaborRate || 0).toString());
+      localStorage.setItem('dokan_sales_cement_shipping_rate', (cementShippingRate || 0).toString());
+      toast.success(`ডিফল্ট রেট সেভ করা হয়েছে (রড: লেবার ৳${rodLaborRate}/কেজি, ভাড়া ৳${rodShippingRate}/কেজি | সিমেন্ট: লেবার ৳${cementLaborRate}/বস্তা, ভাড়া ৳${cementShippingRate}/বস্তা)`);
     }
   };
 
@@ -276,7 +317,18 @@ function InvoicesContent() {
           chequeNo: meta.chequeNo || s.cheque_number || '',
           chequeDate: meta.chequeDate || (s.cheque_due_date ? String(s.cheque_due_date) : ''),
           cashPaidAmount: Number(meta.cashPaidAmount || 0),
-          chequePaidAmount: Number(meta.chequePaidAmount || 0)
+          chequePaidAmount: Number(meta.chequePaidAmount || 0),
+          chargeCalcMode: meta.chargeCalcMode,
+          rodLaborRate: meta.rodLaborRate !== undefined ? Number(meta.rodLaborRate) : undefined,
+          rodShippingRate: meta.rodShippingRate !== undefined ? Number(meta.rodShippingRate) : undefined,
+          rodLaborCost: meta.rodLaborCost !== undefined ? Number(meta.rodLaborCost) : undefined,
+          rodShippingCost: meta.rodShippingCost !== undefined ? Number(meta.rodShippingCost) : undefined,
+          rodRingTotalKg: meta.rodRingTotalKg !== undefined ? Number(meta.rodRingTotalKg) : undefined,
+          cementLaborRate: meta.cementLaborRate !== undefined ? Number(meta.cementLaborRate) : undefined,
+          cementShippingRate: meta.cementShippingRate !== undefined ? Number(meta.cementShippingRate) : undefined,
+          cementLaborCost: meta.cementLaborCost !== undefined ? Number(meta.cementLaborCost) : undefined,
+          cementShippingCost: meta.cementShippingCost !== undefined ? Number(meta.cementShippingCost) : undefined,
+          cementTotalBags: meta.cementTotalBags !== undefined ? Number(meta.cementTotalBags) : undefined
         };
       });
       setInvoices(mappedInvoices);
@@ -459,17 +511,59 @@ function InvoicesContent() {
     setItemDiscount(0);
   };
 
-  const handleRemoveCartItem = (id?: string) => {
-    setCart(prev => prev.filter(i => i.id !== id));
+  const handleRemoveCartItem = (id?: string | number, index?: number) => {
+    if (index !== undefined) {
+      setCart(prev => prev.filter((_, idx) => idx !== index));
+      return;
+    }
+    if (id === undefined || id === null) return;
+    setCart(prev => prev.filter(i => String(i.id) !== String(id)));
   };
 
-  const handleUpdateCartQty = (id: string, newQty: number) => {
+  const handleUpdateCartQty = (id: string | number, newQty: number, index?: number) => {
     if (newQty < 1) return;
-    setCart(prev => prev.map(i => i.id === id ? { ...i, quantity: newQty } : i));
+    setCart(prev => prev.map((i, idx) => {
+      if (index !== undefined && idx === index) return { ...i, quantity: newQty };
+      if (String(i.id) === String(id)) return { ...i, quantity: newQty };
+      return i;
+    }));
   };
 
   // Helper to prevent floating point precision issues in DecimalField API validation
   const round2 = (val: number) => Math.round((Number(val) || 0) * 100) / 100;
+
+  // Category-specific quantity calculations (Rod/Ring in KG, Cement in Bags)
+  const rodRingTotalKg = useMemo(() => {
+    return round2(cart.reduce((sum, item) => {
+      const parsed = parseProductDetails(item);
+      const isRod = parsed.categoryName === 'রড' || item.category === 'রড' || (item.unit || '').includes('কেজি') || (item.unit || '').includes('টন') || (item.name || '').includes('রড') || (item.name || '').includes('মিলি');
+      const isRing = parsed.categoryName === 'রিং' || item.category === 'রিং' || (item.name || '').includes('রিং');
+      if (isRod || isRing) {
+        const isTon = (item.unit || '').toLowerCase().includes('ton') || (item.unit || '').includes('টন');
+        return sum + (Number(item.quantity) || 0) * (isTon ? 1000 : 1);
+      }
+      return sum;
+    }, 0));
+  }, [cart]);
+
+  const cementTotalBags = useMemo(() => {
+    return round2(cart.reduce((sum, item) => {
+      const parsed = parseProductDetails(item);
+      const isCement = parsed.categoryName === 'সিমেন্ট' || item.category === 'সিমেন্ট' || (item.unit || '').includes('বস্তা') || (item.unit || '').includes('ব্যাগ') || (item.name || '').includes('সিমেন্ট');
+      if (isCement) {
+        return sum + (Number(item.quantity) || 0);
+      }
+      return sum;
+    }, 0));
+  }, [cart]);
+
+  const rodLaborTotal = round2(rodRingTotalKg * (rodLaborRate || 0));
+  const rodShippingTotal = round2(rodRingTotalKg * (rodShippingRate || 0));
+  const cementLaborTotal = round2(cementTotalBags * (cementLaborRate || 0));
+  const cementShippingTotal = round2(cementTotalBags * (cementShippingRate || 0));
+
+  const laborCost = chargeCalcMode === 'rate' ? round2(rodLaborTotal + cementLaborTotal) : manualLaborCost;
+  const shippingCost = chargeCalcMode === 'rate' ? round2(rodShippingTotal + cementShippingTotal) : manualShippingCost;
 
   // Cart Calculations matching 1:1 Screenshot
   const cartSubtotal = round2(cart.reduce((a, i) => a + (i.price * i.quantity), 0));
@@ -515,7 +609,6 @@ function InvoicesContent() {
     setDiscountType('percentage');
     setDiscountPercent(0);
     setDiscountFlat(0);
-    setShippingCost(0);
     setPaymentOption('now');
     setPreparedBy('');
     setAuthorizedBy('');
@@ -525,8 +618,20 @@ function InvoicesContent() {
     setDriverName('');
     setDriverPhone('');
     setDeliveryAddress('');
-    const defLabor = typeof window !== 'undefined' ? (parseFloat(localStorage.getItem('dokan_default_labor_charge') || '0') || 0) : 0;
-    setLaborCost(defLabor);
+    
+    // Load default per-unit rates from localStorage
+    const defRodLab = typeof window !== 'undefined' ? (parseFloat(localStorage.getItem('dokan_sales_rod_labor_rate') || '0') || 0) : 0;
+    const defRodShip = typeof window !== 'undefined' ? (parseFloat(localStorage.getItem('dokan_sales_rod_shipping_rate') || '0') || 0) : 0;
+    const defCemLab = typeof window !== 'undefined' ? (parseFloat(localStorage.getItem('dokan_sales_cement_labor_rate') || '0') || 0) : 0;
+    const defCemShip = typeof window !== 'undefined' ? (parseFloat(localStorage.getItem('dokan_sales_cement_shipping_rate') || '0') || 0) : 0;
+    setRodLaborRate(defRodLab);
+    setRodShippingRate(defRodShip);
+    setCementLaborRate(defCemLab);
+    setCementShippingRate(defCemShip);
+    setChargeCalcMode('rate');
+    setManualLaborCost(0);
+    setManualShippingCost(0);
+
     if (fromOrderId) {
       router.replace('/invoices');
     }
@@ -558,12 +663,19 @@ function InvoicesContent() {
     setChequeDate((inv as any).chequeDate || '');
     setInvoicePaymentMethod(inv.paymentMethod || 'Cash');
     setInvoiceNote(inv.note || '');
-    setShippingCost(inv.shippingCost || 0);
-    setLaborCost(inv.laborCost || 0);
+    setManualShippingCost(inv.shippingCost || 0);
+    setManualLaborCost(inv.laborCost || 0);
     setVehicleNo(inv.vehicleNo || '');
     setDriverName(inv.driverName || '');
     setDriverPhone(inv.driverPhone || '');
     setDeliveryAddress(inv.deliveryAddress || inv.customerAddress || '');
+
+    const invAny = inv as any;
+    if (invAny.rodLaborRate !== undefined) setRodLaborRate(Number(invAny.rodLaborRate || 0));
+    if (invAny.rodShippingRate !== undefined) setRodShippingRate(Number(invAny.rodShippingRate || 0));
+    if (invAny.cementLaborRate !== undefined) setCementLaborRate(Number(invAny.cementLaborRate || 0));
+    if (invAny.cementShippingRate !== undefined) setCementShippingRate(Number(invAny.cementShippingRate || 0));
+    if (invAny.chargeCalcMode) setChargeCalcMode(invAny.chargeCalcMode);
 
     setSelectedInvoice(null);
     setIsCreateInvoiceOpen(true);
@@ -643,8 +755,20 @@ function InvoicesContent() {
         discountType,
         discountPercent: Number(discountPercent || 0),
         discountFlat: Number(discountFlat || 0),
+        chargeCalcMode,
+        rodLaborRate: Number(rodLaborRate || 0),
+        rodShippingRate: Number(rodShippingRate || 0),
+        rodLaborCost: Number(rodLaborTotal || 0),
+        rodShippingCost: Number(rodShippingTotal || 0),
+        rodRingTotalKg: Number(rodRingTotalKg || 0),
+        cementLaborRate: Number(cementLaborRate || 0),
+        cementShippingRate: Number(cementShippingRate || 0),
+        cementLaborCost: Number(cementLaborTotal || 0),
+        cementShippingCost: Number(cementShippingTotal || 0),
+        cementTotalBags: Number(cementTotalBags || 0),
         laborCost: Number(laborCost || 0),
         transportCost: Number(shippingCost || 0),
+        shippingCost: Number(shippingCost || 0),
         vehicleNo: vehicleNo || '',
         driverName: driverName || '',
         driverPhone: driverPhone || '',
@@ -1524,15 +1648,15 @@ function InvoicesContent() {
                                 <TableCell className="text-center font-bold text-slate-700">{parsed.sizeName}</TableCell>
                                 <TableCell className="text-center">
                                   <div className="inline-flex items-center gap-1.5">
-                                    <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity - 1)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold">-</button>
+                                    <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity - 1, idx)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold hover:bg-slate-200">-</button>
                                     <span className="font-bold">{toBengaliDigits(item.quantity)} {item.unit}</span>
-                                    <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity + 1)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold">+</button>
+                                    <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity + 1, idx)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold hover:bg-slate-200">+</button>
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-right font-medium text-slate-600">৳{toBengaliDigits((item.price || 0).toLocaleString('en-IN'))}</TableCell>
                                 <TableCell className="text-right font-black text-slate-900">৳{toBengaliDigits(((item.price || 0) * item.quantity).toLocaleString('en-IN'))}</TableCell>
                                 <TableCell className="text-center">
-                                  <button type="button" onClick={() => handleRemoveCartItem(item.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded-sm">
+                                  <button type="button" onClick={() => handleRemoveCartItem(item.id, idx)} className="p-1 text-rose-500 hover:bg-rose-50 rounded-sm cursor-pointer transition-colors" title="আইটেম বাদ দিন">
                                     <Trash2 className="w-4 h-4" />
                                   </button>
                                 </TableCell>
@@ -1649,39 +1773,165 @@ function InvoicesContent() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-[11px] font-bold text-slate-600">লেবার খরচ (৳)</Label>
-                            <button
-                              type="button"
-                              onClick={() => handleSaveDefaultLabor(laborCost || 0)}
-                              className="text-[9px] font-black text-amber-700 bg-amber-100 hover:bg-amber-200 px-1.5 py-0.5 rounded-sm border border-amber-300 transition-colors cursor-pointer font-bengali"
-                              title="বর্তমানে দেওয়া এই সংখ্যাটি সব সময় ডিফল্ট হিসেবে রাখতে এখানে ক্লিক করুন"
-                            >
-                              📌 ডিফল্ট সেভ করুন
-                            </button>
-                          </div>
-                          <Input 
-                            type="number"
-                            value={laborCost || ''}
-                            onChange={e => setLaborCost(parseFloat(e.target.value) || 0)}
-                            placeholder="০"
-                            className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold text-amber-600 font-bengali"
-                          />
+                      {/* Calculation Mode Toggle */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-slate-50 p-2.5 rounded-md border border-slate-200 text-xs gap-2">
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-700">
+                            <input 
+                              type="radio" 
+                              name="chargeCalcMode" 
+                              checked={chargeCalcMode === 'rate'}
+                              onChange={() => setChargeCalcMode('rate')}
+                              className="accent-emerald-600"
+                            />
+                            <span>প্রতি ইউনিট রেট অনুযায়ী (রড কেজি ও সিমেন্ট বস্তা)</span>
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-700">
+                            <input 
+                              type="radio" 
+                              name="chargeCalcMode" 
+                              checked={chargeCalcMode === 'manual'}
+                              onChange={() => setChargeCalcMode('manual')}
+                              className="accent-emerald-600"
+                            />
+                            <span>সরাসরি মোট টাকা (ম্যানুয়াল)</span>
+                          </label>
                         </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">গাড়ি ভাড়া (৳)</Label>
-                          <Input 
-                            type="number"
-                            value={shippingCost || ''}
-                            onChange={e => setShippingCost(parseFloat(e.target.value) || 0)}
-                            placeholder="০"
-                            className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali"
-                          />
-                        </div>
+                        {chargeCalcMode === 'rate' && (
+                          <button
+                            type="button"
+                            onClick={handleSaveDefaultCharges}
+                            className="text-[10px] font-black text-amber-700 bg-amber-100 hover:bg-amber-200 px-2 py-1 rounded-sm border border-amber-300 transition-colors cursor-pointer font-bengali self-start sm:self-auto"
+                            title="বর্তমানে দেওয়া রেটগুলো সব সময় ডিফল্ট হিসেবে রাখতে এখানে ক্লিক করুন"
+                          >
+                            📌 ডিফল্ট রেট সেভ করুন
+                          </button>
+                        )}
                       </div>
+
+                      {chargeCalcMode === 'rate' ? (
+                        <div className="space-y-3 font-bengali">
+                          {/* Rod & Ring Rate Box */}
+                          {(rodRingTotalKg > 0 || (rodRingTotalKg === 0 && cementTotalBags === 0)) && (
+                            <div className="bg-sky-50/60 border border-sky-200 rounded-md p-3 space-y-2">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-black text-sky-900 flex items-center gap-1.5">
+                                  🔹 রড ও রিং খরচ (কেজি হিসেবে)
+                                </span>
+                                <span className="bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded text-[11px]">
+                                  মোট ওজন: {toBengaliDigits(rodRingTotalKg.toLocaleString('en-IN'))} কেজি
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] font-bold text-slate-600">লেবার রেট (৳/কেজি)</Label>
+                                  <div className="relative">
+                                    <Input 
+                                      type="number"
+                                      step="0.01"
+                                      value={rodLaborRate || ''}
+                                      onChange={e => setRodLaborRate(parseFloat(e.target.value) || 0)}
+                                      placeholder="০.০০"
+                                      className="rounded-md h-9 bg-white border-sky-300 text-xs font-bold text-amber-700 font-bengali pr-20"
+                                    />
+                                    <span className="absolute right-2 top-2 text-[10px] font-bold text-slate-500 font-bengali">
+                                      = ৳{toBengaliDigits(rodLaborTotal.toLocaleString('en-IN'))}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] font-bold text-slate-600">গাড়ি ভাড়া রেট (৳/কেজি)</Label>
+                                  <div className="relative">
+                                    <Input 
+                                      type="number"
+                                      step="0.01"
+                                      value={rodShippingRate || ''}
+                                      onChange={e => setRodShippingRate(parseFloat(e.target.value) || 0)}
+                                      placeholder="০.০০"
+                                      className="rounded-md h-9 bg-white border-sky-300 text-xs font-bold text-sky-700 font-bengali pr-20"
+                                    />
+                                    <span className="absolute right-2 top-2 text-[10px] font-bold text-slate-500 font-bengali">
+                                      = ৳{toBengaliDigits(rodShippingTotal.toLocaleString('en-IN'))}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Cement Rate Box */}
+                          {(cementTotalBags > 0 || (rodRingTotalKg === 0 && cementTotalBags === 0)) && (
+                            <div className="bg-amber-50/60 border border-amber-200 rounded-md p-3 space-y-2">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-black text-amber-900 flex items-center gap-1.5">
+                                  🔸 সিমেন্ট খরচ (বস্তা হিসেবে)
+                                </span>
+                                <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[11px]">
+                                  মোট পরিমাণ: {toBengaliDigits(cementTotalBags.toLocaleString('en-IN'))} বস্তা
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] font-bold text-slate-600">লেবার রেট (৳/বস্তা)</Label>
+                                  <div className="relative">
+                                    <Input 
+                                      type="number"
+                                      step="0.01"
+                                      value={cementLaborRate || ''}
+                                      onChange={e => setCementLaborRate(parseFloat(e.target.value) || 0)}
+                                      placeholder="০.০০"
+                                      className="rounded-md h-9 bg-white border-amber-300 text-xs font-bold text-amber-700 font-bengali pr-20"
+                                    />
+                                    <span className="absolute right-2 top-2 text-[10px] font-bold text-slate-500 font-bengali">
+                                      = ৳{toBengaliDigits(cementLaborTotal.toLocaleString('en-IN'))}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] font-bold text-slate-600">গাড়ি ভাড়া রেট (৳/বস্তা)</Label>
+                                  <div className="relative">
+                                    <Input 
+                                      type="number"
+                                      step="0.01"
+                                      value={cementShippingRate || ''}
+                                      onChange={e => setCementShippingRate(parseFloat(e.target.value) || 0)}
+                                      placeholder="০.০০"
+                                      className="rounded-md h-9 bg-white border-amber-300 text-xs font-bold text-amber-800 font-bengali pr-20"
+                                    />
+                                    <span className="absolute right-2 top-2 text-[10px] font-bold text-slate-500 font-bengali">
+                                      = ৳{toBengaliDigits(cementShippingTotal.toLocaleString('en-IN'))}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3 font-bengali">
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-bold text-slate-600">লেবার খরচ (৳)</Label>
+                            <Input 
+                              type="number"
+                              value={manualLaborCost || ''}
+                              onChange={e => setManualLaborCost(parseFloat(e.target.value) || 0)}
+                              placeholder="০"
+                              className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold text-amber-600 font-bengali"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-bold text-slate-600">গাড়ি ভাড়া (৳)</Label>
+                            <Input 
+                              type="number"
+                              value={manualShippingCost || ''}
+                              onChange={e => setManualShippingCost(parseFloat(e.target.value) || 0)}
+                              placeholder="০"
+                              className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
 

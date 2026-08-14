@@ -397,13 +397,22 @@ export default function OrdersPage() {
     toast.success(`${itemName} অর্ডারে যোগ করা হয়েছে`);
   };
 
-  const handleRemoveCartItem = (id?: string) => {
-    setCart(prev => prev.filter(i => i.id !== id));
+  const handleRemoveCartItem = (id?: string | number, index?: number) => {
+    if (index !== undefined) {
+      setCart(prev => prev.filter((_, idx) => idx !== index));
+      return;
+    }
+    if (id === undefined || id === null) return;
+    setCart(prev => prev.filter(i => String(i.id) !== String(id)));
   };
 
-  const handleUpdateCartQty = (id: string, newQty: number) => {
+  const handleUpdateCartQty = (id: string | number, newQty: number, index?: number) => {
     if (newQty < 1) return;
-    setCart(prev => prev.map(i => i.id === id ? { ...i, quantity: newQty } : i));
+    setCart(prev => prev.map((i, idx) => {
+      if (index !== undefined && idx === index) return { ...i, quantity: newQty };
+      if (String(i.id) === String(id)) return { ...i, quantity: newQty };
+      return i;
+    }));
   };
 
   // Rod & Cement Complete Cart Calculations
@@ -462,36 +471,55 @@ export default function OrdersPage() {
         finalCustId = String(createdParty.id);
       }
 
-      await api.transactions.create({
-        party: finalCustId ? Number(finalCustId) : null,
-        transaction_type: 'sale',
-        status: 'pending',
-        total_amount: cartGrandTotal,
-        paid_amount: advancePaid,
-        due_amount: cartDueAmount,
-        payment_method: (advanceMethod.toLowerCase().includes('bank') ? 'bank' : advanceMethod.toLowerCase().includes('cheque') ? 'cheque' : advanceMethod.toLowerCase()),
-        items: cart.map(i => ({
-          product_name: i.name,
-          quantity: i.quantity,
-          price: i.price,
-          unit: i.unit,
-          total: i.price * i.quantity
-        })),
-        notes: orderNote
-      });
+      if (editingOrderId) {
+        await api.transactions.update(editingOrderId, {
+          party: finalCustId ? Number(finalCustId) : null,
+          total_amount: cartGrandTotal,
+          paid_amount: advancePaid,
+          due_amount: cartDueAmount,
+          payment_method: (advanceMethod.toLowerCase().includes('bank') ? 'bank' : advanceMethod.toLowerCase().includes('cheque') ? 'cheque' : advanceMethod.toLowerCase()),
+          items: cart.map(i => ({
+            product_name: i.name,
+            quantity: i.quantity,
+            price: i.price,
+            unit: i.unit,
+            total: i.price * i.quantity
+          })),
+          notes: orderNote
+        });
+        toast.success('বিক্রয় অর্ডার সফলভাবে আপডেট করা হয়েছে!');
+      } else {
+        await api.transactions.create({
+          party: finalCustId ? Number(finalCustId) : null,
+          transaction_type: 'sale',
+          status: 'pending',
+          total_amount: cartGrandTotal,
+          paid_amount: advancePaid,
+          due_amount: cartDueAmount,
+          payment_method: (advanceMethod.toLowerCase().includes('bank') ? 'bank' : advanceMethod.toLowerCase().includes('cheque') ? 'cheque' : advanceMethod.toLowerCase()),
+          items: cart.map(i => ({
+            product_name: i.name,
+            quantity: i.quantity,
+            price: i.price,
+            unit: i.unit,
+            total: i.price * i.quantity
+          })),
+          notes: orderNote
+        });
+        toast.success('নতুন রড ও সিমেন্ট বিক্রয় অর্ডার সফলভাবে সংরক্ষিত হয়েছে!');
+      }
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('orderUpdated'));
       }
 
-      toast.success('নতুন রড ও সিমেন্ট বিক্রয় অর্ডার সফলভাবে সংরক্ষিত হয়েছে!');
       resetCreateForm();
       setIsCreateOrderOpen(false);
       setEditingOrderId(null);
       loadOrdersData();
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || 'অর্ডার তৈরি করতে সমস্যা হয়েছে');
+      toast.error(err.message || 'অর্ডার সংরক্ষণ করতে সমস্যা হয়েছে');
     }
   };
 

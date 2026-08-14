@@ -63,6 +63,7 @@ export interface ProductData {
   brand?: string;
   description?: string;
   image_url?: string;
+  needs_price_review?: boolean;
 }
 
 export interface TransactionItemData {

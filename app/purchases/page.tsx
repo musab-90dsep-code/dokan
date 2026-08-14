@@ -87,6 +87,7 @@ export interface PurchaseInvoice {
   dueAmount: number;
   paymentStatus: string;
   createdAt: any;
+  purchaseType?: 'rod' | 'cement';
   vehicleNo?: string;
   driverName?: string;
   driverPhone?: string;
@@ -146,7 +147,7 @@ export default function PurchasesPage() {
     }
 
     const unitToUse = selectedCascadingProduct?.unit || itemUnit || 'পিস';
-    const prodId = selectedCascadingProduct?.productId || selectedProductId || `temp_${Date.now()}`;
+    const prodId = selectedCascadingProduct ? (selectedCascadingProduct.productId || `temp_${Date.now()}`) : (selectedProductId || `temp_${Date.now()}`);
 
     const newItem: PurchaseItem = {
       id: prodId,
@@ -193,8 +194,10 @@ export default function PurchasesPage() {
   const [discountFlat, setDiscountFlat] = useState<number>(0);
   const [shippingCost, setShippingCost] = useState<number>(0);
   const [laborCost, setLaborCost] = useState<number>(0);
-  const [shippingPaymentStatus, setShippingPaymentStatus] = useState<'pending' | 'paid'>('pending');
-  const [laborPaymentStatus, setLaborPaymentStatus] = useState<'pending' | 'paid'>('pending');
+  const [shippingPaymentStatus, setShippingPaymentStatus] = useState<'pending' | 'paid' | 'partial' | 'overpaid'>('pending');
+  const [laborPaymentStatus, setLaborPaymentStatus] = useState<'pending' | 'paid' | 'partial' | 'overpaid'>('pending');
+  const [previousShippingPaidAmount, setPreviousShippingPaidAmount] = useState<number>(0);
+  const [previousLaborPaidAmount, setPreviousLaborPaidAmount] = useState<number>(0);
   const [isLandedCostAuto, setIsLandedCostAuto] = useState<boolean>(true);
 
   const [paymentOption, setPaymentOption] = useState<'now' | 'later'>('now');
@@ -235,10 +238,19 @@ export default function PurchasesPage() {
             userNote = userNote.substring(firstLine.length).trim();
           } catch {}
         }
+        let detectedType: 'rod' | 'cement' = meta.purchaseType || 'rod';
+        if (!meta.purchaseType) {
+          const isCement = (p.items || []).some((it: any) => {
+            const n = (it.product_name || '').toLowerCase();
+            return n.includes('সিমেন্ট') || n.includes('cement') || it.unit === 'বস্তা' || it.unit === 'ব্যাগ';
+          });
+          if (isCement) detectedType = 'cement';
+        }
         const pAny = p as any;
         return {
           id: String(p.id),
           purchaseId: p.invoice_no,
+          purchaseType: detectedType,
           supplierName: p.party_name || meta.supplierName || 'সরবরাহকারী',
           supplierPhone: p.party_phone || meta.supplierPhone || '',
           supplierAddress: pAny.party_address || meta.supplierAddress || '',
@@ -433,6 +445,7 @@ export default function PurchasesPage() {
     setReceivedBy('');
     setWarehouse('Main');
     setPurchaseNote('');
+    setEditingPurchaseId(null);
   };
 
   const handleAddCartItem = () => {
@@ -466,14 +479,22 @@ export default function PurchasesPage() {
     toast.success('পণ্য কার্টে যুক্ত হয়েছে');
   };
 
-  const handleRemoveCartItem = (id?: string) => {
-    if (!id) return;
-    setCart(prev => prev.filter(i => i.id !== id));
+  const handleRemoveCartItem = (id?: string | number, index?: number) => {
+    if (index !== undefined) {
+      setCart(prev => prev.filter((_, idx) => idx !== index));
+      return;
+    }
+    if (id === undefined || id === null) return;
+    setCart(prev => prev.filter(i => String(i.id) !== String(id)));
   };
 
-  const handleUpdateCartQty = (id: string, newQty: number) => {
+  const handleUpdateCartQty = (id: string | number, newQty: number, index?: number) => {
     if (newQty < 1) return;
-    setCart(prev => prev.map(i => i.id === id ? { ...i, quantity: newQty } : i));
+    setCart(prev => prev.map((i, idx) => {
+      if (index !== undefined && idx === index) return { ...i, quantity: newQty };
+      if (String(i.id) === String(id)) return { ...i, quantity: newQty };
+      return i;
+    }));
   };
 
   // Submit Purchase Invoice
@@ -513,7 +534,49 @@ export default function PurchasesPage() {
       const goodsTotal = Math.max(0, cartSubtotal - computedDiscount);
       const supplierDueAmount = paymentOption === 'now' ? Math.max(0, goodsTotal - paidAmount) : goodsTotal;
 
+      const finalShipCost = Number(shippingCost || 0);
+      const finalLabCost = Number(laborCost || 0);
+
+      // Determine accurate shipping payment tracking on edit/create
+      let finalShippingPaid = 0;
+      let finalShippingStatus: 'pending' | 'paid' | 'partial' | 'overpaid' = 'pending';
+      if (editingPurchaseId) {
+        finalShippingPaid = previousShippingPaidAmount;
+        if (finalShippingPaid >= finalShipCost) {
+          if (finalShippingPaid > finalShipCost) {
+            finalShippingStatus = 'overpaid';
+          } else {
+            finalShippingStatus = finalShipCost > 0 ? 'paid' : 'pending';
+          }
+        } else {
+          finalShippingStatus = finalShippingPaid > 0 ? 'partial' : 'pending';
+        }
+      } else {
+        finalShippingPaid = shippingPaymentStatus === 'paid' ? finalShipCost : 0;
+        finalShippingStatus = shippingPaymentStatus;
+      }
+
+      // Determine accurate labor payment tracking on edit/create
+      let finalLaborPaid = 0;
+      let finalLaborStatus: 'pending' | 'paid' | 'partial' | 'overpaid' = 'pending';
+      if (editingPurchaseId) {
+        finalLaborPaid = previousLaborPaidAmount;
+        if (finalLaborPaid >= finalLabCost) {
+          if (finalLaborPaid > finalLabCost) {
+            finalLaborStatus = 'overpaid';
+          } else {
+            finalLaborStatus = finalLabCost > 0 ? 'paid' : 'pending';
+          }
+        } else {
+          finalLaborStatus = finalLaborPaid > 0 ? 'partial' : 'pending';
+        }
+      } else {
+        finalLaborPaid = laborPaymentStatus === 'paid' ? finalLabCost : 0;
+        finalLaborStatus = laborPaymentStatus;
+      }
+
       const purchaseMeta = {
+        purchaseType: purchaseType || 'rod',
         paymentMethodName: paymentMethod,
         bankName: bankName || supplierBankName || selectedShopBank || '',
         accountNo: accountNo || supplierAccountNo || '',
@@ -532,12 +595,12 @@ export default function PurchasesPage() {
         authorizedBy: authorizedBy || '',
         receivedBy: receivedBy || '',
         warehouse: warehouse || '',
-        shippingCost: shippingCost || 0,
-        laborCost: laborCost || 0,
-        shippingStatus: shippingPaymentStatus,
-        laborStatus: laborPaymentStatus,
-        shippingPaidAmount: shippingPaymentStatus === 'paid' ? (shippingCost || 0) : 0,
-        laborPaidAmount: laborPaymentStatus === 'paid' ? (laborCost || 0) : 0,
+        shippingCost: finalShipCost,
+        laborCost: finalLabCost,
+        shippingStatus: finalShippingStatus,
+        laborStatus: finalLaborStatus,
+        shippingPaidAmount: finalShippingPaid,
+        laborPaidAmount: finalLaborPaid,
         supplierDue: Math.round((Number(supplierDueAmount) || 0) * 100) / 100,
         discount: computedDiscount || 0,
         discountType: discountType,
@@ -551,28 +614,47 @@ export default function PurchasesPage() {
 
       const round2 = (val: number) => Math.round((Number(val) || 0) * 100) / 100;
 
-      await api.transactions.create({
-        party: finalSuppId ? Number(finalSuppId) : null,
-        transaction_type: 'purchase',
-        total_amount: round2(cartTotalAmount),
-        paid_amount: round2(paidAmount),
-        due_amount: round2(supplierDueAmount),
-        payment_method: effectivePaymentMethod,
-        items: cart.map(i => {
-          return {
-            product_name: i.name,
-            quantity: i.quantity,
-            price: Math.round((Number(i.price) || 0) * 100) / 100,
-            sell_price: i.sellPrice && i.sellPrice > 0 ? Math.round(Number(i.sellPrice) * 100) / 100 : undefined,
-            unit: i.unit,
-            total: Math.round((Number(i.price) || 0) * Number(i.quantity || 0) * 100) / 100
-          };
-        }),
-        notes: finalNotesPayload
+      const itemsPayload = cart.map(i => {
+        const prodId = Number(i.id);
+        return {
+          product: !isNaN(prodId) && prodId > 0 ? prodId : undefined,
+          product_name: i.name,
+          quantity: i.quantity,
+          price: Math.round((Number(i.price) || 0) * 100) / 100,
+          sell_price: i.sellPrice && i.sellPrice > 0 ? Math.round(Number(i.sellPrice) * 100) / 100 : undefined,
+          unit: i.unit,
+          total: Math.round((Number(i.price) || 0) * Number(i.quantity || 0) * 100) / 100
+        };
       });
 
-      toast.success('ক্রয় ইনভয়েস সফলভাবে সংরক্ষিত হয়েছে!');
-      setIsAddOpen(false);
+      if (editingPurchaseId) {
+        await api.transactions.update(editingPurchaseId, {
+          party: finalSuppId ? Number(finalSuppId) : null,
+          transaction_type: 'purchase',
+          total_amount: round2(cartTotalAmount),
+          paid_amount: round2(paidAmount),
+          due_amount: round2(supplierDueAmount),
+          payment_method: effectivePaymentMethod,
+          items: itemsPayload,
+          notes: finalNotesPayload
+        });
+        toast.success('ক্রয় ইনভয়েস সফলভাবে আপডেট করা হয়েছে!');
+      } else {
+        await api.transactions.create({
+          party: finalSuppId ? Number(finalSuppId) : null,
+          transaction_type: 'purchase',
+          total_amount: round2(cartTotalAmount),
+          paid_amount: round2(paidAmount),
+          due_amount: round2(supplierDueAmount),
+          payment_method: effectivePaymentMethod,
+          items: itemsPayload,
+          notes: finalNotesPayload
+        });
+        toast.success('ক্রয় ইনভয়েস সফলভাবে সংরক্ষিত হয়েছে!');
+      }
+
+      setIsCreateOpen(false);
+      resetForm();
       loadPurchasesData();
     } catch (err: any) {
       console.error(err);
@@ -583,14 +665,57 @@ export default function PurchasesPage() {
   const handleEditPurchase = (p: PurchaseInvoice) => {
     const pAny = p as any;
     setEditingPurchaseId(p.id);
-    setSelectedSupplier({ id: p.supplierId || '', name: p.supplierName || 'সরবরাহকারী', businessName: p.supplierName });
-    setCart((p.items || []).map((i: any) => ({
+
+    // Accurately determine purchaseType (cement vs rod)
+    let pType: 'rod' | 'cement' = p.purchaseType || pAny.purchase_type || 'rod';
+    if (!p.purchaseType && !pAny.purchase_type) {
+      const isCement = (p.items || []).some((it: any) => {
+        const n = (it.name || it.product_name || '').toLowerCase();
+        return n.includes('সিমেন্ট') || n.includes('cement') || it.unit === 'বস্তা' || it.unit === 'ব্যাগ';
+      });
+      if (isCement) {
+        pType = 'cement';
+      } else {
+        const supp = suppliers.find(s => s.id === p.supplierId);
+        if (supp?.supplyType === 'সিমেন্ট') pType = 'cement';
+      }
+    }
+    setPurchaseType(pType);
+
+    setSelectedSupplier({ 
+      id: p.supplierId || '', 
+      name: p.supplierName || 'সরবরাহকারী', 
+      businessName: p.supplierName,
+      supplyType: pType === 'cement' ? 'সিমেন্ট' : 'রড'
+    });
+    setCart((p.items || []).map((i: any, idx: number) => ({
+      id: String(i.product || i.id || `item_${idx}_${Date.now()}`),
       name: i.name || i.product_name,
       price: Number(i.price || 0),
       quantity: Number(i.quantity || 0),
       unit: i.unit || 'পিস',
       discount: Number(i.discount || 0)
     })));
+    let meta: any = {};
+    if (pAny.notes && typeof pAny.notes === 'string' && pAny.notes.trim().startsWith('{')) {
+      try {
+        const firstLine = pAny.notes.split('\n')[0];
+        meta = JSON.parse(firstLine);
+      } catch {}
+    }
+
+    const shipPaid = meta.shippingPaidAmount !== undefined 
+      ? Number(meta.shippingPaidAmount) 
+      : (meta.shippingStatus === 'paid' ? Number(p.shippingCost || pAny.shipping_cost || 0) : 0);
+    const labPaid = meta.laborPaidAmount !== undefined 
+      ? Number(meta.laborPaidAmount) 
+      : (meta.laborStatus === 'paid' ? Number(p.laborCost || pAny.labor_cost || 0) : 0);
+
+    setPreviousShippingPaidAmount(shipPaid);
+    setPreviousLaborPaidAmount(labPaid);
+    setShippingPaymentStatus(meta.shippingStatus || (shipPaid > 0 ? 'paid' : 'pending'));
+    setLaborPaymentStatus(meta.laborStatus || (labPaid > 0 ? 'paid' : 'pending'));
+
     setDiscountType('flat');
     setDiscountFlat(p.discount || 0);
     setShippingCost(p.shippingCost || pAny.shipping_cost || 0);
@@ -1150,8 +1275,8 @@ export default function PurchasesPage() {
                       purchaseType={purchaseType}
                       onProductChange={(selected) => {
                         setSelectedCascadingProduct(selected);
+                        setSelectedProductId(selected?.productId || '');
                         if (selected) {
-                          if (selected.productId) setSelectedProductId(selected.productId);
                           if (selected.price > 0) setItemPrice(selected.price);
                           if (selected.sellPrice && selected.sellPrice > 0) setItemSellPrice(selected.sellPrice);
                         }
@@ -1206,9 +1331,9 @@ export default function PurchasesPage() {
                                 <TableCell className="text-center font-bold text-slate-700">{parsed.sizeName}</TableCell>
                                 <TableCell className="text-center">
                                   <div className="inline-flex items-center gap-1.5">
-                                    <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity - 1)} className="w-6 h-6 rounded bg-slate-100 font-bold">-</button>
+                                    <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity - 1, idx)} className="w-6 h-6 rounded bg-slate-100 font-bold hover:bg-slate-200">-</button>
                                     <span className="font-bold">{toBengaliDigits(item.quantity)} {item.unit}</span>
-                                    <button type="button" onClick={() => handleUpdateCartQty(item.id!, item.quantity + 1)} className="w-6 h-6 rounded bg-slate-100 font-bold">+</button>
+                                    <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity + 1, idx)} className="w-6 h-6 rounded bg-slate-100 font-bold hover:bg-slate-200">+</button>
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-right font-medium text-slate-600">
@@ -1233,7 +1358,7 @@ export default function PurchasesPage() {
                                 </TableCell>
                                 <TableCell className="text-right font-black text-slate-900">৳{toBengaliDigits((item.price * item.quantity).toLocaleString('en-IN'))}</TableCell>
                                 <TableCell className="text-center">
-                                  <button type="button" onClick={() => handleRemoveCartItem(item.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded">
+                                  <button type="button" onClick={() => handleRemoveCartItem(item.id, idx)} className="p-1 text-rose-500 hover:bg-rose-50 rounded cursor-pointer transition-colors" title="আইটেম বাদ দিন">
                                     <Trash2 className="w-4 h-4" />
                                   </button>
                                 </TableCell>
