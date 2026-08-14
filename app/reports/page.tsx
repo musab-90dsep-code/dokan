@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { cn, fixMiliName, toBnNum, formatBnCurrency, formatDualStock } from '@/lib/utils';
 import { isToday, isSameMonth, isSameYear, format } from 'date-fns';
 import { printElement } from '@/lib/printUtils';
+import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
 
 interface OrderItem {
   id?: string;
@@ -961,17 +962,13 @@ function MasterReportsContent() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                      {/* DATE PICKER */}
-                      <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-2xl border border-slate-200">
-                        <Calendar className="w-4 h-4 text-amber-600 shrink-0" />
-                        <span className="text-xs font-bold text-slate-600">তারিখ:</span>
-                        <input
-                          type="date"
-                          value={selectedDateStr}
-                          onChange={e => setTopsheetDate(e.target.value)}
-                          className="bg-transparent text-xs font-black text-slate-900 focus:outline-none cursor-pointer"
-                        />
-                      </div>
+                      {/* BENGALI DATE PICKER */}
+                      <BengaliDatePicker
+                        value={selectedDateStr}
+                        onChange={val => setTopsheetDate(val)}
+                        placeholder="তারিখ নির্বাচন"
+                        className="w-40"
+                      />
 
                       <Button
                         variant="outline"
@@ -1250,17 +1247,13 @@ function MasterReportsContent() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                      {/* DATE PICKER */}
-                      <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-2xl border border-slate-200">
-                        <Calendar className="w-4 h-4 text-purple-600 shrink-0" />
-                        <span className="text-xs font-bold text-slate-600">তারিখ:</span>
-                        <input
-                          type="date"
-                          value={selectedDateStr}
-                          onChange={e => setSalesStatementDate(e.target.value)}
-                          className="bg-transparent text-xs font-black text-slate-900 focus:outline-none cursor-pointer"
-                        />
-                      </div>
+                      {/* BENGALI DATE PICKER */}
+                      <BengaliDatePicker
+                        value={selectedDateStr}
+                        onChange={val => setSalesStatementDate(val)}
+                        placeholder="তারিখ নির্বাচন"
+                        className="w-40"
+                      />
 
                       {/* CATEGORY FILTER */}
                       <Select value={salesCategoryFilter} onValueChange={(val: any) => setSalesCategoryFilter(val || 'all')}>

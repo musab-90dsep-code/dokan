@@ -23,6 +23,8 @@ import { SupplierSearchSelect } from '@/components/SupplierSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
 import { PurchaseInvoiceMemo } from '@/components/PurchaseInvoiceMemo';
 import { PurchaseInvoiceDetailsView } from '@/components/PurchaseInvoiceDetailsView';
+import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
+import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
 import { printElement } from '@/lib/printUtils';
 import { parseProductDetails } from '@/lib/bengaliUtils';
 
@@ -120,6 +122,7 @@ export default function PurchasesPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
   const [purchaseType, setPurchaseType] = useState<'rod' | 'cement'>('rod');
+  const [purchaseDate, setPurchaseDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
   const [editingPurchaseId, setEditingPurchaseId] = useState<string | null>(null);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [isNewSupplier, setIsNewSupplier] = useState(false);
@@ -747,34 +750,17 @@ export default function PurchasesPage() {
                 )}
               </div>
 
-              {/* Date Range (Start & End) in 1 Compact Block */}
-              <div className="flex items-center gap-2 bg-slate-50/80 p-1.5 rounded-md border border-slate-200/80">
-                <Calendar className="w-4 h-4 text-slate-400 ml-1 shrink-0" />
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={e => setStartDate(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
-                  title="ক্রয় শুরুর তারিখ"
-                />
-                <span className="text-slate-300 text-xs font-bold">-</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={e => setEndDate(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
-                  title="ক্রয় শেষের তারিখ"
-                />
-                {(startDate || endDate) && (
-                  <button
-                    onClick={() => { setStartDate(''); setEndDate(''); }}
-                    className="text-slate-400 hover:text-rose-600 px-1"
-                    title="তারিখ ফিল্টার মুছুন"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
+              {/* Bengali Date Range Filter */}
+              <BengaliDateRangePicker
+                startDate={startDate}
+                endDate={endDate}
+                onChange={(start, end) => {
+                  setStartDate(start);
+                  setEndDate(end);
+                }}
+                placeholder="তারিখ ফিল্টার"
+                compact={false}
+              />
 
               {/* Quick Status Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
@@ -1116,16 +1102,13 @@ export default function PurchasesPage() {
 
                       {/* Purchase Date */}
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-bold text-slate-600">Purchase Date <span className="text-rose-500">*</span></Label>
-                        <div className="relative">
-                          <Input
-                            type="date"
-                            value={format(new Date(), 'yyyy-MM-dd')}
-                            onChange={() => {}}
-                            className="rounded-xl h-11 bg-slate-50 border-slate-200 text-xs font-bold pr-9"
-                          />
-                          <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                        </div>
+                        <Label className="text-xs font-bold text-slate-700">ক্রয়ের তারিখ <span className="text-rose-500">*</span></Label>
+                        <BengaliDatePicker
+                          value={purchaseDate || format(new Date(), 'yyyy-MM-dd')}
+                          onChange={val => setPurchaseDate(val)}
+                          placeholder="ক্রয়ের তারিখ"
+                          className="w-full"
+                        />
                       </div>
                     </div>
 
@@ -1655,11 +1638,11 @@ export default function PurchasesPage() {
                                 </div>
                                 <div>
                                   <Label className="text-[10px] font-bold text-slate-600">চেকের তারিখ</Label>
-                                  <Input 
-                                    type="date" 
-                                    value={chequeDate} 
-                                    onChange={e => setChequeDate(e.target.value)}
-                                    className="h-8 rounded-lg bg-white text-xs"
+                                  <BengaliDatePicker
+                                    value={chequeDate}
+                                    onChange={val => setChequeDate(val)}
+                                    placeholder="তারিখ নির্বাচন"
+                                    className="w-full"
                                   />
                                 </div>
                               </div>

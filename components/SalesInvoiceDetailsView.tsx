@@ -183,7 +183,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
             className="rounded-lg h-9 px-3.5 text-xs font-bold text-slate-700 border-slate-300 bg-white hover:bg-slate-50 flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5 text-slate-600" />
-            <span>প্রিন্ট (চালান)</span>
+            <span>চালান প্রিন্ট</span>
           </Button>
 
           {onDownloadPdf && (
@@ -192,7 +192,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
               className="rounded-lg h-9 px-4 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 flex items-center gap-1.5 shadow-sm cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-white" />
-              <span>PDF ডাউনলোড</span>
+              <span>পিডিএফ ডাউনলোড</span>
             </Button>
           )}
 
@@ -203,7 +203,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
               className="rounded-lg h-9 px-3.5 text-xs font-bold text-slate-700 border-slate-300 bg-white hover:bg-slate-50 flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Mail className="w-3.5 h-3.5 text-slate-600" />
-              <span>ই-মেইল পাঠান</span>
+              <span>ইমেইল পাঠান</span>
             </Button>
           )}
 
@@ -214,7 +214,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
               className="rounded-lg h-9 px-3.5 text-xs font-bold text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100 flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Edit className="w-3.5 h-3.5 text-amber-600" />
-              <span>এডিট করুন</span>
+              <span>সম্পাদনা করুন</span>
             </Button>
           )}
 
@@ -235,7 +235,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
           <div className="space-y-2 text-xs font-medium text-slate-700">
             <div className="flex justify-between items-center">
               <span className="text-slate-500">চালান নম্বর</span>
-              <span className="font-mono font-bold text-slate-900">{invoiceNo}</span>
+              <span className="font-mono font-bold text-slate-900">{toBengaliDigits(invoiceNo)}</span>
             </div>
 
             <div className="flex justify-between items-center">
@@ -244,8 +244,8 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
             </div>
 
             <div className="flex justify-between items-center">
-              <span className="text-slate-500">চালানের টাইপ</span>
-              <span className="font-bold text-slate-800">বিক্রয় (SALES)</span>
+              <span className="text-slate-500">চালানের ধরন</span>
+              <span className="font-bold text-slate-800">বিক্রয় চালান</span>
             </div>
 
             <div className="flex justify-between items-center">
@@ -255,7 +255,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
                 isPartial ? 'bg-amber-100 text-amber-700 border border-amber-300' :
                 'bg-rose-100 text-rose-700 border border-rose-300'
               }`}>
-                {isPaid ? 'পরিশোধিত (PAID)' : isPartial ? 'আংশিক পরিশোধিত (PARTIAL)' : 'অপরিশোধিত (UNPAID)'}
+                {isPaid ? 'পরিশোধিত' : isPartial ? 'আংশিক পরিশোধিত' : 'অপরিশোধিত'}
               </span>
             </div>
 
@@ -298,7 +298,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
 
             <div className="flex justify-between items-center">
               <span className="text-slate-500">মোবাইল নম্বর</span>
-              <span className="font-mono font-bold text-slate-800">{invoice.customerPhone || '—'}</span>
+              <span className="font-mono font-bold text-slate-800">{invoice.customerPhone ? toBengaliDigits(invoice.customerPhone) : '—'}</span>
             </div>
 
             <div className="flex justify-between items-start">
@@ -308,21 +308,21 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
 
             {invoice.creditLimit !== undefined && (
               <div className="flex justify-between items-center pt-1 border-t border-slate-100">
-                <span className="text-slate-500">ক্রেডিট সীমা</span>
-                <span className="font-mono font-bold text-slate-900">৳ {Number(invoice.creditLimit).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                <span className="text-slate-500">বাকি বা ঋণের সীমা</span>
+                <span className="font-mono font-bold text-slate-900">৳ {toBengaliDigits(Number(invoice.creditLimit).toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
               </div>
             )}
 
             {previousBalance > 0 && (
               <div className="flex justify-between items-center">
                 <span className="text-slate-500">পূর্বের বকেয়া</span>
-                <span className="font-mono font-bold text-slate-900">৳ {previousBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                <span className="font-mono font-bold text-slate-900">৳ {toBengaliDigits(previousBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
               </div>
             )}
 
             <div className="flex justify-between items-center pt-1 border-t border-slate-100">
               <span className="text-slate-500 font-bold">বর্তমান বকেয়া</span>
-              <span className="font-mono font-black text-rose-600 text-sm">৳ {dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              <span className="font-mono font-black text-rose-600 text-sm">৳ {toBengaliDigits(dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
           </div>
         </div>
@@ -331,7 +331,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-xs">
           <div className="flex items-center gap-2 pb-2 border-b border-slate-100 text-slate-900 font-black text-sm">
             <Truck className="w-4 h-4 text-emerald-600" />
-            <h3>ডেলিভারি / পরিবহন তথ্য</h3>
+            <h3>ডেলিভারি ও পরিবহন তথ্য</h3>
           </div>
 
           <div className="space-y-2 text-xs font-medium text-slate-700">
@@ -347,17 +347,17 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
 
             <div className="flex justify-between items-center">
               <span className="text-slate-500">গাড়ি / ট্রাক নম্বর</span>
-              <span className="font-mono font-bold text-slate-900">{vehicleNo || '—'}</span>
+              <span className="font-mono font-bold text-slate-900">{vehicleNo ? toBengaliDigits(vehicleNo) : '—'}</span>
             </div>
 
             <div className="flex justify-between items-center">
-              <span className="text-slate-500">ড্রাইভার নাম</span>
+              <span className="text-slate-500">ড্রাইভারের নাম</span>
               <span className="font-bold text-slate-800">{driverName || '—'}</span>
             </div>
 
             <div className="flex justify-between items-center">
               <span className="text-slate-500">ড্রাইভার মোবাইল</span>
-              <span className="font-mono font-bold text-slate-800">{driverPhone || '—'}</span>
+              <span className="font-mono font-bold text-slate-800">{driverPhone ? toBengaliDigits(driverPhone) : '—'}</span>
             </div>
 
             <div className="flex justify-between items-center">
@@ -369,11 +369,11 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
 
       </div>
 
-      {/* --- SECTION 2: 📋 পণ্যের বিবরণ (PRODUCT TABLE) --- */}
+      {/* --- SECTION 2: 📋 পণ্যের বিবরণ --- */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-xs">
         <div className="flex items-center gap-2 pb-2 border-b border-slate-100 text-slate-900 font-black text-sm">
           <ClipboardList className="w-4 h-4 text-emerald-600" />
-          <h3>পণ্যের বিবরণ (Item List)</h3>
+          <h3>পণ্যের বিবরণ</h3>
         </div>
 
         <div className="overflow-x-auto">
@@ -381,7 +381,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
             <thead>
               <tr className="bg-slate-50 font-bold border-y border-slate-200 text-slate-700 text-center">
                 <th className="py-2.5 px-2 w-[6%]">ক্রমিক</th>
-                <th className="py-2.5 px-3 text-left w-[32%]">পণ্যের নাম (Product Name)</th>
+                <th className="py-2.5 px-3 text-left w-[32%]">পণ্যের নাম ও বিবরণ</th>
                 <th className="py-2.5 px-2 w-[14%]">ব্র্যান্ড</th>
                 <th className="py-2.5 px-2 w-[14%]">গ্রেড/সাইজ</th>
                 <th className="py-2.5 px-2 w-[10%]">পরিমাণ</th>
@@ -460,7 +460,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
       {/* --- SECTION 3: 2 CARDS (FINANCIAL BREAKDOWN & PAYMENT DETAILS) --- */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         
-        {/* Card 1: মোট হিসাব ও বকেয়া বিবরণী (Financial & Due Info) */}
+        {/* Card 1: মোট হিসাব ও বকেয়া বিবরণী */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-xs">
           <div className="flex items-center gap-2 pb-2 border-b border-slate-100 text-slate-900 font-black text-sm">
             <Receipt className="w-4 h-4 text-emerald-600" />
@@ -469,7 +469,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
 
           <div className="space-y-2 text-xs font-medium text-slate-700">
             <div className="flex justify-between items-center">
-              <span className="text-slate-500">পণ্যের মোট মূল্য (Subtotal)</span>
+              <span className="text-slate-500">পণ্যের মোট মূল্য</span>
               <span className="font-mono font-bold text-slate-900">৳ {toBengaliDigits(subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
 
@@ -495,12 +495,12 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
             )}
 
             <div className="flex justify-between items-center pt-2 border-t border-slate-200 font-bold text-slate-900">
-              <span>চালান মোট বিল (Total Invoice Amount)</span>
+              <span>চালান সর্বমোট মূল্য</span>
               <span className="font-mono font-black text-slate-900 text-base">৳ {toBengaliDigits(totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
 
             <div className="flex justify-between items-center pt-1 border-t border-slate-100 text-rose-700 font-bold">
-              <span className="text-slate-600">পূর্বের জের / বকেয়া (Previous Due)</span>
+              <span className="text-slate-600">পূর্বের জের / বকেয়া</span>
               <span className="font-mono font-bold text-slate-900">+ ৳ {toBengaliDigits(previousBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
 
@@ -510,18 +510,18 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
             </div>
 
             <div className="flex justify-between items-center pt-1 border-t border-slate-100">
-              <span className="text-slate-500">মোট পরিশোধিত জমা (Paid Amount)</span>
+              <span className="text-slate-500">মোট পরিশোধিত জমা</span>
               <span className="font-mono font-bold text-emerald-600">৳ {toBengaliDigits(paidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
 
             <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-              <span className="font-black text-rose-600 text-sm">সর্বশেষ অবশিষ্ট বকেয়া (Grand Total Due)</span>
+              <span className="font-black text-rose-600 text-sm">সর্বশেষ অবশিষ্ট বকেয়া</span>
               <span className="font-mono font-black text-rose-600 text-lg">৳ {toBengaliDigits(finalGrandDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
           </div>
         </div>
 
-        {/* Card 2: পেমেন্ট বিবরণী (Payment Method Details) */}
+        {/* Card 2: পেমেন্ট বিবরণী */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-xs">
           <div className="flex items-center gap-2 pb-2 border-b border-slate-100 text-slate-900 font-black text-sm">
             <CreditCard className="w-4 h-4 text-emerald-600" />
@@ -537,12 +537,12 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
                  isCheque ? '📄 চেক পেমেন্ট' :
                  isSplit ? '💵+📄 স্প্লিট পেমেন্ট (ক্যাশ ও চেক)' :
                  pmLower.includes('mobile') ? '📱 মোবাইল ব্যাংকিং' :
-                 '💵 নগদ (Cash)'}
+                 '💵 নগদ'}
               </span>
             </div>
 
             <div className="flex justify-between items-center">
-              <span className="text-slate-500">পরিশোধিত পরিমাণ (Paid)</span>
+              <span className="text-slate-500">পরিশোধিত পরিমাণ</span>
               <span className="font-mono font-bold text-emerald-600">৳ {toBengaliDigits(paidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
 
@@ -558,7 +558,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
                 <div className="bg-indigo-50/80 p-2.5 rounded-lg border border-indigo-200 space-y-1.5">
                   <div className="flex items-center justify-between pb-1 border-b border-indigo-200/60">
                     <span className="font-black text-indigo-950 text-xs">🏦 প্রেরক (গ্রাহকের ব্যাংক তথ্য)</span>
-                    <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold">Sender</span>
+                    <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold">প্রেরক</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-[11px] pt-0.5">
                     <div>
@@ -574,7 +574,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
                       <span className="font-mono font-bold text-slate-900">{toBengaliDigits(custAcc || '—')}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[10px]">ব্রাঞ্চ:</span>
+                      <span className="text-slate-500 block text-[10px]">শাখা / ব্রাঞ্চ:</span>
                       <span className="font-bold text-slate-900">{custBranch || '—'}</span>
                     </div>
                   </div>
@@ -584,7 +584,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
                 <div className="bg-emerald-50/80 p-2.5 rounded-lg border border-emerald-200 space-y-1.5">
                   <div className="flex items-center justify-between pb-1 border-b border-emerald-200/60">
                     <span className="font-black text-emerald-950 text-xs">🏦 গ্রহীতা (দোকানের ব্যাংক তথ্য)</span>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Receiver</span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">গ্রহীতা</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-[11px] pt-0.5">
                     <div>
@@ -600,7 +600,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
                       <span className="font-mono font-bold text-slate-900">{toBengaliDigits(shopAcc || '—')}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[10px]">ব্রাঞ্চ:</span>
+                      <span className="text-slate-500 block text-[10px]">শাখা / ব্রাঞ্চ:</span>
                       <span className="font-bold text-slate-900">{shopBranch || '—'}</span>
                     </div>
                   </div>
@@ -609,7 +609,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
                 {/* Txn / Ref ID */}
                 {txnRef && (
                   <div className="bg-slate-100 p-2 rounded-lg border border-slate-200 flex justify-between items-center text-xs">
-                    <span className="font-bold text-slate-700">ট্রানজেকশন / রেফারেন্স আইডি (Txn Ref):</span>
+                    <span className="font-bold text-slate-700">লেনদেন রেফারেন্স নম্বর:</span>
                     <span className="font-mono text-indigo-700 font-black tracking-wide">{toBengaliDigits(txnRef)}</span>
                   </div>
                 )}
@@ -630,7 +630,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
                 </div>
                 {txnRef && (
                   <div className="flex justify-between pt-1 border-t border-blue-200">
-                    <span className="font-bold">Txn / Ref ID:</span>
+                    <span className="font-bold">রেফারেন্স আইডি:</span>
                     <span className="font-mono font-bold text-blue-900">{toBengaliDigits(txnRef)}</span>
                   </div>
                 )}

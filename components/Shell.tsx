@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { bn } from 'date-fns/locale';
+import { BengaliDatePicker } from './ui/BengaliDatePicker';
 
 export const toBnDigits = (val: string | number | undefined | null): string => {
   if (val === undefined || val === null || val === '') return '';
@@ -931,11 +932,11 @@ export function Shell({ children }: { children: ReactNode }) {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs text-slate-300 font-medium mb-1">তারিখ</label>
-                        <input
-                          type="date"
+                        <BengaliDatePicker
                           value={hawlatDate}
-                          onChange={(e) => setHawlatDate(e.target.value)}
-                          className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-emerald-500"
+                          onChange={(val) => setHawlatDate(val)}
+                          placeholder="তারিখ নির্বাচন"
+                          className="w-full"
                         />
                       </div>
                       <div>

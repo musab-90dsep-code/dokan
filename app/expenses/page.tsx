@@ -23,6 +23,7 @@ import { format, isToday, isSameMonth, isSameYear } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toBengaliDigits } from '@/lib/bengaliUtils';
+import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
 
 export interface ExpenseItem {
   id: string;
@@ -916,11 +917,11 @@ export default function ExpensePage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-slate-700">তারিখ *</Label>
-                <Input 
-                  type="date"
+                <BengaliDatePicker 
                   value={newExpense.date}
-                  onChange={e => setNewExpense({ ...newExpense, date: e.target.value })}
-                  className="rounded-xl h-11 text-xs font-bold"
+                  onChange={val => setNewExpense({ ...newExpense, date: val })}
+                  placeholder="তারিখ নির্বাচন"
+                  className="w-full"
                 />
               </div>
 

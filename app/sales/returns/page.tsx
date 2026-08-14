@@ -25,6 +25,7 @@ import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
 import { ReturnInvoiceMemo } from '@/components/ReturnInvoiceMemo';
 import { SalesReturnDetailsView } from '@/components/SalesReturnDetailsView';
+import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { printElement } from '@/lib/printUtils';
 
 interface ReturnEntry {
@@ -622,34 +623,17 @@ export default function SalesReturnsPage() {
                 )}
               </div>
 
-              {/* Date Range */}
-              <div className="flex items-center gap-2 bg-slate-50/80 p-1.5 rounded-md border border-slate-200/80">
-                <Calendar className="w-4 h-4 text-slate-400 ml-1 shrink-0" />
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={e => setStartDate(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
-                  title="রিটার্ন শুরুর তারিখ"
-                />
-                <span className="text-slate-300 text-xs font-bold">-</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={e => setEndDate(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
-                  title="রিটার্ন শেষের তারিখ"
-                />
-                {(startDate || endDate) && (
-                  <button
-                    onClick={() => { setStartDate(''); setEndDate(''); }}
-                    className="text-slate-400 hover:text-rose-600 px-1"
-                    title="তারিখ ফিল্টার মুছুন"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
+              {/* Bengali Date Range Filter */}
+              <BengaliDateRangePicker
+                startDate={startDate}
+                endDate={endDate}
+                onChange={(start, end) => {
+                  setStartDate(start);
+                  setEndDate(end);
+                }}
+                placeholder="তারিখ ফিল্টার"
+                compact={false}
+              />
 
               {/* Status Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">

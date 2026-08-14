@@ -382,15 +382,15 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
               )}
               {invoice.creditLimit !== undefined && (
                 <div className="flex">
-                  <span className="w-28 shrink-0 text-slate-700">ক্রেডিট সীমা</span>
+                  <span className="w-28 shrink-0 text-slate-700">বাকি বা ঋণের সীমা</span>
                   <span className="shrink-0 px-1">:</span>
-                  <span className="font-mono font-semibold">৳ {Number(invoice.creditLimit).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-mono font-semibold">৳ {toBengaliDigits(Number(invoice.creditLimit).toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                 </div>
               )}
               <div className="flex">
                 <span className="w-28 shrink-0 text-slate-700">পূর্বের বকেয়া</span>
                 <span className="shrink-0 px-1">:</span>
-                <span className="font-mono font-bold text-slate-900">৳ {effectivePreviousBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                <span className="font-mono font-bold text-slate-900">৳ {toBengaliDigits(effectivePreviousBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
               </div>
             </div>
           </div>
@@ -406,7 +406,7 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
               <div className="flex">
                 <span className="w-32 shrink-0 font-bold text-slate-900">গাড়ি / ট্রাক নম্বর</span>
                 <span className="shrink-0 px-1">:</span>
-                <span className="font-bold text-slate-900">{effectiveVehicleNo || '—'}</span>
+                <span className="font-bold text-slate-900">{effectiveVehicleNo ? toBengaliDigits(effectiveVehicleNo) : '—'}</span>
               </div>
               <div className="flex">
                 <span className="w-32 shrink-0 text-slate-700">ড্রাইভার নাম</span>
@@ -416,7 +416,7 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
               <div className="flex">
                 <span className="w-32 shrink-0 text-slate-700">ড্রাইভার মোবাইল</span>
                 <span className="shrink-0 px-1">:</span>
-                <span className="font-mono">{effectiveDriverPhone || '—'}</span>
+                <span className="font-mono">{effectiveDriverPhone ? toBengaliDigits(effectiveDriverPhone) : '—'}</span>
               </div>
               {effectiveDeliveryFrom && (
                 <div className="flex">
@@ -463,7 +463,7 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
             <thead>
               <tr className="bg-slate-100 font-bold border border-slate-400 text-slate-900 text-center">
                 <th className="border border-slate-400 py-1.5 px-1 w-[5%]">ক্রমিক</th>
-                <th className="border border-slate-400 py-1.5 px-2 text-left w-[32%] font-bengali">পণ্যের নাম (Product)</th>
+                <th className="border border-slate-400 py-1.5 px-2 text-left w-[32%] font-bengali">পণ্যের নাম ও বিবরণ</th>
                 <th className="border border-slate-400 py-1.5 px-2 w-[14%]">ব্র্যান্ড</th>
                 <th className="border border-slate-400 py-1.5 px-2 w-[15%]">গ্রেড/সাইজ</th>
                 <th className="border border-slate-400 py-1.5 px-2 w-[12%] font-bengali">পরিমাণ</th>
@@ -489,27 +489,27 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
 
                   return (
                     <tr key={idx} className="text-slate-900 font-medium">
-                      <td className="border border-slate-300 py-1.5 px-1 text-center font-mono">{idx + 1}</td>
+                      <td className="border border-slate-300 py-1.5 px-1 text-center font-mono">{toBengaliDigits(idx + 1)}</td>
                       <td className="border border-slate-300 py-1.5 px-2 text-left font-bold">
                         <span>{item.name}</span> <span className="text-slate-500 text-[11px] font-normal">{bundleInfo}</span>
                       </td>
                       <td className="border border-slate-300 py-1.5 px-2 text-center">{item.brand || '—'}</td>
                       <td className="border border-slate-300 py-1.5 px-2 text-center">{item.variant || '—'}</td>
-                      <td className="border border-slate-300 py-1.5 px-2 text-center font-mono font-bold">{itemQty.toLocaleString('en-IN')}</td>
+                      <td className="border border-slate-300 py-1.5 px-2 text-center font-mono font-bold">{toBengaliDigits(itemQty.toLocaleString('en-IN'))}</td>
                       <td className="border border-slate-300 py-1.5 px-2 text-center">{item.unit || 'পিস'}</td>
                       <td className="border border-slate-300 py-1.5 px-2 text-right font-mono">
-                        <div className="font-bold">৳ {itemPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                        <div className="font-bold">৳ {toBengaliDigits(itemPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</div>
                         {extraPerUnit > 0 && (
                           <div className="text-[9px] text-blue-700 font-extrabold" title="লেবার ও শিপিং ভাড়া সহ কার্যকর একক দর">
-                            (খরচসহ ৳ {effectiveUnitPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })})
+                            (খরচসহ ৳ {toBengaliDigits(effectiveUnitPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 }))})
                           </div>
                         )}
                       </td>
                       <td className="border border-slate-300 py-1.5 px-2 text-right font-mono font-bold">
-                        <div className="font-bold">৳ {itemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                        <div className="font-bold">৳ {toBengaliDigits(itemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</div>
                         {extraPerUnit > 0 && (
                           <div className="text-[9px] text-blue-700 font-extrabold" title="লেবার ও শিপিং ভাড়া সহ কার্যকর মোট বিল">
-                            (খরচসহ ৳ {effectiveItemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })})
+                            (খরচসহ ৳ {toBengaliDigits(effectiveItemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }))})
                           </div>
                         )}
                       </td>
@@ -566,14 +566,14 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                            isCheque ? '📄 চেক' :
                            isSplit ? '💵+📄 স্প্লিট পেমেন্ট (ক্যাশ ও চেক)' :
                            pmLower.includes('mobile') ? '📱 মোবাইল ব্যাংকিং' :
-                           '💵 নগদ (Cash)'}
+                           '💵 নগদ'}
                         </span>
                       </div>
 
                       <div className="flex">
                         <span className="w-28 shrink-0 text-slate-700">পরিশোধিত জমা</span>
                         <span className="shrink-0 px-1">:</span>
-                        <span className="font-mono font-bold text-slate-900">৳ {paidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        <span className="font-mono font-bold text-slate-900">৳ {toBengaliDigits(paidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                       </div>
 
                       <div className="flex">
@@ -596,14 +596,14 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                             <div className="flex">
                               <span className="w-32 shrink-0 font-bold text-slate-900">• প্রেরক (কাস্টমার ব্যাংক)</span>
                               <span className="shrink-0 px-1">:</span>
-                              <span className="font-bold text-slate-900 font-mono">{custBank} {custAcc ? `(A/C: ${custAcc})` : ''}</span>
+                              <span className="font-bold text-slate-900 font-mono">{custBank} {custAcc ? `(হিসাব নং: ${toBengaliDigits(custAcc)})` : ''}</span>
                             </div>
                           )}
                           {txnRef && (
                             <div className="flex">
-                              <span className="w-32 shrink-0 font-bold text-slate-900">• Txn / Reference ID</span>
+                              <span className="w-32 shrink-0 font-bold text-slate-900">• লেনদেন রেফারেন্স নং</span>
                               <span className="shrink-0 px-1">:</span>
-                              <span className="font-mono font-bold text-slate-900">{txnRef}</span>
+                              <span className="font-mono font-bold text-slate-900">{toBengaliDigits(txnRef)}</span>
                             </div>
                           )}
                         </div>
@@ -623,14 +623,14 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                             <div className="flex">
                               <span className="w-32 shrink-0 font-bold text-slate-900">• অ্যাকাউন্ট নম্বর</span>
                               <span className="shrink-0 px-1">:</span>
-                              <span className="font-mono font-bold text-slate-900">{custAcc}</span>
+                              <span className="font-mono font-bold text-slate-900">{toBengaliDigits(custAcc)}</span>
                             </div>
                           )}
                           {txnRef && (
                             <div className="flex">
-                              <span className="w-32 shrink-0 font-bold text-slate-900">• Txn / Reference ID</span>
+                              <span className="w-32 shrink-0 font-bold text-slate-900">• রেফারেন্স আইডি</span>
                               <span className="shrink-0 px-1">:</span>
-                              <span className="font-mono font-bold text-slate-900">{txnRef}</span>
+                              <span className="font-mono font-bold text-slate-900">{toBengaliDigits(txnRef)}</span>
                             </div>
                           )}
                         </div>
@@ -641,9 +641,9 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                         <div className="mt-1 p-2 bg-slate-50 border border-slate-300 rounded-md text-[11px] font-medium space-y-1 text-slate-800">
                           {chqNo && (
                             <div className="flex">
-                              <span className="w-32 shrink-0 font-bold text-slate-900">• চেক নম্বর (Cheque No)</span>
+                              <span className="w-32 shrink-0 font-bold text-slate-900">• চেক নম্বর</span>
                               <span className="shrink-0 px-1">:</span>
-                              <span className="font-mono font-black text-slate-900">{chqNo}</span>
+                              <span className="font-mono font-black text-slate-900">{toBengaliDigits(chqNo)}</span>
                             </div>
                           )}
                           {chqBank && (
@@ -657,7 +657,7 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                             <div className="flex">
                               <span className="w-32 shrink-0 font-bold text-slate-900">• চেকের তারিখ</span>
                               <span className="shrink-0 px-1">:</span>
-                              <span className="font-mono font-bold text-slate-900">{chqDate}</span>
+                              <span className="font-mono font-bold text-slate-900">{toBengaliDigits(chqDate)}</span>
                             </div>
                           )}
                         </div>
@@ -667,20 +667,20 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                       {isSplit && (
                         <div className="mt-1 p-2 bg-slate-50 border border-slate-300 rounded-md text-[11px] font-medium space-y-1 text-slate-800">
                           <div className="flex">
-                            <span className="w-32 shrink-0 font-bold text-slate-900">• ক্যাশ জমা (Cash)</span>
+                            <span className="w-32 shrink-0 font-bold text-slate-900">• ক্যাশ জমা</span>
                             <span className="shrink-0 px-1">:</span>
-                            <span className="font-mono font-bold text-emerald-700">৳ {Number(invoice.cashPaidAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                            <span className="font-mono font-bold text-emerald-700">৳ {toBengaliDigits(Number(invoice.cashPaidAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                           </div>
                           <div className="flex">
-                            <span className="w-32 shrink-0 font-bold text-slate-900">• চেক পেমেন্ট (Cheque)</span>
+                            <span className="w-32 shrink-0 font-bold text-slate-900">• চেক পেমেন্ট</span>
                             <span className="shrink-0 px-1">:</span>
-                            <span className="font-mono font-bold text-indigo-700">৳ {Number(invoice.chequePaidAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                            <span className="font-mono font-bold text-indigo-700">৳ {toBengaliDigits(Number(invoice.chequePaidAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                           </div>
                           {chqNo && (
                             <div className="flex">
                               <span className="w-32 shrink-0 font-bold text-slate-900">• চেক নম্বর</span>
                               <span className="shrink-0 px-1">:</span>
-                              <span className="font-mono font-bold text-slate-900">{chqNo}</span>
+                              <span className="font-mono font-bold text-slate-900">{toBengaliDigits(chqNo)}</span>
                             </div>
                           )}
                           {chqBank && (
@@ -841,9 +841,9 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
 
           {/* Center Software Contact */}
           <div className="text-center text-[10px] text-slate-600 space-y-0.5">
-            <p>Software: <strong className="text-slate-900">{shop.software || 'Hasanah Tech Solution'}</strong></p>
-            {shop.softwarePhone && <p>Phone: <span className="font-mono">{shop.softwarePhone}</span></p>}
-            {shop.softwareWebsite && <p>Website: <span className="font-mono">{shop.softwareWebsite}</span></p>}
+            <p>সফটওয়্যার পরিচালনায়: <strong className="text-slate-900">{shop.software || 'Hasanah Tech Solution'}</strong></p>
+            {shop.softwarePhone && <p>হটলাইন: <span className="font-mono">{toBengaliDigits(shop.softwarePhone)}</span></p>}
+            {shop.softwareWebsite && <p>ওয়েবসাইট: <span className="font-mono">{shop.softwareWebsite}</span></p>}
           </div>
 
           {/* Right Barcode */}

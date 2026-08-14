@@ -5,8 +5,7 @@ import { format } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import { 
   ArrowLeft, Printer, Download, Mail, Edit, 
-  Receipt, User, Truck, ClipboardList, CreditCard, 
-  FileText, Settings, Building2, MapPin, Trash2
+  Receipt, User, Truck, ClipboardList, CreditCard, Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toBengaliDigits } from '@/lib/bengaliUtils';
@@ -121,13 +120,14 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
   const driverName = invoice.driverName || invoice.driverInfo || meta.driverName || '';
   const driverPhone = invoice.driverPhone || meta.driverPhone || '';
   const deliveryAddress = invoice.unloadingSite || invoice.deliveryAddress || meta.deliveryAddress || meta.unloadingSite || invoice.supplierAddress || '';
-  const warehouse = invoice.warehouse || meta.warehouse || 'প্রধান গুদাম (Main Depot)';
-  const purchaseType = invoice.purchaseType || meta.purchaseType || (items.some((i: any) => (i.name || '').includes('সিমেন্ট')) ? 'cement' : 'rod');
+  const warehouse = invoice.warehouse || meta.warehouse || 'প্রধান গুদাম';
+  const supplierName = invoice.supplierName || invoice.customerName || 'সাধারণ সরবরাহকারী';
+  const supplierContact = invoice.contactPerson || meta.contactPerson || invoice.supplierName || '—';
+  const supplierPhone = invoice.supplierPhone || invoice.customerPhone || '';
+  const supplierAddress = invoice.supplierAddress || invoice.customerAddress || '—';
 
   // System Roles
   const preparedBy = invoice.preparedBy || invoice.operatorName || meta.preparedBy || meta.operatorName || 'ক্যাশিয়ার';
-  const authorizedBy = invoice.authorizedBy || meta.authorizedBy || '';
-  const receivedBy = invoice.receivedBy || meta.receivedBy || '';
   
   // Payment Breakdown Fields
   const paymentMethodName = invoice.paymentMethodName || meta.paymentMethodName || invoice.paymentMethod || 'Cash';
@@ -187,7 +187,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
                 ক্রয় ইনভয়েস বিবরণী
               </h1>
               <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
-                {invoiceNo}
+                {toBengaliDigits(invoiceNo)}
               </span>
               <span className={`text-xs font-black px-2.5 py-0.5 rounded-full ${
                 isPaid ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
@@ -211,7 +211,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
             className="rounded-lg h-9 px-3.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5" />
-            <span>প্রিন্ট মেমো</span>
+            <span>ক্রয় মেমো প্রিন্ট</span>
           </Button>
 
           {onDownloadPdf && (
@@ -221,7 +221,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
               className="rounded-lg h-9 px-3.5 text-xs font-bold text-slate-700 border-slate-300 bg-white hover:bg-slate-50 flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-slate-600" />
-              <span>ডাউনলোড (PDF)</span>
+              <span>পিডিএফ ডাউনলোড</span>
             </Button>
           )}
 
@@ -232,7 +232,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
               className="rounded-lg h-9 px-3.5 text-xs font-bold text-slate-700 border-slate-300 bg-white hover:bg-slate-50 flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Mail className="w-3.5 h-3.5 text-slate-600" />
-              <span>ই-মেইল পাঠান</span>
+              <span>ইমেইল পাঠান</span>
             </Button>
           )}
 
@@ -243,7 +243,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
               className="rounded-lg h-9 px-3.5 text-xs font-bold text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100 flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Edit className="w-3.5 h-3.5 text-amber-600" />
-              <span>এডিট করুন</span>
+              <span>সম্পাদনা করুন</span>
             </Button>
           )}
 
@@ -254,7 +254,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
               className="rounded-lg h-9 px-3.5 text-xs font-bold text-rose-700 border-rose-300 bg-rose-50 hover:bg-rose-100 flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-              <span>ডিলিট</span>
+              <span>মুছে ফেলুন</span>
             </Button>
           )}
 
@@ -265,118 +265,142 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
       {/* --- SECTION 1: 3 CARDS (PURCHASE INFO, SUPPLIER INFO, LOGISTICS INFO) --- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         
-        {/* Card 1: চালানের তথ্য */}
+        {/* Card 1: ক্রয়ের তথ্য */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-xs">
           <div className="flex items-center gap-2 pb-2 border-b border-slate-100 text-slate-900 font-black text-sm">
             <Receipt className="w-4 h-4 text-blue-600" />
-            <h3>ক্রয় চালানের তথ্য</h3>
+            <h3>ক্রয়ের তথ্য</h3>
           </div>
 
           <div className="space-y-2 text-xs font-medium text-slate-700">
             <div className="flex justify-between items-center">
-              <span className="text-slate-500">ভাউচার / চালান নম্বর</span>
-              <span className="font-mono font-bold text-slate-900">{invoiceNo}</span>
+              <span className="text-slate-500">ভাউচার / মেমো নং</span>
+              <span className="font-mono font-bold text-slate-900">{toBengaliDigits(invoiceNo)}</span>
             </div>
+
             <div className="flex justify-between items-center">
-              <span className="text-slate-500">চালানের তারিখ</span>
-              <span className="font-mono font-bold text-slate-900">{dateStr}</span>
+              <span className="text-slate-500">ক্রয়ের তারিখ</span>
+              <span className="font-bold text-slate-800">{dateStr}</span>
             </div>
+
             <div className="flex justify-between items-center">
               <span className="text-slate-500">ক্রয়ের ধরন</span>
-              <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                {purchaseType === 'cement' ? '🧱 সিমেন্ট ক্রয়' : '🏗️ রড ক্রয়'}
+              <span className="font-bold text-slate-800">পণ্য ক্রয়</span>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">পেমেন্ট স্ট্যাটাস</span>
+              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                isPaid ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' :
+                isPartial ? 'bg-amber-100 text-amber-700 border border-amber-300' :
+                'bg-rose-100 text-rose-700 border border-rose-300'
+              }`}>
+                {isPaid ? 'পরিশোধিত' : isPartial ? 'আংশিক পরিশোধিত' : 'অপরিশোধিত'}
               </span>
             </div>
+
             <div className="flex justify-between items-center">
-              <span className="text-slate-500">গুদাম / ডিপো</span>
+              <span className="text-slate-500">গ্রহণকারী গোডাউন</span>
               <span className="font-bold text-slate-800">{warehouse}</span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500">অপারেটর / এন্ট্রি কারী</span>
-              <span className="font-bold text-slate-900">{preparedBy}</span>
-            </div>
+
+            {preparedBy && (
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">তৈরি করেছেন</span>
+                <span className="font-bold text-slate-800">{preparedBy}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Card 2: সরবরাহকারী ও কোম্পানি তথ্য */}
+        {/* Card 2: সরবরাহকারীর তথ্য */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-xs">
           <div className="flex items-center gap-2 pb-2 border-b border-slate-100 text-slate-900 font-black text-sm">
             <User className="w-4 h-4 text-blue-600" />
-            <h3>সরবরাহকারী ও কোম্পানি তথ্য</h3>
+            <h3>সরবরাহকারীর তথ্য</h3>
           </div>
 
           <div className="space-y-2 text-xs font-medium text-slate-700">
             <div className="flex justify-between items-center">
-              <span className="text-slate-500">সরবরাহকারীর নাম</span>
-              <span className="font-bold text-slate-900">{invoice.supplierName || invoice.customerName || 'সাধারণ সরবরাহকারী'}</span>
+              <span className="text-slate-500">কোম্পানির নাম</span>
+              <span className="font-black text-slate-900 text-sm">{supplierName}</span>
             </div>
-            {invoice.businessName && (
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">কোম্পানির নাম</span>
-                <span className="font-bold text-blue-700">{invoice.businessName}</span>
-              </div>
-            )}
+
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">প্রতিনিধি / কন্টাক্ট</span>
+              <span className="font-bold text-slate-800">{supplierContact}</span>
+            </div>
+
             <div className="flex justify-between items-center">
               <span className="text-slate-500">মোবাইল নম্বর</span>
-              <span className="font-mono font-bold text-slate-900">
-                {invoice.supplierPhone || invoice.customerPhone ? toBengaliDigits(invoice.supplierPhone || invoice.customerPhone) : '—'}
-              </span>
+              <span className="font-mono font-bold text-slate-800">{supplierPhone ? toBengaliDigits(supplierPhone) : '—'}</span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500">ঠিকানা</span>
-              <span className="font-bold text-slate-800 truncate max-w-[180px]">
-                {invoice.supplierAddress || invoice.customerAddress || '—'}
-              </span>
+
+            <div className="flex justify-between items-start">
+              <span className="text-slate-500 shrink-0">ঠিকানা</span>
+              <span className="font-bold text-slate-800 text-right leading-tight">{supplierAddress}</span>
             </div>
+
+            {previousSupplierDue > 0 && (
+              <div className="flex justify-between items-center pt-1 border-t border-slate-100">
+                <span className="text-slate-500">পূর্বের পাওনা</span>
+                <span className="font-mono font-bold text-slate-900">৳ {toBengaliDigits(previousSupplierDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+              </div>
+            )}
+
             <div className="flex justify-between items-center pt-1 border-t border-slate-100">
-              <span className="text-slate-500 font-bold">পূর্বের পাওনা / বকেয়া</span>
-              <span className="font-mono font-black text-rose-600 text-sm">
-                ৳ {toBengaliDigits(previousSupplierDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
-              </span>
+              <span className="text-slate-500 font-bold">বর্তমান বাকি দেনা</span>
+              <span className="font-mono font-black text-rose-600 text-sm">৳ {toBengaliDigits(finalGrandDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
           </div>
         </div>
 
-        {/* Card 3: ডেলিভারি ও পরিবহন তথ্য */}
+        {/* Card 3: পরিবহন ও ডেলিভারি তথ্য */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-xs">
           <div className="flex items-center gap-2 pb-2 border-b border-slate-100 text-slate-900 font-black text-sm">
             <Truck className="w-4 h-4 text-blue-600" />
-            <h3>ডেলিভারি ও পরিবহন তথ্য</h3>
+            <h3>পরিবহন ও চালানের তথ্য</h3>
           </div>
 
           <div className="space-y-2 text-xs font-medium text-slate-700">
+            <div className="flex justify-between items-start">
+              <span className="text-slate-500 shrink-0">গন্তব্য গোডাউন</span>
+              <span className="font-bold text-slate-800 text-right leading-tight">{deliveryAddress}</span>
+            </div>
+
             <div className="flex justify-between items-center">
               <span className="text-slate-500">গাড়ি / ট্রাক নম্বর</span>
-              <span className="font-bold text-slate-900">{vehicleNo ? toBengaliDigits(vehicleNo) : '—'}</span>
+              <span className="font-mono font-bold text-slate-900">{vehicleNo ? toBengaliDigits(vehicleNo) : '—'}</span>
             </div>
+
             <div className="flex justify-between items-center">
               <span className="text-slate-500">ড্রাইভারের নাম</span>
-              <span className="font-bold text-slate-900">{driverName || '—'}</span>
+              <span className="font-bold text-slate-800">{driverName || '—'}</span>
             </div>
+
             <div className="flex justify-between items-center">
               <span className="text-slate-500">ড্রাইভার মোবাইল</span>
-              <span className="font-mono font-bold text-slate-900">{driverPhone ? toBengaliDigits(driverPhone) : '—'}</span>
+              <span className="font-mono font-bold text-slate-800">{driverPhone ? toBengaliDigits(driverPhone) : '—'}</span>
             </div>
+
             <div className="flex justify-between items-center">
-              <span className="text-slate-500">আনলোডিং সাইট / স্থান</span>
-              <span className="font-bold text-slate-800 truncate max-w-[180px]">{deliveryAddress || '—'}</span>
+              <span className="text-slate-500">রিসিভ করার তারিখ</span>
+              <span className="font-mono font-bold text-slate-800">{dateStr}</span>
             </div>
           </div>
         </div>
 
       </div>
 
-      {/* --- SECTION 2: ITEMS TABLE --- */}
+      {/* --- SECTION 2: 📋 ক্রয়কৃত পণ্যের বিবরণ --- */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-xs">
-        
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
-          <div className="flex items-center gap-2 text-slate-900 font-black text-sm">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-100 text-slate-900 font-black text-sm">
+          <div className="flex items-center gap-2">
             <ClipboardList className="w-4 h-4 text-blue-600" />
-            <h3>ক্রয়কৃত পণ্যের বিবরণী</h3>
-            <span className="text-[11px] font-normal text-slate-500">(লেবার ও গাড়ি ভাড়া ছাড়া মূল একক ও হিসাবকৃত মোট মূল্য)</span>
+            <h3>ক্রয়কৃত পণ্যের বিবরণ</h3>
           </div>
-          <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
-            মোট বিবরণ: {toBengaliDigits(items.length)} টি পণ্য {totalQuantitySummary ? `(${totalQuantitySummary})` : ''}
+          <span className="text-xs font-bold text-slate-500">
+            মোট মালামাল: {totalQuantitySummary}
           </span>
         </div>
 
@@ -385,7 +409,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-black">
                 <th className="py-2.5 px-3 text-center w-12">ক্রমিক</th>
-                <th className="py-2.5 px-3">পণ্যের নাম (Product)</th>
+                <th className="py-2.5 px-3">পণ্যের নাম ও বিবরণ</th>
                 <th className="py-2.5 px-3 text-center">ব্র্যান্ড</th>
                 <th className="py-2.5 px-3 text-center">গ্রেড / সাইজ</th>
                 <th className="py-2.5 px-3 text-center">পরিমাণ</th>
@@ -470,7 +494,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
 
           <div className="space-y-2 text-xs font-medium text-slate-700">
             <div className="flex justify-between items-center">
-              <span className="text-slate-500">পণ্যের মোট কেনা মূল্য (Subtotal)</span>
+              <span className="text-slate-500">পণ্যের মোট কেনা মূল্য</span>
               <span className="font-mono font-bold text-slate-900">৳ {toBengaliDigits(subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
 
@@ -482,7 +506,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
             )}
 
             <div className="flex justify-between items-center pt-1 border-t border-slate-100 font-bold text-slate-900">
-              <span className="text-slate-700">কোম্পানির পণ্যের পাওনা (Supplier Goods Cost)</span>
+              <span className="text-slate-700">কোম্পানির পণ্যের পাওনা</span>
               <span className="font-mono font-black text-indigo-700">৳ {toBengaliDigits(goodsTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
 
@@ -505,7 +529,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
             )}
 
             <div className="flex justify-between items-center pt-2 border-t border-slate-200 font-bold text-slate-900">
-              <span>চালানের সর্বমোট খরচ (Total Invoice Cost)</span>
+              <span>চালানের সর্বমোট খরচ</span>
               <span className="font-mono font-black text-slate-900 text-base">৳ {toBengaliDigits(totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
 
@@ -520,12 +544,12 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
             </div>
 
             <div className="flex justify-between items-center pt-1 border-t border-slate-100">
-              <span className="text-slate-500">আজকের পরিশোধিত জমা (Paid Amount)</span>
+              <span className="text-slate-500">আজকের পরিশোধিত জমা</span>
               <span className="font-mono font-bold text-emerald-600">৳ {toBengaliDigits(paidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
 
             <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-              <span className="font-black text-rose-600 text-sm">সর্বশেষ অবশিষ্ট দেনা (Grand Total Due)</span>
+              <span className="font-black text-rose-600 text-sm">সর্বশেষ অবশিষ্ট দেনা</span>
               <span className="font-mono font-black text-rose-600 text-lg">৳ {toBengaliDigits(finalGrandDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
           </div>
@@ -544,9 +568,9 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
               <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                 {isBankToBank ? '🔄 ব্যাংক-টু-ব্যাংক ট্রান্সফার' :
                  isBank ? '🏦 ব্যাংক ট্রান্সফার' :
-                 isCheque ? '📄 চেক (Cheque)' :
+                 isCheque ? '📄 চেক' :
                  isSplit ? '💵+📄 স্প্লিট পেমেন্ট (ক্যাশ ও চেক)' :
-                 '💵 নগদ (Cash)'}
+                 '💵 নগদ'}
               </span>
             </div>
 
@@ -559,11 +583,11 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
             {isSplit && (
               <div className="p-2 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-600">• নগদ প্রদান (Cash)</span>
+                  <span className="text-slate-600">• নগদ প্রদান</span>
                   <span className="font-mono font-bold text-emerald-700">৳ {toBengaliDigits(cashPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-600">• চেক প্রদান (Cheque)</span>
+                  <span className="text-slate-600">• চেক প্রদান</span>
                   <span className="font-mono font-bold text-blue-700">৳ {toBengaliDigits(chequePaid.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                 </div>
               </div>
@@ -592,7 +616,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
                 )}
                 {txnRef && (
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-600">• Txn / Ref ID</span>
+                    <span className="text-slate-600">• লেনদেন রেফারেন্স আইডি</span>
                     <span className="font-mono font-bold">{toBengaliDigits(txnRef)}</span>
                   </div>
                 )}
@@ -604,7 +628,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5">
                 {chqNo && (
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-600">• চেক নম্বর (Cheque No)</span>
+                    <span className="text-slate-600">• চেক নম্বর</span>
                     <span className="font-mono font-bold text-slate-900">{toBengaliDigits(chqNo)}</span>
                   </div>
                 )}

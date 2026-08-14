@@ -307,8 +307,8 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
             <h2 className="text-3xl font-black text-slate-900 tracking-wide font-bengali">
               ক্রয় চালান
             </h2>
-            <p className="text-xs font-black text-blue-700 tracking-wider font-mono uppercase mt-0.5">
-              (PURCHASE INVOICE)
+            <p className="text-xs font-black text-blue-700 tracking-wider font-bengali mt-0.5">
+              (ক্রয় ইনভয়েস ও মেমো)
             </p>
           </div>
 
@@ -317,7 +317,7 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
             <div className="border border-slate-400 rounded-lg p-2.5 bg-white text-xs font-bold text-slate-800 space-y-1 inline-block text-left w-full max-w-[240px]">
               <div className="flex justify-between items-center">
                 <span className="text-slate-700">চালান নম্বর</span>
-                <span>: <span className="font-mono font-black">{memoNo}</span></span>
+                <span>: <span className="font-mono font-black">{toBengaliDigits(memoNo)}</span></span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-700">চালানের তারিখ</span>
@@ -333,8 +333,8 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
               </div>
               {invoice.purchaseId && (
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-700">রেফারেন্স / চালানি</span>
-                  <span>: <span className="font-mono">{toBengaliDigits(invoice.purchaseId)}</span></span>
+                  <span className="text-slate-700">ক্রয় রেফারেন্স নং</span>
+                  <span>: <span className="font-mono font-bold text-slate-900">{toBengaliDigits(invoice.purchaseId)}</span></span>
                 </div>
               )}
             </div>
@@ -349,7 +349,7 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
           <div className="border border-slate-300 rounded-lg p-2.5 bg-white space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 pb-1 border-b border-slate-200">
               <User className="w-3.5 h-3.5 text-blue-700" />
-              <span>সরবরাহকারী / কোম্পানির বিবরণ</span>
+              <span>সরবরাহকারী ও কোম্পানি তথ্য</span>
             </div>
             
             <div className="space-y-1 font-medium text-slate-800">
@@ -367,7 +367,7 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
               )}
               {invoice.contactPerson && (
                 <div className="flex">
-                  <span className="w-28 shrink-0 text-slate-700">প্রোপ্রাইটর / কন্টাক্ট</span>
+                  <span className="w-28 shrink-0 text-slate-700">প্রতিনিধি / কন্টাক্ট</span>
                   <span className="shrink-0 px-1">:</span>
                   <span>{invoice.contactPerson}</span>
                 </div>
@@ -383,9 +383,9 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
                 <span className="leading-tight">{invoice.supplierAddress || '—'}</span>
               </div>
               <div className="flex pt-1 border-t border-slate-100">
-                <span className="w-28 shrink-0 font-bold text-rose-700">পূর্বের পাওনা/বকেয়া</span>
+                <span className="w-28 shrink-0 font-bold text-slate-900">পূর্বের পাওনা</span>
                 <span className="shrink-0 px-1">:</span>
-                <span className="font-mono font-bold text-rose-700">৳ {toBengaliDigits(effectivePreviousSupplierDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+                <span className="font-mono font-bold text-slate-900">৳ {toBengaliDigits(effectivePreviousSupplierDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
               </div>
             </div>
           </div>
@@ -394,7 +394,7 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
           <div className="border border-slate-300 rounded-lg p-2.5 bg-white space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 pb-1 border-b border-slate-200">
               <Truck className="w-3.5 h-3.5 text-blue-700" />
-              <span>পরিবহন ও ডেলিভারি বিবরণী</span>
+              <span>পরিবহন ও চালানের তথ্য</span>
             </div>
             
             <div className="space-y-1 font-medium text-slate-800">
@@ -414,19 +414,14 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
                 <span className="font-mono">{effectiveDriverPhone ? toBengaliDigits(effectiveDriverPhone) : '—'}</span>
               </div>
               <div className="flex">
-                <span className="w-32 shrink-0 text-slate-700">আনলোডিং সাইট / স্থান</span>
-                <span className="shrink-0 px-1">:</span>
-                <span>{effectiveDeliveryAddress || '—'}</span>
-              </div>
-              <div className="flex">
-                <span className="w-32 shrink-0 text-slate-700">গুদাম / ডিপো</span>
+                <span className="w-32 shrink-0 text-slate-700">গন্তব্য গোডাউন</span>
                 <span className="shrink-0 px-1">:</span>
                 <span>{effectiveWarehouse}</span>
               </div>
               <div className="flex">
-                <span className="w-32 shrink-0 text-slate-700">রেকর্ডকারী</span>
+                <span className="w-32 shrink-0 text-slate-700">রিসিভ করার তারিখ</span>
                 <span className="shrink-0 px-1">:</span>
-                <span>{effectivePreparedBy}</span>
+                <span className="font-mono">{dateStr}</span>
               </div>
             </div>
           </div>
@@ -435,25 +430,22 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
 
         {/* --- 3. ITEM DETAILS TABLE --- */}
         <div>
-          <div className="flex items-center justify-between gap-1.5 text-xs font-bold text-blue-700 py-1">
-            <div className="flex items-center gap-1.5">
-              <ClipboardList className="w-3.5 h-3.5 text-blue-700" />
-              <span>ক্রয়কৃত পণ্যের বিবরণী (Item Details)</span>
-            </div>
-            <span className="text-[10px] font-normal text-slate-500">(লেবার ও গাড়ি ভাড়া ছাড়া মূল একক ও হিসাবকৃত মোট মূল্য)</span>
+          <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 py-1">
+            <ClipboardList className="w-3.5 h-3.5 text-blue-700" />
+            <span>ক্রয়কৃত পণ্যের বিবরণী</span>
           </div>
 
           <table className="w-full text-xs border-collapse border border-slate-400">
             <thead>
               <tr className="bg-slate-100 font-bold border border-slate-400 text-slate-900 text-center">
-                <th className="border border-slate-400 py-1.5 px-1 w-[6%]">ক্রমিক</th>
-                <th className="border border-slate-400 py-1.5 px-2 text-left w-[30%]">পণ্যের নাম (Product)</th>
+                <th className="border border-slate-400 py-1.5 px-1 w-[5%]">ক্রমিক</th>
+                <th className="border border-slate-400 py-1.5 px-2 text-left w-[32%] font-bengali">পণ্যের নাম ও বিবরণ</th>
                 <th className="border border-slate-400 py-1.5 px-2 w-[14%]">ব্র্যান্ড</th>
-                <th className="border border-slate-400 py-1.5 px-2 w-[14%]">সাইজ / গ্রেড</th>
-                <th className="border border-slate-400 py-1.5 px-2 w-[12%]">পরিমাণ</th>
-                <th className="border border-slate-400 py-1.5 px-2 w-[8%]">একক</th>
-                <th className="border border-slate-400 py-1.5 px-2 text-right w-[12%]">একক মূল্য (৳)</th>
-                <th className="border border-slate-400 py-1.5 px-2 text-right w-[14%]">মোট মূল্য (৳)</th>
+                <th className="border border-slate-400 py-1.5 px-2 w-[15%]">গ্রেড/সাইজ</th>
+                <th className="border border-slate-400 py-1.5 px-2 w-[12%] font-bengali">পরিমাণ</th>
+                <th className="border border-slate-400 py-1.5 px-2 w-[8%] font-bengali">একক</th>
+                <th className="border border-slate-400 py-1.5 px-2 text-right w-[10%] font-bengali">একক ক্রয় দর (৳)</th>
+                <th className="border border-slate-400 py-1.5 px-2 text-right w-[12%] font-bengali">মোট ক্রয় মূল্য (৳)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-300">
@@ -537,9 +529,9 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
                   <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                     {isBankToBank ? '🔄 ব্যাংক-টু-ব্যাংক ট্রান্সফার' :
                      isBank ? '🏦 ব্যাংক ট্রান্সফার' :
-                     isCheque ? '📄 চেক (Cheque)' :
+                     isCheque ? '📄 চেক' :
                      isSplit ? '💵+📄 স্প্লিট পেমেন্ট (ক্যাশ ও চেক)' :
-                     '💵 নগদ (Cash)'}
+                     '💵 নগদ'}
                   </span>
                 </div>
 
@@ -583,7 +575,7 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
                     )}
                     {txnRef && (
                       <div className="flex justify-between items-center">
-                        <span className="text-slate-600">• Txn / Ref ID</span>
+                        <span className="text-slate-600">• লেনদেন রেফারেন্স আইডি</span>
                         <span className="font-mono font-bold">{toBengaliDigits(txnRef)}</span>
                       </div>
                     )}
@@ -635,7 +627,7 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
             <div className="border border-slate-400 font-bold text-xs divide-y divide-slate-300 bg-white">
               
               <div className="flex justify-between items-center p-1.5 px-2">
-                <span className="text-slate-800 font-medium">পণ্যের মোট মূল্য (Subtotal)</span>
+                <span className="text-slate-800 font-medium">পণ্যের মোট ক্রয় মূল্য</span>
                 <span className="font-mono">৳ {toBengaliDigits(subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
               </div>
 
@@ -655,18 +647,18 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
 
               {effectiveDiscount > 0 && (
                 <div className="flex justify-between items-center p-1.5 px-2 text-rose-600">
-                  <span className="text-slate-800 font-medium">- বিশেষ ছাড় (Discount)</span>
+                  <span className="text-slate-800 font-medium">- বিশেষ ছাড়</span>
                   <span className="font-mono">- ৳ {toBengaliDigits(effectiveDiscount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                 </div>
               )}
 
               <div className="flex justify-between items-center p-2 px-2 text-xs bg-slate-100 font-black text-slate-900 border-t border-b border-slate-400">
-                <span>চালান মোট ক্রয় বিল (Total Purchase Bill)</span>
+                <span>চালান মোট ক্রয় বিল</span>
                 <span className="font-mono text-sm">৳ {toBengaliDigits(totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
               </div>
 
               <div className="flex justify-between items-center p-1.5 px-2 text-rose-700">
-                <span className="text-slate-800 font-medium">+ পূর্বের পাওনা / বকেয়া (Supplier Due)</span>
+                <span className="text-slate-800 font-medium">+ পূর্বের পাওনা / বকেয়া</span>
                 <span className="font-mono font-bold">+ ৳ {toBengaliDigits(effectivePreviousSupplierDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
               </div>
 
@@ -676,12 +668,12 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
               </div>
 
               <div className="flex justify-between items-center p-1.5 px-2 text-emerald-600 font-bold">
-                <span>- আজকের পরিশোধিত জমা (Paid Amount)</span>
+                <span>- আজকের পরিশোধিত জমা</span>
                 <span className="font-mono">- ৳ {toBengaliDigits(paidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
               </div>
 
               <div className="flex justify-between items-center p-2 px-2 text-sm text-rose-600 font-black bg-rose-50 border-t border-rose-200">
-                <span>সর্বশেষ অবশিষ্ট দেনা (Grand Total Due)</span>
+                <span>সর্বশেষ অবশিষ্ট দেনা</span>
                 <span className="font-mono text-base">৳ {toBengaliDigits(finalGrandDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
               </div>
 
@@ -759,7 +751,7 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
 
           {/* Center Software Branding */}
           <div className="text-center space-y-0.5">
-            <p className="text-[10px] text-slate-500 font-medium">Software Developed By:</p>
+            <p className="text-[10px] text-slate-500 font-medium">সফটওয়্যার পরিচালনায়:</p>
             <p className="font-bold text-slate-900">{shop.softwareCompany || 'Hasanah Tech Solution'}</p>
             <p className="text-[10px] font-mono text-slate-600">
               📞 {toBengaliDigits(shop.softwarePhone || '01349345353')} | {shop.softwareWebsite || 'www.hasanahtech.vercel.app'}

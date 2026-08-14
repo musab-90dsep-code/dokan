@@ -26,6 +26,8 @@ import { ProductSearchSelect } from '@/components/ProductSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
 import { InvoiceMemo } from '@/components/InvoiceMemo';
 import { SalesInvoiceDetailsView } from '@/components/SalesInvoiceDetailsView';
+import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
+import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
 import { printElement } from '@/lib/printUtils';
 
 interface Product { 
@@ -947,34 +949,17 @@ function InvoicesContent() {
               )}
             </div>
 
-            {/* Date Range (Start & End) in 1 Compact Block */}
-            <div className="flex items-center gap-2 bg-slate-50/80 p-1.5 rounded-md border border-slate-200/80">
-              <Calendar className="w-4 h-4 text-slate-400 ml-1 shrink-0" />
-              <input
-                type="date"
-                value={startDate}
-                onChange={e => setStartDate(e.target.value)}
-                className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
-                title="শুরুর তারিখ"
-              />
-              <span className="text-slate-300 text-xs font-bold">-</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={e => setEndDate(e.target.value)}
-                className="bg-transparent text-xs font-bold text-slate-700 outline-none w-28 cursor-pointer"
-                title="শেষের তারিখ"
-              />
-              {(startDate || endDate) && (
-                <button
-                  onClick={() => { setStartDate(''); setEndDate(''); }}
-                  className="text-slate-400 hover:text-rose-600 px-1"
-                  title="তারিখ ফিল্টার মুছুন"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
+            {/* Bengali Date Range Filter */}
+            <BengaliDateRangePicker
+              startDate={startDate}
+              endDate={endDate}
+              onChange={(start, end) => {
+                setStartDate(start);
+                setEndDate(end);
+              }}
+              placeholder="তারিখ ফিল্টার"
+              compact={false}
+            />
 
             {/* Quick Status Pills */}
             <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
@@ -1944,17 +1929,17 @@ function InvoicesContent() {
                                     <Input 
                                       placeholder="CQ-10023" 
                                       value={chequeNo} 
-                                      onChange={e => setChequeNo(e.target.value)}
-                                      className="h-8 rounded-md bg-white text-xs font-mono"
+                                      onChange={e => setChequeNo(e.target.value)} 
+                                      className="h-8 rounded-md bg-white text-xs font-mono" 
                                     />
                                   </div>
                                   <div>
                                     <Label className="text-[10px] font-bold text-purple-900">চেকের তারিখ</Label>
-                                    <Input 
-                                      type="date" 
+                                    <BengaliDatePicker 
                                       value={chequeDate} 
-                                      onChange={e => setChequeDate(e.target.value)}
-                                      className="h-8 rounded-md bg-white text-xs"
+                                      onChange={val => setChequeDate(val)} 
+                                      placeholder="তারিখ নির্বাচন" 
+                                      className="w-full" 
                                     />
                                   </div>
                                 </div>

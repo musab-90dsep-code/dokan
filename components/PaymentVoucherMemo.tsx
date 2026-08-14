@@ -138,13 +138,13 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
   const addMoneyCategory = meta.addMoneyCategory || 
                            (rawNoteStr.match(/\[টাকা যোগ - ([^\]]+)\]/)?.[1]) || 
                            (voucher.partyName && voucher.partyName !== 'কাস্টমার' && voucher.partyName !== 'সরবরাহকারী' && voucher.partyName !== 'দোকান ক্যাশ / মূলধন' ? voucher.partyName : '') || 
-                           'ক্যাশে জমা (Add Cash)';
+                           'ক্যাশে জমা';
 
   const isIncome = (rawType === 'income' || rawType === 'payment_in') && !isAddMoney;
   const isExpense = (rawType === 'expense' || rawType === 'payment_out') && !isAddMoney;
   
-  const voucherTitle = isAddMoney ? 'টাকা যোগের রশিদ' : isIncome ? 'টাকা জমার রশিদ' : isExpense ? 'পেমেন্ট প্রদান ভাউচার' : 'ট্রানজ্যাকশন ভাউচার';
-  const voucherSubtitle = isAddMoney ? '(ADD MONEY RECEIPT)' : isIncome ? '(MONEY RECEIPT)' : isExpense ? '(PAYMENT VOUCHER)' : '(TRANSACTION VOUCHER)';
+  const voucherTitle = isAddMoney ? 'টাকা যোগের রশিদ' : isIncome ? 'টাকা জমার রশিদ' : isExpense ? 'পেমেন্ট প্রদান ভাউচার' : 'লেনদেন ভাউচার';
+  const voucherSubtitle = isAddMoney ? '(টাকা যোগ রশিদ)' : isIncome ? '(টাকা জমার রশিদ)' : isExpense ? '(পেমেন্ট প্রদান ভাউচার)' : '(লেনদেন ভাউচার)';
   
   const amount = Number(voucher.amount || 0);
   const discountAmount = Number(voucher.discountAmount || 0);
@@ -156,9 +156,9 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
   const pm = (voucher.paymentMethod || meta.paymentMethodName || 'Cash').toLowerCase();
   const isBank = pm.includes('bank') || pm.includes('ব্যাংক');
   const isCheque = pm.includes('check') || pm.includes('cheque') || pm.includes('চেক');
-  const paymentMethodLabel = isBank ? '🏦 ব্যাংক ডিপোজিট' : isCheque ? '📄 চেক (Cheque)' : '💵 নগদ (Cash)';
+  const paymentMethodLabel = isBank ? '🏦 ব্যাংক ডিপোজিট' : isCheque ? '📄 চেক' : '💵 নগদ';
 
-  const partyLabel = isIncome ? 'জমা প্রদানকারীর নাম (Customer)' : isExpense ? 'প্রাপকের নাম (Supplier)' : 'পার্টির নাম';
+  const partyLabel = isIncome ? 'জমা প্রদানকারীর নাম (গ্রাহক)' : isExpense ? 'প্রাপকের নাম (সরবরাহকারী)' : 'পার্টির নাম';
   const operatorName = voucher.operatorName || 'ক্যাশিয়ার';
 
   // Clean JSON metadata from description or notes
@@ -204,7 +204,7 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
         <div className="flex items-center justify-between bg-slate-900 text-white p-3.5 px-6 rounded-t-2xl print:hidden shadow-md">
           <div className="flex items-center gap-2 text-xs font-bold">
             <FileText className="w-4 h-4 text-emerald-400" />
-            <span>{voucherTitle} প্রিভিউ (A4 Print Copy)</span>
+            <span>{voucherTitle} প্রিভিউ (A4 প্রিন্ট কপি)</span>
           </div>
           <button
             type="button"
@@ -257,7 +257,7 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
             <h2 className="text-2xl font-black text-slate-900 tracking-wide font-bengali">
               {voucherTitle}
             </h2>
-            <p className={cn("text-[11px] font-black tracking-wider font-mono uppercase mt-0.5", isAddMoney ? "text-blue-700" : isIncome ? "text-emerald-700" : "text-rose-700")}>
+            <p className={cn("text-[11px] font-black tracking-wider font-bengali mt-0.5", isAddMoney ? "text-blue-700" : isIncome ? "text-emerald-700" : "text-rose-700")}>
               {voucherSubtitle}
             </p>
           </div>
@@ -267,7 +267,7 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
             <div className="border border-slate-400 rounded-lg p-2.5 bg-white text-xs font-bold text-slate-800 space-y-1 inline-block text-left w-full max-w-[240px]">
               <div className="flex justify-between items-center">
                 <span className="text-slate-700">ভাউচার নম্বর</span>
-                <span>: <span className="font-mono font-black">{voucherNo}</span></span>
+                <span>: <span className="font-mono font-black">{toBengaliDigits(voucherNo)}</span></span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-700">তারিখ</span>
@@ -279,7 +279,7 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-700">স্ট্যাটাস</span>
-                <span>: <span className="font-bold text-emerald-700">সম্পন্ন (Completed)</span></span>
+                <span>: <span className="font-bold text-emerald-700">সম্পন্ন</span></span>
               </div>
             </div>
           </div>
@@ -311,7 +311,7 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
                 <div className="flex">
                   <span className="w-28 shrink-0 text-slate-700">ভাউচার আইডি</span>
                   <span className="shrink-0 px-1">:</span>
-                  <span className="font-mono font-bold text-slate-900">{voucherNo}</span>
+                  <span className="font-mono font-bold text-slate-900">{toBengaliDigits(voucherNo)}</span>
                 </div>
               </div>
             </div>
@@ -388,7 +388,7 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
               )}
               {voucher.transactionRef && (
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-700">Txn / Ref ID</span>
+                  <span className="text-slate-700">লেনদেন রেফারেন্স আইডি</span>
                   <span className="font-mono font-bold">{toBengaliDigits(voucher.transactionRef)}</span>
                 </div>
               )}
@@ -432,7 +432,7 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
           
           <div className="col-span-7 space-y-3">
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-300 space-y-1">
-              <p className="font-bold text-xs text-slate-700">মোট পরিমাণের কথা (In Words):</p>
+              <p className="font-bold text-xs text-slate-700">মোট পরিমাণের কথা:</p>
               <p className="font-black text-sm text-slate-900">
                 {numberToBengaliWords(amount).replace(/ টাকা মাত্র$/, '')} টাকা মাত্র।
               </p>
@@ -453,7 +453,7 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
               </div>
               {!isAddMoney && discountAmount > 0 && (
                 <div className="flex justify-between items-center p-1.5 px-2.5 text-amber-700">
-                  <span>বিশেষ ছাড় (Discount)</span>
+                  <span>বিশেষ ছাড়</span>
                   <span className="font-mono">৳ {toBengaliDigits(discountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                 </div>
               )}
@@ -522,7 +522,7 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
 
           {/* Center Software Branding */}
           <div className="text-center space-y-0.5">
-            <p className="text-[10px] text-slate-500 font-medium">Software Developed By:</p>
+            <p className="text-[10px] text-slate-500 font-medium">সফটওয়্যার পরিচালনায়:</p>
             <p className="font-bold text-slate-900">{shop.softwareCompany || 'Hasanah Tech Solution'}</p>
             <p className="text-[10px] font-mono text-slate-600">
               📞 {toBengaliDigits(shop.softwarePhone || '01349345353')}
@@ -535,7 +535,7 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
               ||||| | |||| ||| |||||
             </div>
             <p className="text-[9px] font-mono text-slate-600 font-bold mt-0.5">
-              {voucherNo}
+              {toBengaliDigits(voucherNo)}
             </p>
           </div>
 

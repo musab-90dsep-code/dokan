@@ -25,6 +25,12 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { InvoiceMemo } from '@/components/InvoiceMemo';
 import { PurchaseInvoiceMemo } from '@/components/PurchaseInvoiceMemo';
+import { PaymentVoucherMemo } from '@/components/PaymentVoucherMemo';
+import { SalesInvoiceDetailsView } from '@/components/SalesInvoiceDetailsView';
+import { PurchaseInvoiceDetailsView } from '@/components/PurchaseInvoiceDetailsView';
+import { PaymentVoucherDetailsView } from '@/components/PaymentVoucherDetailsView';
+import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
+import { printElement } from '@/lib/printUtils';
 
 export const toBnDigits = (val: string | number | undefined | null): string => {
   if (val === undefined || val === null || val === '') return '';
@@ -68,10 +74,16 @@ export interface PartyProfile {
 
 export interface TransactionDoc {
   id: string; 
+  orderId?: string;
+  invoiceNo?: string;
   customerName?: string; 
   customerId?: string;
-  supplierName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  supplierName?: string; 
   supplierId?: string;
+  supplierPhone?: string;
+  supplierAddress?: string;
   totalAmount: number;
   paidAmount: number;
   dueAmount: number;
@@ -81,6 +93,14 @@ export interface TransactionDoc {
   bankName?: string;
   chequeStatus?: 'pending' | 'cleared' | 'bounced';
   note?: string;
+  notes?: string;
+  transactionType?: string;
+  subtotal?: number;
+  discount?: number;
+  shippingCost?: number;
+  laborCost?: number;
+  previousBalance?: number;
+  description?: string;
   createdAt: any;
 }
 
@@ -177,8 +197,16 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
         const txList = await api.transactions.list({ party: Number(id) });
         setTransactions(txList.map(t => ({
           id: String(t.id || t.invoice_no),
+          orderId: t.invoice_no || String(t.id),
+          invoiceNo: t.invoice_no || (isCustomer ? `INV-2026-${String(t.id).padStart(6, '0')}` : `PUR-2026-${String(t.id).padStart(6, '0')}`),
           customerName: t.party_name || p.name,
           customerId: String(p.id),
+          customerPhone: p.phone || '',
+          customerAddress: p.address || '',
+          supplierName: t.party_name || p.name,
+          supplierId: String(p.id),
+          supplierPhone: p.phone || '',
+          supplierAddress: p.address || '',
           totalAmount: Number(t.total_amount || 0),
           paidAmount: Number(t.paid_amount || 0),
           dueAmount: Number(t.due_amount || 0),
@@ -187,6 +215,13 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           chequeNo: t.cheque_number,
           bankName: t.cheque_bank,
           chequeStatus: t.cheque_status,
+          note: t.notes || (t as any).description || '',
+          notes: t.notes || (t as any).description || '',
+          transactionType: t.transaction_type || (isCustomer ? 'sale' : 'purchase'),
+          subtotal: Number(t.subtotal || t.total_amount || 0),
+          discount: Number(t.discount || 0),
+          shippingCost: Number((t as any).shipping_cost || 0),
+          laborCost: Number((t as any).labor_cost || 0),
           createdAt: t.created_at || new Date().toISOString()
         })));
       } catch (err) {
@@ -196,7 +231,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
       }
     }
     if (id) loadData();
-  }, [id]);
+  }, [id, isCustomer]);
 
   const totalBill = transactions.reduce((a, o) => a + Number(o.totalAmount || 0), 0);
   const totalPaid = transactions.reduce((a, o) => a + Number(o.paidAmount || 0), 0);
@@ -641,6 +676,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   <div className="relative flex-shrink-0">
                     <div className="w-12 h-12 rounded-full bg-[#F1E8FF] text-[#8B5CF6] font-bold text-xl flex items-center justify-center border border-[#E9D8FF]">
                       {party.photoUrl ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
                         <img src={party.photoUrl} alt={party.name} className="w-full h-full rounded-full object-cover" />
                       ) : (
                         <span>{(party.businessName || party.name)[0]?.toUpperCase()}</span>
@@ -655,7 +691,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                         {party.businessName || party.name}
                       </h2>
                       <span className="inline-block bg-emerald-100/70 text-emerald-700 font-bold text-[10px] px-2 py-0.5 rounded-full">
-                        সক্রিয় গ্রাহক
+                        সক্রিয়
                       </span>
                     </div>
 
@@ -681,9 +717,9 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                 {/* 2. CLIENT ID */}
                 <div className="border-t lg:border-t-0 lg:border-l border-slate-200/80 px-4 lg:px-5 py-0.5 self-stretch flex flex-col justify-center gap-1">
                   <div>
-                    <span className="text-[11px] font-medium text-slate-400 block">গ্রাহক আইডি</span>
+                    <span className="text-[11px] font-medium text-slate-400 block">{isCustomer ? 'গ্রাহক আইডি' : 'সরবরাহকারী আইডি'}</span>
                     <span className="text-xs font-bold text-slate-900 block mt-0.5">
-                      {party.customerCode || `CUST-${String(party.id).padStart(6, '0')}`}
+                      {party.customerCode || `${isCustomer ? 'গ্রাহক' : 'সরবরাহকারী'}-${toBnDigits(String(party.id).padStart(6, '0'))}`}
                     </span>
                   </div>
                 </div>
@@ -697,7 +733,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                     </span>
                   </div>
                   <div>
-                    <span className="text-[11px] font-medium text-slate-400 block">ক্রেডিট লিমিট</span>
+                    <span className="text-[11px] font-medium text-slate-400 block">বাকি বা ঋণের সীমা</span>
                     <span className="text-xs font-bold text-blue-600 block mt-0.5">
                       ৳ {party.creditLimit ? toBnDigits(party.creditLimit.toLocaleString('en-IN', { minimumFractionDigits: 2 })) : '০.০০'}
                     </span>
@@ -707,13 +743,13 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                 {/* 4. DUE & TOTAL SALES */}
                 <div className="border-t lg:border-t-0 lg:border-l border-slate-200/80 px-4 lg:px-5 py-0.5 self-stretch flex flex-col justify-center gap-1.5">
                   <div>
-                    <span className="text-[11px] font-medium text-slate-400 block">বকেয়া (Due)</span>
+                    <span className="text-[11px] font-medium text-slate-400 block">মোট বকেয়া</span>
                     <span className="text-xs font-black text-rose-600 block mt-0.5">
                       ৳ {toBnDigits(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[11px] font-medium text-slate-400 block">মোট বিক্রয়</span>
+                    <span className="text-[11px] font-medium text-slate-400 block">{isCustomer ? 'মোট বিক্রয়' : 'মোট ক্রয়'}</span>
                     <span className="text-xs font-bold text-slate-900 block mt-0.5">
                       ৳ {toBnDigits(totalBill.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
                     </span>
@@ -728,14 +764,11 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   >
                     <Edit3 className="w-3 h-3" />সম্পাদনা
                   </Button>
-                  <Button onClick={handlePrintLedger} variant="outline" className="w-full h-7 border-slate-200 text-slate-700 font-bold text-[10px] rounded-lg hover:bg-slate-50 flex items-center justify-center gap-1 px-2">
-                    <Printer className="w-3 h-3 text-slate-500" />প্রিন্ট
+                  <Button onClick={handlePrintLedger} variant="outline" className="w-full h-7 border-slate-200 text-slate-700 font-bold text-[10px] rounded-lg hover:bg-slate-50 flex items-center justify-center gap-1 px-2 cursor-pointer">
+                    <Printer className="w-3 h-3 text-slate-500" />লেজার প্রিন্ট
                   </Button>
-                  <Button onClick={handlePrintLedger} variant="outline" className="w-full h-7 border-slate-200 text-slate-700 font-bold text-[10px] rounded-lg hover:bg-slate-50 flex items-center justify-center gap-1 px-2">
-                    <Download className="w-3 h-3 text-slate-500" />PDF
-                  </Button>
-                  <Button onClick={handleDeleteParty} variant="outline" className="w-full h-7 border-rose-200 text-rose-600 font-bold text-[10px] rounded-lg hover:bg-rose-50 hover:border-rose-300 flex items-center justify-center gap-1 px-2">
-                    <Trash2 className="w-3 h-3 text-rose-500" />মুছুন
+                  <Button onClick={handlePrintLedger} variant="outline" className="w-full h-7 border-slate-200 text-slate-700 font-bold text-[10px] rounded-lg hover:bg-slate-50 flex items-center justify-center gap-1 px-2 cursor-pointer">
+                    <Download className="w-3 h-3 text-slate-500" />পিডিএফ ডাউনলোড
                   </Button>
                 </div>
 
@@ -744,19 +777,19 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           </Card>
         )}
 
-        {/* 2. NAVIGATION TABS BAR - MATCHES USER SCREENSHOT */}
-        <div className="flex items-center gap-1 border-b border-slate-200 overflow-x-auto bg-white px-4 rounded-xl shadow-2xs">
+        {/* 2. NAVIGATION TABS BAR */}
+        <div className="flex items-center gap-1 border-b border-slate-200 overflow-x-auto bg-white rounded-t-2xl px-3 pt-1 shadow-2xs print:hidden">
           <button
             onClick={() => setActiveMainTab('profile')}
             className={cn(
               "flex items-center gap-2 px-5 py-3.5 text-xs font-bold transition-all border-b-2 whitespace-nowrap",
               activeMainTab === 'profile'
-                ? "border-orange-500 text-orange-600"
+                ? "border-blue-600 text-blue-600"
                 : "border-transparent text-slate-500 hover:text-slate-800"
             )}
           >
             <UserCheck className="w-4 h-4" />
-            <span>প্রোফাইল</span>
+            <span>প্রোফাইল তথ্য</span>
           </button>
 
           <button
@@ -769,7 +802,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
             )}
           >
             <Receipt className="w-4 h-4" />
-            <span>লেজার (হিসাব)</span>
+            <span>লেজার (খতিয়ান)</span>
           </button>
 
           <button
@@ -782,7 +815,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
             )}
           >
             <FileText className="w-4 h-4" />
-            <span>বিক্রি</span>
+            <span>{isCustomer ? 'বিক্রয় তালিকা' : 'ক্রয় তালিকা'}</span>
           </button>
 
           <button
@@ -795,7 +828,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
             )}
           >
             <CreditCard className="w-4 h-4" />
-            <span>পেমেন্ট</span>
+            <span>পেমেন্ট ও জমা</span>
           </button>
 
           <button
@@ -808,7 +841,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
             )}
           >
             <FilePlus className="w-4 h-4" />
-            <span>ডকুমেন্টস</span>
+            <span>ডকুমেন্টস ও ফাইল</span>
           </button>
 
           <button
@@ -821,18 +854,18 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
             )}
           >
             <MessageSquare className="w-4 h-4" />
-            <span>নোটস</span>
+            <span>মন্তব্য ও নোটস</span>
           </button>
         </div>
 
-        {/* 3. TAB 1: PROFILE TAB CONTENT - MATCHES IMAGE EXACTLY */}
+        {/* 3. TAB 1: PROFILE TAB CONTENT */}
         {activeMainTab === 'profile' && party && (
           <div className="space-y-5">
             
             {/* 2-Column Grid of Detail Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               
-              {/* CARD 1: 👤 মৌলিক তথ্য (Basic Information) */}
+              {/* CARD 1: 👤 মৌলিক তথ্য */}
               <Card className="bg-white border border-slate-200/80 rounded-2xl shadow-xs">
                 <CardContent className="p-5 space-y-4">
                   <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
@@ -840,18 +873,18 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                       <UserCheck className="w-4 h-4" />
                     </span>
                     <h3 className="text-sm font-black text-slate-900">
-                      মৌলিক তথ্য (Basic Information)
+                      মৌলিক তথ্য
                     </h3>
                   </div>
 
                   <div className="grid grid-cols-2 gap-y-3.5 text-xs">
                     <div>
-                      <span className="text-slate-500 font-medium block">গ্রাহকের নাম</span>
+                      <span className="text-slate-500 font-medium block">{isCustomer ? 'গ্রাহকের নাম' : 'কোম্পানি / প্রতিনিধির নাম'}</span>
                       <span className="font-bold text-slate-900 block mt-0.5">{party.name}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 font-medium block">গ্রাহক আইডি</span>
-                      <span className="font-bold text-slate-900 block mt-0.5">{party.customerCode || `CUST-${String(party.id).padStart(6, '0')}`}</span>
+                      <span className="text-slate-500 font-medium block">{isCustomer ? 'গ্রাহক আইডি' : 'সরবরাহকারী আইডি'}</span>
+                      <span className="font-bold text-slate-900 block mt-0.5">{party.customerCode || `${isCustomer ? 'গ্রাহক' : 'সরবরাহকারী'}-${toBnDigits(String(party.id).padStart(6, '0'))}`}</span>
                     </div>
 
                     <div>
@@ -859,8 +892,8 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                       <span className="font-bold text-slate-900 block mt-0.5">{party.businessName || party.name}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 font-medium block">গ্রাহক টাইপ</span>
-                      <span className="font-bold text-slate-900 block mt-0.5">{party.customerType || 'খুচরা গ্রাহক'}</span>
+                      <span className="text-slate-500 font-medium block">{isCustomer ? 'গ্রাহকের ধরন' : 'সরবরাহের ধরন'}</span>
+                      <span className="font-bold text-slate-900 block mt-0.5">{party.customerType || (isCustomer ? 'খুচরা গ্রাহক' : 'রড')}</span>
                     </div>
 
                     <div>
@@ -873,14 +906,14 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                     </div>
 
                     <div>
-                      <span className="text-slate-500 font-medium block">বিকল্প ফোন</span>
+                      <span className="text-slate-500 font-medium block">বিকল্প ফোন নম্বর</span>
                       <span className="font-bold text-slate-900 block mt-0.5">{party.altPhone ? toBnDigits(party.altPhone) : '—'}</span>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* CARD 2: 📍 ঠিকানা (Address Information) */}
+              {/* CARD 2: 📍 ঠিকানা ও অবস্থান তথ্য */}
               <Card className="bg-white border border-slate-200/80 rounded-2xl shadow-xs">
                 <CardContent className="p-5 space-y-4">
                   <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
@@ -888,7 +921,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                       <MapPin className="w-4 h-4" />
                     </span>
                     <h3 className="text-sm font-black text-slate-900">
-                      ঠিকানা (Address Information)
+                      ঠিকানা ও অবস্থান তথ্য
                     </h3>
                   </div>
 
@@ -918,14 +951,14 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                     </div>
 
                     <div>
-                      <span className="text-slate-500 font-medium block">পোস্টকোড</span>
+                      <span className="text-slate-500 font-medium block">পোস্ট কোড</span>
                       <span className="font-bold text-slate-900 block mt-0.5">{party.postcode ? toBnDigits(party.postcode) : '—'}</span>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* CARD 3: 💳 আর্থিক তথ্য (Financial Information) */}
+              {/* CARD 3: 💳 আর্থিক পলিসি ও হিসাব তথ্য */}
               <Card className="bg-white border border-slate-200/80 rounded-2xl shadow-xs">
                 <CardContent className="p-5 space-y-4">
                   <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
@@ -933,42 +966,42 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                       <CreditCard className="w-4 h-4" />
                     </span>
                     <h3 className="text-sm font-black text-slate-900">
-                      আর্থিক তথ্য (Financial Information)
+                      আর্থিক পলিসি ও হিসাব তথ্য
                     </h3>
                   </div>
 
                   <div className="grid grid-cols-2 gap-y-3.5 text-xs">
                     <div>
-                      <span className="text-slate-500 font-medium block">ওপেনিং ব্যালেন্স</span>
+                      <span className="text-slate-500 font-medium block">প্রারম্ভিক বকেয়া</span>
                       <span className="font-bold text-slate-900 block mt-0.5">৳ {party.openingBalance ? toBnDigits(party.openingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })) : '০.০০'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 font-medium block">কমিশন (%)</span>
-                      <span className="font-bold text-slate-900 block mt-0.5">{party.discountPercent ? toBnDigits(party.discountPercent) + '%' : '—'}</span>
+                      <span className="text-slate-500 font-medium block">কমিশন বা ছাড় (%)</span>
+                      <span className="font-bold text-slate-900 block mt-0.5">{party.discountPercent ? toBnDigits(party.discountPercent) + '%' : '০%'}</span>
                     </div>
 
                     <div>
-                      <span className="text-slate-500 font-medium block">বকেয়া (Due)</span>
+                      <span className="text-slate-500 font-medium block">মোট বকেয়া</span>
                       <span className="font-black text-rose-600 block mt-0.5">৳ {toBnDigits(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 font-medium block">VAT / TIN</span>
-                      <span className="font-bold text-slate-900 block mt-0.5">{party.tinNumber || '—'}</span>
+                      <span className="text-slate-500 font-medium block">টিন বা লাইসেন্স নম্বর</span>
+                      <span className="font-bold text-slate-900 block mt-0.5">{party.tinNumber || party.nid || '—'}</span>
                     </div>
 
                     <div>
-                      <span className="text-slate-500 font-medium block">ক্রেডিট লিমিট</span>
+                      <span className="text-slate-500 font-medium block">বাকি বা ঋণের সীমা</span>
                       <span className="font-bold text-slate-900 block mt-0.5">৳ {party.creditLimit ? toBnDigits(party.creditLimit.toLocaleString('en-IN', { minimumFractionDigits: 2 })) : '০.০০'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 font-medium block">পেমেন্ট মেয়াদ</span>
+                      <span className="text-slate-500 font-medium block">পরিশোধের মেয়াদ</span>
                       <span className="font-bold text-slate-900 block mt-0.5">{party.creditDays ? toBnDigits(party.creditDays) + ' দিন' : '—'}</span>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* CARD 4: 👥 অন্যান্য তথ্য (Other Information) */}
+              {/* CARD 4: 👥 অন্যান্য তথ্য */}
               <Card className="bg-white border border-slate-200/80 rounded-2xl shadow-xs">
                 <CardContent className="p-5 space-y-4">
                   <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
@@ -1043,7 +1076,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
 
         {/* TAB 2: LEDGER (হিসাব) TAB CONTENT - MATCHES IMAGE EXACTLY */}
         {activeMainTab === 'ledger' && (
-          <Card className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+          <Card className="bg-white border border-slate-200/80 rounded-2xl shadow-xs">
             <CardContent className="p-4 sm:p-5 space-y-4">
               
               {/* 1. FILTER CONTROL BAR */}
@@ -1052,23 +1085,16 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                 {/* Left Filter Controls */}
                 <div className="flex flex-wrap items-center gap-2.5 flex-1">
                   
-                  {/* Date Range Picker Pill */}
-                  <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={e => setStartDate(e.target.value)}
-                      className="bg-transparent text-xs font-bold focus:outline-none w-28"
-                    />
-                    <span className="text-slate-400 font-normal">-</span>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={e => setEndDate(e.target.value)}
-                      className="bg-transparent text-xs font-bold focus:outline-none w-28"
-                    />
-                  </div>
+                  {/* Bengali Date Range Picker */}
+                  <BengaliDateRangePicker
+                    startDate={startDate}
+                    endDate={endDate}
+                    onChange={(start, end) => {
+                      setStartDate(start);
+                      setEndDate(end);
+                    }}
+                    placeholder="তারিখ ফিল্টার"
+                  />
 
                   {/* Transaction Type Select */}
                   <Select value={activeTab} onValueChange={(val: any) => setActiveTab(val)}>
@@ -1126,7 +1152,30 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                             key={entry.id} 
                             className="hover:bg-slate-50/80 transition-colors cursor-pointer"
                             onClick={() => {
-                              if (matchingTx) setSelectedInvoiceTx(matchingTx);
+                              if (matchingTx) {
+                                setSelectedInvoiceTx(matchingTx);
+                              } else {
+                                const isPayment = entry.type === 'PAYMENT';
+                                setSelectedInvoiceTx({
+                                  id: entry.orderId || entry.refNo || entry.id,
+                                  orderId: entry.refNo,
+                                  invoiceNo: entry.invoiceNo || entry.refNo,
+                                  customerName: party?.name || 'সম্মানিত গ্রাহক',
+                                  customerPhone: party?.phone || '',
+                                  customerAddress: party?.address || '',
+                                  supplierName: party?.name || 'সরবরাহকারী',
+                                  supplierPhone: party?.phone || '',
+                                  supplierAddress: party?.address || '',
+                                  totalAmount: entry.debit > 0 ? entry.debit : entry.credit,
+                                  paidAmount: isPayment ? entry.credit : (entry.debit - (entry.dueAmount || 0)),
+                                  dueAmount: isPayment ? 0 : (entry.dueAmount !== undefined ? entry.dueAmount : entry.debit),
+                                  items: [],
+                                  paymentMethod: entry.paymentMethod || 'cash',
+                                  transactionType: isPayment ? 'payment' : (isCustomer ? 'sale' : 'purchase'),
+                                  createdAt: entry.date,
+                                  description: entry.description
+                                });
+                              }
                             }}
                           >
                             <TableCell className="py-3.5 px-4 text-left text-slate-700 font-medium">
@@ -1265,7 +1314,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
 
         {/* TAB 3: SALES (বিক্রি) TAB CONTENT - MATCHES IMAGE 1 EXACTLY */}
         {activeMainTab === 'sales' && (
-          <Card className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+          <Card className="bg-white border border-slate-200/80 rounded-2xl shadow-xs">
             <CardContent className="p-4 sm:p-5 space-y-4">
               
               {/* 1. FILTER CONTROL BAR */}
@@ -1274,23 +1323,16 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                 {/* Left Filter Controls */}
                 <div className="flex flex-wrap items-center gap-2.5 flex-1">
                   
-                  {/* Date Range Picker Pill */}
-                  <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={e => setStartDate(e.target.value)}
-                      className="bg-transparent text-xs font-bold focus:outline-none w-28"
-                    />
-                    <span className="text-slate-400 font-normal">-</span>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={e => setEndDate(e.target.value)}
-                      className="bg-transparent text-xs font-bold focus:outline-none w-28"
-                    />
-                  </div>
+                  {/* Bengali Date Range Picker */}
+                  <BengaliDateRangePicker
+                    startDate={startDate}
+                    endDate={endDate}
+                    onChange={(start, end) => {
+                      setStartDate(start);
+                      setEndDate(end);
+                    }}
+                    placeholder="তারিখ ফিল্টার"
+                  />
 
                   {/* Status Filter Dropdown */}
                   <Select defaultValue="all">
@@ -1442,7 +1484,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
 
         {/* TAB 4: PAYMENTS (পেমেন্ট) TAB CONTENT - MATCHES IMAGE 2 EXACTLY */}
         {activeMainTab === 'payments' && (
-          <Card className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+          <Card className="bg-white border border-slate-200/80 rounded-2xl shadow-xs">
             <CardContent className="p-4 sm:p-5 space-y-4">
               
               {/* 1. FILTER CONTROL BAR */}
@@ -1451,23 +1493,16 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                 {/* Left Filter Controls */}
                 <div className="flex flex-wrap items-center gap-2.5 flex-1">
                   
-                  {/* Date Range Picker Pill */}
-                  <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={e => setStartDate(e.target.value)}
-                      className="bg-transparent text-xs font-bold focus:outline-none w-28"
-                    />
-                    <span className="text-slate-400 font-normal">-</span>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={e => setEndDate(e.target.value)}
-                      className="bg-transparent text-xs font-bold focus:outline-none w-28"
-                    />
-                  </div>
+                  {/* Bengali Date Range Picker */}
+                  <BengaliDateRangePicker
+                    startDate={startDate}
+                    endDate={endDate}
+                    onChange={(start, end) => {
+                      setStartDate(start);
+                      setEndDate(end);
+                    }}
+                    placeholder="তারিখ ফিল্টার"
+                  />
 
                   {/* Payment Method Select */}
                   <Select defaultValue="all">
@@ -1669,36 +1704,101 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
 
       </div>
 
-      {/* 📄 INVOICE MEMO PREVIEW MODAL */}
+      {/* 📄 INVOICE & TRANSACTION DETAILS VIEW MODAL */}
       <Dialog open={!!selectedInvoiceTx} onOpenChange={open => !open && setSelectedInvoiceTx(null)}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden bg-white rounded-2xl border-none shadow-2xl font-bengali">
+        <DialogContent className="w-[96vw] max-w-5xl max-h-[92vh] overflow-y-auto p-4 sm:p-6 bg-slate-50/90 rounded-2xl border border-slate-200/80 shadow-2xl font-bengali">
           {selectedInvoiceTx && (
-            isCustomer ? (
-              <InvoiceMemo
-                invoice={{
+            <div className="space-y-4">
+              {(() => {
+                const isPaymentTx = selectedInvoiceTx.transactionType === 'payment' || 
+                  selectedInvoiceTx.transactionType === 'income' || 
+                  selectedInvoiceTx.transactionType === 'expense' || 
+                  (!selectedInvoiceTx.items?.length && (selectedInvoiceTx.paidAmount > 0 || (selectedInvoiceTx as any).credit > 0) && selectedInvoiceTx.dueAmount === 0);
+
+                if (isPaymentTx) {
+                  const voucherData = {
+                    id: selectedInvoiceTx.id,
+                    voucherNo: selectedInvoiceTx.orderId || selectedInvoiceTx.invoiceNo || selectedInvoiceTx.id,
+                    type: (isCustomer ? 'income' : 'expense') as 'income' | 'expense',
+                    partyName: isCustomer ? (selectedInvoiceTx.customerName || party?.name || 'গ্রাহক') : (selectedInvoiceTx.supplierName || party?.name || 'সরবরাহকারী'),
+                    partyPhone: party?.phone || '',
+                    partyAddress: party?.address || '',
+                    amount: selectedInvoiceTx.paidAmount || selectedInvoiceTx.totalAmount,
+                    paidAmount: selectedInvoiceTx.paidAmount || selectedInvoiceTx.totalAmount,
+                    paymentMethod: selectedInvoiceTx.paymentMethod || 'cash',
+                    bankName: selectedInvoiceTx.bankName,
+                    chequeNo: selectedInvoiceTx.chequeNo,
+                    description: selectedInvoiceTx.description || selectedInvoiceTx.note || 'পেমেন্ট ভাউচার',
+                    createdAt: selectedInvoiceTx.createdAt
+                  };
+
+                  return (
+                    <>
+                      <PaymentVoucherDetailsView
+                        voucher={voucherData}
+                        onBack={() => setSelectedInvoiceTx(null)}
+                        onPrint={() => printElement('party-printable-payment-voucher')}
+                      />
+                      <div id="party-printable-payment-voucher" className="hidden print:block">
+                        <PaymentVoucherMemo
+                          voucher={voucherData}
+                          showPrintButton={false}
+                        />
+                      </div>
+                    </>
+                  );
+                }
+
+                if (isCustomer) {
+                  const invoiceData = {
+                    id: selectedInvoiceTx.id,
+                    invoiceNo: selectedInvoiceTx.orderId || selectedInvoiceTx.invoiceNo || `INV-${String(selectedInvoiceTx.id).slice(0, 6).toUpperCase()}`,
+                    orderId: selectedInvoiceTx.orderId || selectedInvoiceTx.id,
+                    customerName: selectedInvoiceTx.customerName || party?.name || 'সম্মানিত গ্রাহক',
+                    customerPhone: party?.phone || '',
+                    customerAddress: party?.address || '',
+                    totalAmount: selectedInvoiceTx.totalAmount,
+                    paidAmount: selectedInvoiceTx.paidAmount,
+                    dueAmount: selectedInvoiceTx.dueAmount,
+                    items: (selectedInvoiceTx.items || []).map((it: any) => ({
+                      name: it.name || 'পণ্য',
+                      quantity: Number(it.quantity || 1),
+                      price: Number(it.price || it.rate || 0),
+                      unit: it.unit || 'টি',
+                      totalPrice: Number(it.totalPrice || (it.quantity * it.price) || 0)
+                    })),
+                    createdAt: selectedInvoiceTx.createdAt,
+                    paymentMethod: selectedInvoiceTx.paymentMethod || 'cash',
+                    note: selectedInvoiceTx.note || selectedInvoiceTx.notes || '',
+                    subtotal: selectedInvoiceTx.subtotal || selectedInvoiceTx.totalAmount,
+                    discount: selectedInvoiceTx.discount || 0,
+                    shippingCost: selectedInvoiceTx.shippingCost || 0,
+                    laborCost: selectedInvoiceTx.laborCost || 0,
+                    previousBalance: Number(party?.openingBalance || 0)
+                  };
+
+                  return (
+                    <>
+                      <SalesInvoiceDetailsView
+                        invoice={invoiceData}
+                        onBack={() => setSelectedInvoiceTx(null)}
+                        onPrint={() => printElement('party-printable-invoice-memo')}
+                      />
+                      <div id="party-printable-invoice-memo" className="hidden print:block">
+                        <InvoiceMemo
+                          invoice={invoiceData as any}
+                          showPrintButton={false}
+                        />
+                      </div>
+                    </>
+                  );
+                }
+
+                const purchaseData = {
                   id: selectedInvoiceTx.id,
-                  customerName: selectedInvoiceTx.customerName || party?.name || 'গ্রাহক',
-                  customerPhone: party?.phone || '',
-                  customerAddress: party?.address || '',
-                  totalAmount: selectedInvoiceTx.totalAmount,
-                  paidAmount: selectedInvoiceTx.paidAmount,
-                  dueAmount: selectedInvoiceTx.dueAmount,
-                  items: (selectedInvoiceTx.items || []).map((it: any) => ({
-                    name: it.name || 'পণ্য',
-                    quantity: Number(it.quantity || 1),
-                    price: Number(it.price || 0),
-                    unit: it.unit || 'টি'
-                  })),
-                  createdAt: selectedInvoiceTx.createdAt,
-                  paymentMethod: selectedInvoiceTx.paymentMethod || 'cash'
-                }}
-                onClose={() => setSelectedInvoiceTx(null)}
-              />
-            ) : (
-              <PurchaseInvoiceMemo
-                invoice={{
-                  id: selectedInvoiceTx.id,
-                  supplierName: selectedInvoiceTx.supplierName || party?.name || 'কোম্পানি',
+                  invoiceNo: selectedInvoiceTx.orderId || selectedInvoiceTx.invoiceNo || `PUR-${String(selectedInvoiceTx.id).slice(0, 6).toUpperCase()}`,
+                  orderId: selectedInvoiceTx.orderId || selectedInvoiceTx.id,
+                  supplierName: selectedInvoiceTx.supplierName || party?.name || 'সরবরাহকারী',
                   supplierPhone: party?.phone || '',
                   supplierAddress: party?.address || '',
                   totalAmount: selectedInvoiceTx.totalAmount,
@@ -1707,16 +1807,33 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   items: (selectedInvoiceTx.items || []).map((it: any) => ({
                     name: it.name || 'পণ্য',
                     quantity: Number(it.quantity || 1),
-                    price: Number(it.price || 0),
-                    unit: it.unit || 'টি'
+                    price: Number(it.price || it.rate || 0),
+                    unit: it.unit || 'টি',
+                    totalPrice: Number(it.totalPrice || (it.quantity * it.price) || 0)
                   })),
                   createdAt: selectedInvoiceTx.createdAt,
                   paymentMethod: selectedInvoiceTx.paymentMethod || 'cash',
-                  paymentStatus: selectedInvoiceTx.dueAmount <= 0 ? 'paid' : (selectedInvoiceTx.paidAmount || 0) > 0 ? 'partial' : 'unpaid'
-                }}
-                onClose={() => setSelectedInvoiceTx(null)}
-              />
-            )
+                  paymentStatus: selectedInvoiceTx.dueAmount <= 0 ? 'paid' : (selectedInvoiceTx.paidAmount || 0) > 0 ? 'partial' : 'unpaid',
+                  note: selectedInvoiceTx.note || selectedInvoiceTx.notes || ''
+                };
+
+                return (
+                  <>
+                    <PurchaseInvoiceDetailsView
+                      invoice={purchaseData}
+                      onBack={() => setSelectedInvoiceTx(null)}
+                      onPrint={() => printElement('party-printable-purchase-memo')}
+                    />
+                    <div id="party-printable-purchase-memo" className="hidden print:block">
+                      <PurchaseInvoiceMemo
+                        invoice={purchaseData as any}
+                        showPrintButton={false}
+                      />
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
           )}
         </DialogContent>
       </Dialog>

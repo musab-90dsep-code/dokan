@@ -7,44 +7,56 @@ import { cn, fixMiliName, toBnNum, formatBnCurrency } from '@/lib/utils';
 import { 
   TrendingUp, 
   Users, 
-  ShoppingCart,
-  User,
-  AlertCircle,
-  Banknote,
-  PackageCheck,
-  TrendingDown,
-  ArrowRight,
-  History,
-  Zap,
-  Receipt,
-  Truck,
-  Package,
-  UserPlus,
-  Wallet,
-  Landmark,
-  BarChart3,
-  BookOpen,
-  Building2,
-  ArrowUpRight,
-  ArrowDownRight,
-  Sparkles,
-  ChevronRight
+  ShoppingCart, 
+  User, 
+  AlertCircle, 
+  Banknote, 
+  PackageCheck, 
+  TrendingDown, 
+  ArrowRight, 
+  History, 
+  Zap, 
+  Receipt, 
+  Truck, 
+  Package, 
+  UserPlus, 
+  Wallet, 
+  Landmark, 
+  BarChart3, 
+  BookOpen, 
+  Building2, 
+  ArrowUpRight, 
+  ArrowDownRight, 
+  Sparkles, 
+  ChevronRight,
+  RotateCcw,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  PlusCircle,
+  ArrowRightLeft,
+  Scale,
+  Settings,
+  AlertTriangle,
+  FileText,
+  Percent,
+  Layers,
+  Layers2
 } from 'lucide-react';
 import { 
-  AreaChart,
-  Area,
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
+  AreaChart, 
+  Area, 
+  LineChart, 
+  Line, 
+  BarChart, 
+  Bar, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell
+  ResponsiveContainer, 
+  PieChart, 
+  Pie, 
+  Cell 
 } from 'recharts';
 import { api, DashboardStats } from '@/lib/api';
 
@@ -105,15 +117,307 @@ interface Transaction {
   createdAt: any;
 }
 
-const quickActions = [
-  { label: 'বিক্রয় অর্ডার', sub: 'নতুন অর্ডার তৈরি', href: '/orders?action=create', icon: ShoppingCart, bg: 'bg-orange-50 hover:bg-orange-500', text: 'text-orange-600 group-hover:text-white', border: 'border-orange-200/80 hover:border-orange-500', iconBg: 'bg-orange-500 text-white' },
-  { label: 'বিক্রয় চালান', sub: 'নতুন ইনভয়েস', href: '/invoices', icon: Receipt, bg: 'bg-amber-50 hover:bg-amber-500', text: 'text-amber-600 group-hover:text-white', border: 'border-amber-200/80 hover:border-amber-500', iconBg: 'bg-amber-500 text-white' },
-  { label: 'নতুন ক্রয়', sub: 'স্টক কিনুন', href: '/purchases', icon: Truck, bg: 'bg-indigo-50 hover:bg-indigo-600', text: 'text-indigo-600 group-hover:text-white', border: 'border-indigo-200/80 hover:border-indigo-600', iconBg: 'bg-indigo-600 text-white' },
-  { label: 'নতুন পণ্য', sub: 'প্রোডাক্ট যুক্ত', href: '/inventory', icon: Package, bg: 'bg-emerald-50 hover:bg-emerald-600', text: 'text-emerald-600 group-hover:text-white', border: 'border-emerald-200/80 hover:border-emerald-600', iconBg: 'bg-emerald-600 text-white' },
-  { label: 'কাস্টমার', sub: 'ক্রেতার খাতা', href: '/customers', icon: UserPlus, bg: 'bg-blue-50 hover:bg-blue-600', text: 'text-blue-600 group-hover:text-white', border: 'border-blue-200/80 hover:border-blue-600', iconBg: 'bg-blue-600 text-white' },
-  { label: 'আয়-ব্যয়', sub: 'ক্যাশ/ব্যাংক', href: '/transactions', icon: Wallet, bg: 'bg-teal-50 hover:bg-teal-600', text: 'text-teal-600 group-hover:text-white', border: 'border-teal-200/80 hover:border-teal-600', iconBg: 'bg-teal-600 text-white' },
-  { label: 'রিপোর্টস', sub: 'লাভ-ক্ষতি', href: '/reports', icon: BarChart3, bg: 'bg-purple-50 hover:bg-purple-600', text: 'text-purple-600 group-hover:text-white', border: 'border-purple-200/80 hover:border-purple-600', iconBg: 'bg-purple-600 text-white' },
-  { label: 'লেজার খাতা', sub: 'বকেয়া তালিকা', href: '/reports?tab=due_customers', icon: BookOpen, bg: 'bg-rose-50 hover:bg-rose-600', text: 'text-rose-600 group-hover:text-white', border: 'border-rose-200/80 hover:border-rose-600', iconBg: 'bg-rose-600 text-white' },
+interface ShortcutAction {
+  category: 'sales' | 'purchases' | 'transactions' | 'expenses' | 'inventory' | 'reports' | 'settings';
+  label: string;
+  sub: string;
+  href: string;
+  icon: any;
+  bg: string;
+  hoverBg: string;
+  text: string;
+  border: string;
+  iconBg: string;
+  badge?: string;
+}
+
+const allShortcuts: ShortcutAction[] = [
+  // ─── বিক্রয় (SALES) ───
+  { 
+    category: 'sales', 
+    label: 'বিক্রয় অর্ডার', 
+    sub: 'নতুন অর্ডার ও তালিকা', 
+    href: '/orders', 
+    icon: ShoppingCart, 
+    bg: 'bg-orange-50/70', 
+    hoverBg: 'hover:bg-orange-500', 
+    text: 'text-orange-950 group-hover:text-white', 
+    border: 'border-orange-200 hover:border-orange-500', 
+    iconBg: 'bg-orange-500 text-white',
+    badge: 'বিক্রয়'
+  },
+  { 
+    category: 'sales', 
+    label: 'বিক্রয় চালান', 
+    sub: 'ইনভয়েস ও মেমো প্রিন্ট', 
+    href: '/invoices', 
+    icon: Receipt, 
+    bg: 'bg-amber-50/70', 
+    hoverBg: 'hover:bg-amber-500', 
+    text: 'text-amber-950 group-hover:text-white', 
+    border: 'border-amber-200 hover:border-amber-500', 
+    iconBg: 'bg-amber-500 text-white',
+    badge: 'চালান'
+  },
+  { 
+    category: 'sales', 
+    label: 'বিক্রয় রিটার্ন', 
+    sub: 'পণ্য ফেরত ও এডজাস্ট', 
+    href: '/sales/returns', 
+    icon: RotateCcw, 
+    bg: 'bg-rose-50/70', 
+    hoverBg: 'hover:bg-rose-500', 
+    text: 'text-rose-950 group-hover:text-white', 
+    border: 'border-rose-200 hover:border-rose-500', 
+    iconBg: 'bg-rose-500 text-white',
+    badge: 'রিটার্ন'
+  },
+  { 
+    category: 'sales', 
+    label: 'কাস্টমার তালিকা', 
+    sub: 'ক্রেতার প্রোফাইল ও খাতা', 
+    href: '/customers', 
+    icon: Users, 
+    bg: 'bg-blue-50/70', 
+    hoverBg: 'hover:bg-blue-600', 
+    text: 'text-blue-950 group-hover:text-white', 
+    border: 'border-blue-200 hover:border-blue-600', 
+    iconBg: 'bg-blue-600 text-white',
+    badge: 'কাস্টমার'
+  },
+
+  // ─── ক্রয় (PURCHASES) ───
+  { 
+    category: 'purchases', 
+    label: 'ক্রয় ইনভয়েস', 
+    sub: 'নতুন মাল ক্রয় এন্ট্রি', 
+    href: '/purchases', 
+    icon: Truck, 
+    bg: 'bg-indigo-50/70', 
+    hoverBg: 'hover:bg-indigo-600', 
+    text: 'text-indigo-950 group-hover:text-white', 
+    border: 'border-indigo-200 hover:border-indigo-600', 
+    iconBg: 'bg-indigo-600 text-white',
+    badge: 'ক্রয়'
+  },
+  { 
+    category: 'purchases', 
+    label: 'সাপ্লায়ার তালিকা', 
+    sub: 'মহাজন ও কোম্পানির খাতা', 
+    href: '/suppliers', 
+    icon: Building2, 
+    bg: 'bg-violet-50/70', 
+    hoverBg: 'hover:bg-violet-600', 
+    text: 'text-violet-950 group-hover:text-white', 
+    border: 'border-violet-200 hover:border-violet-600', 
+    iconBg: 'bg-violet-600 text-white',
+    badge: 'সাপ্লায়ার'
+  },
+
+  // ─── লেনদেন (TRANSACTIONS) ───
+  { 
+    category: 'transactions', 
+    label: 'সব লেনদেন', 
+    sub: 'ক্যাশ ও ব্যাংকের হিসাব', 
+    href: '/transactions', 
+    icon: ArrowRightLeft, 
+    bg: 'bg-teal-50/70', 
+    hoverBg: 'hover:bg-teal-600', 
+    text: 'text-teal-950 group-hover:text-white', 
+    border: 'border-teal-200 hover:border-teal-600', 
+    iconBg: 'bg-teal-600 text-white',
+    badge: 'লেনদেন'
+  },
+  { 
+    category: 'transactions', 
+    label: 'পেমেন্ট গ্রহণ', 
+    sub: 'টাকা জমা ও ক্যাশ ইন', 
+    href: '/transactions?type=income&action=create', 
+    icon: ArrowUpCircle, 
+    bg: 'bg-emerald-50/70', 
+    hoverBg: 'hover:bg-emerald-600', 
+    text: 'text-emerald-950 group-hover:text-white', 
+    border: 'border-emerald-200 hover:border-emerald-600', 
+    iconBg: 'bg-emerald-600 text-white',
+    badge: 'জমা'
+  },
+  { 
+    category: 'transactions', 
+    label: 'পেমেন্ট দিন', 
+    sub: 'টাকা প্রদান ও ক্যাশ আউট', 
+    href: '/transactions?type=expense&action=create', 
+    icon: ArrowDownCircle, 
+    bg: 'bg-red-50/70', 
+    hoverBg: 'hover:bg-red-600', 
+    text: 'text-red-950 group-hover:text-white', 
+    border: 'border-red-200 hover:border-red-600', 
+    iconBg: 'bg-red-600 text-white',
+    badge: 'প্রদান'
+  },
+  { 
+    category: 'transactions', 
+    label: 'টাকা স্থানান্তর', 
+    sub: 'ক্যাশ থেকে ব্যাংক ট্রান্সফার', 
+    href: '/transactions?type=contra', 
+    icon: PlusCircle, 
+    bg: 'bg-cyan-50/70', 
+    hoverBg: 'hover:bg-cyan-600', 
+    text: 'text-cyan-950 group-hover:text-white', 
+    border: 'border-cyan-200 hover:border-cyan-600', 
+    iconBg: 'bg-cyan-600 text-white',
+    badge: 'ট্রান্সফার'
+  },
+
+  // ─── খরচ (EXPENSES) ───
+  { 
+    category: 'expenses', 
+    label: 'দৈনন্দিন খরচ', 
+    sub: 'দোকান খরচ ও ভাউচার', 
+    href: '/expenses', 
+    icon: Wallet, 
+    bg: 'bg-fuchsia-50/70', 
+    hoverBg: 'hover:bg-fuchsia-600', 
+    text: 'text-fuchsia-950 group-hover:text-white', 
+    border: 'border-fuchsia-200 hover:border-fuchsia-600', 
+    iconBg: 'bg-fuchsia-600 text-white',
+    badge: 'খরচ'
+  },
+
+  // ─── স্টক / পণ্য (INVENTORY) ───
+  { 
+    category: 'inventory', 
+    label: 'পণ্য স্টক', 
+    sub: 'সব পণ্যের মজুদ ও দর', 
+    href: '/inventory', 
+    icon: Package, 
+    bg: 'bg-emerald-50/70', 
+    hoverBg: 'hover:bg-emerald-600', 
+    text: 'text-emerald-950 group-hover:text-white', 
+    border: 'border-emerald-200 hover:border-emerald-600', 
+    iconBg: 'bg-emerald-600 text-white',
+    badge: 'স্টক'
+  },
+  { 
+    category: 'inventory', 
+    label: 'কম স্টক অ্যালার্ট', 
+    sub: 'জরুরি রিলোড ও সতর্কতা', 
+    href: '/inventory/low-stock', 
+    icon: AlertTriangle, 
+    bg: 'bg-amber-50/70', 
+    hoverBg: 'hover:bg-amber-600', 
+    text: 'text-amber-950 group-hover:text-white', 
+    border: 'border-amber-200 hover:border-amber-600', 
+    iconBg: 'bg-amber-600 text-white',
+    badge: 'সতর্কতা'
+  },
+
+  // ─── রিপোর্ট ও খাতা (REPORTS) ───
+  { 
+    category: 'reports', 
+    label: 'রিপোর্ট হাব', 
+    sub: 'সকল হিসাবের রিপোর্ট', 
+    href: '/reports', 
+    icon: BarChart3, 
+    bg: 'bg-purple-50/70', 
+    hoverBg: 'hover:bg-purple-600', 
+    text: 'text-purple-950 group-hover:text-white', 
+    border: 'border-purple-200 hover:border-purple-600', 
+    iconBg: 'bg-purple-600 text-white',
+    badge: 'রিপোর্ট'
+  },
+  { 
+    category: 'reports', 
+    label: 'বাকি খাতা', 
+    sub: 'কাস্টমার বকেয়ার তালিকা', 
+    href: '/reports?tab=due_customers', 
+    icon: BookOpen, 
+    bg: 'bg-rose-50/70', 
+    hoverBg: 'hover:bg-rose-600', 
+    text: 'text-rose-950 group-hover:text-white', 
+    border: 'border-rose-200 hover:border-rose-600', 
+    iconBg: 'bg-rose-600 text-white',
+    badge: 'বাকি'
+  },
+  { 
+    category: 'reports', 
+    label: 'ডেইলী টপসিট', 
+    sub: 'দৈনিক আয়-ব্যয় সারাংশ', 
+    href: '/reports?tab=daily_topsheet', 
+    icon: FileText, 
+    bg: 'bg-sky-50/70', 
+    hoverBg: 'hover:bg-sky-600', 
+    text: 'text-sky-950 group-hover:text-white', 
+    border: 'border-sky-200 hover:border-sky-600', 
+    iconBg: 'bg-sky-600 text-white',
+    badge: 'টপসিট'
+  },
+  { 
+    category: 'reports', 
+    label: 'ডেইলী সেলস', 
+    sub: 'দৈনিক বিক্রয় বিবরণী', 
+    href: '/reports?tab=daily_sales', 
+    icon: ShoppingCart, 
+    bg: 'bg-orange-50/70', 
+    hoverBg: 'hover:bg-orange-600', 
+    text: 'text-orange-950 group-hover:text-white', 
+    border: 'border-orange-200 hover:border-orange-600', 
+    iconBg: 'bg-orange-600 text-white',
+    badge: 'সেলস শিট'
+  },
+  { 
+    category: 'reports', 
+    label: 'প্রফিট এবং লস', 
+    sub: 'লাভ ও লোকসানের হিসাব', 
+    href: '/reports?tab=profit_loss', 
+    icon: TrendingUp, 
+    bg: 'bg-emerald-50/70', 
+    hoverBg: 'hover:bg-emerald-600', 
+    text: 'text-emerald-950 group-hover:text-white', 
+    border: 'border-emerald-200 hover:border-emerald-600', 
+    iconBg: 'bg-emerald-600 text-white',
+    badge: 'লাভ-ক্ষতি'
+  },
+  { 
+    category: 'reports', 
+    label: 'ব্যাংক তালিকা', 
+    sub: 'সকল ব্যাংক ব্যালেন্স', 
+    href: '/reports?tab=bank_list', 
+    icon: Landmark, 
+    bg: 'bg-blue-50/70', 
+    hoverBg: 'hover:bg-blue-600', 
+    text: 'text-blue-950 group-hover:text-white', 
+    border: 'border-blue-200 hover:border-blue-600', 
+    iconBg: 'bg-blue-600 text-white',
+    badge: 'ব্যাংক'
+  },
+  { 
+    category: 'reports', 
+    label: 'ব্যালেন্স স্টেটমেন্ট', 
+    sub: 'সম্পদ ও দায়ের স্থিতি', 
+    href: '/reports?tab=balance_sheet', 
+    icon: Scale, 
+    bg: 'bg-slate-50/70', 
+    hoverBg: 'hover:bg-slate-700', 
+    text: 'text-slate-900 group-hover:text-white', 
+    border: 'border-slate-200 hover:border-slate-700', 
+    iconBg: 'bg-slate-700 text-white',
+    badge: 'ব্যালেন্স'
+  },
+
+  // ─── সেটিংস (SETTINGS) ───
+  { 
+    category: 'settings', 
+    label: 'দোকান সেটিংস', 
+    sub: 'প্রোফাইল ও কনফিগারেশন', 
+    href: '/settings', 
+    icon: Settings, 
+    bg: 'bg-zinc-50/70', 
+    hoverBg: 'hover:bg-zinc-700', 
+    text: 'text-zinc-900 group-hover:text-white', 
+    border: 'border-zinc-200 hover:border-zinc-700', 
+    iconBg: 'bg-zinc-700 text-white',
+    badge: 'সেটিংস'
+  }
 ];
 
 const getDate = (val: any): Date => {
@@ -129,6 +433,12 @@ export default function Dashboard() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [shortcutCategory, setShortcutCategory] = useState<string>('all');
+
+  const filteredShortcuts = useMemo(() => {
+    if (shortcutCategory === 'all') return allShortcuts;
+    return allShortcuts.filter(s => s.category === shortcutCategory);
+  }, [shortcutCategory]);
 
   useEffect(() => {
     Promise.all([
@@ -358,41 +668,89 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* ══════════ QUICK ACTIONS (CLEAN BRIGHT & COLORFUL) ══════════ */}
-        <div className="rounded-[2.5rem] bg-white border border-slate-200/80 p-6 shadow-xl shadow-slate-200/50 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        {/* ══════════ QUICK SHORTCUTS & NAVIGATION HUB (COMPACT DOUBLE-LINE) ══════════ */}
+        <div className="rounded-[2rem] bg-white border border-slate-200/80 p-5 shadow-xl shadow-slate-200/50 space-y-4 font-bengali">
+          {/* Header with Title and Category Filters */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-orange-500 text-white flex items-center justify-center font-bold shadow-md shadow-orange-500/25">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 text-white flex items-center justify-center font-bold shadow-md shadow-orange-500/25">
                 <Zap className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-black text-slate-900 tracking-tight">দ্রুত শর্টকাটস ও নেভিগেশন</h3>
-                <p className="text-xs text-slate-500 font-medium">১-ক্লিকে সরাসরি যেকোনো পেজে প্রবেশ করুন</p>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-black text-slate-900 tracking-tight">সরাসরি শর্টকাট নেভিগেশন</h3>
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full border border-orange-200">
+                    {filteredShortcuts.length}টি পেজ
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium">মেনুবারে না গিয়েও ড্যাশবোর্ড থেকে ১-ক্লিকে যেকোনো পাতায় প্রবেশ করুন</p>
               </div>
             </div>
-            <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-widest bg-orange-50 text-orange-600 px-3 py-1.5 rounded-full border border-orange-200">
-              ⚡ ১-ক্লিক সুবিধা
-            </span>
+
+            {/* Quick Category Filter Pills */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                { id: 'all', label: 'সব পেইজ', count: allShortcuts.length },
+                { id: 'sales', label: 'বিক্রয়', count: 4 },
+                { id: 'purchases', label: 'ক্রয়', count: 2 },
+                { id: 'transactions', label: 'লেনদেন', count: 4 },
+                { id: 'expenses', label: 'খরচ', count: 1 },
+                { id: 'inventory', label: 'স্টক', count: 2 },
+                { id: 'reports', label: 'রিপোর্টস', count: 7 },
+              ].map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setShortcutCategory(cat.id)}
+                  type="button"
+                  className={cn(
+                    "text-[11px] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 border",
+                    shortcutCategory === cat.id
+                      ? "bg-orange-500 text-white border-orange-600 shadow-sm shadow-orange-500/30 scale-102"
+                      : "bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200/80 hover:text-slate-900"
+                  )}
+                >
+                  <span>{cat.label}</span>
+                  <span className={cn(
+                    "text-[9px] px-1 py-0.2 rounded-full",
+                    shortcutCategory === cat.id ? "bg-white/25 text-white" : "bg-slate-200 text-slate-600"
+                  )}>
+                    {toBnNum(cat.count)}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-            {quickActions.map((action) => (
+          {/* Compact Double-Line Shortcuts Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
+            {filteredShortcuts.map((action) => (
               <Link 
                 key={action.href} 
                 href={action.href}
                 className={cn(
-                  "group relative flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-300 shadow-xs hover:shadow-lg text-center",
-                  action.bg, action.border
+                  "group relative flex items-center gap-2.5 p-2.5 rounded-xl border transition-all duration-200 shadow-2xs hover:shadow-md hover:-translate-y-0.5 text-left",
+                  action.bg, action.border, action.hoverBg
                 )}
               >
+                {/* Compact Icon */}
                 <div className={cn(
-                  "w-11 h-11 rounded-xl flex items-center justify-center mb-2.5 shadow-xs transition-transform duration-300 group-hover:scale-110",
+                  "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 shadow-2xs transition-transform duration-200 group-hover:scale-110",
                   action.iconBg
                 )}>
-                  <action.icon className="w-5 h-5" />
+                  <action.icon className="w-4 h-4" />
                 </div>
-                <span className={cn("text-xs font-black transition-colors line-clamp-1", action.text)}>{action.label}</span>
-                <span className="text-[10px] text-slate-400 group-hover:text-white/80 font-bold mt-0.5">{action.sub}</span>
+                
+                {/* Double-Line Text (Line 1: Title, Line 2: Subtitle) */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className={cn("text-[12px] font-black transition-colors truncate block leading-tight", action.text)}>
+                      {action.label}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 group-hover:text-white/90 font-medium truncate block leading-tight mt-0.5">
+                    {action.sub}
+                  </span>
+                </div>
               </Link>
             ))}
           </div>

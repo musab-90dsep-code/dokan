@@ -76,7 +76,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
   const addMoneyCategory = meta.addMoneyCategory || 
                            (rawNoteStr.match(/\[টাকা যোগ - ([^\]]+)\]/)?.[1]) || 
                            (voucher.partyName && voucher.partyName !== 'কাস্টমার' && voucher.partyName !== 'সরবরাহকারী' && voucher.partyName !== 'দোকান ক্যাশ / মূলধন' ? voucher.partyName : '') || 
-                           'ক্যাশে জমা (Add Cash)';
+                           'ক্যাশে জমা';
 
   const isIncome = (rawType === 'income' || rawType === 'payment_in') && !isAddMoney;
   const isExpense = (rawType === 'expense' || rawType === 'payment_out') && !isAddMoney;
@@ -91,9 +91,9 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
   const pm = (voucher.paymentMethod || meta.paymentMethodName || 'Cash').toLowerCase();
   const isBank = pm.includes('bank') || pm.includes('ব্যাংক');
   const isCheque = pm.includes('check') || pm.includes('cheque') || pm.includes('চেক');
-  const paymentMethodLabel = isBank ? '🏦 ব্যাংক ডিপোজিট' : isCheque ? '📄 চেক (Cheque)' : '💵 নগদ (Cash)';
+  const paymentMethodLabel = isBank ? '🏦 ব্যাংক ডিপোজিট' : isCheque ? '📄 চেক' : '💵 নগদ';
 
-  const categoryName = isAddMoney ? 'টাকা যোগ' : (voucher.category || (isIncome ? 'পেমেন্ট গ্রহণ' : isExpense ? 'পেমেন্ট প্রদান' : 'ট্রানজ্যাকশন'));
+  const categoryName = isAddMoney ? 'টাকা যোগ' : (voucher.category || (isIncome ? 'পেমেন্ট গ্রহণ' : isExpense ? 'পেমেন্ট প্রদান' : 'লেনদেন'));
 
   return (
     <div className="w-full bg-slate-100 min-h-screen p-4 sm:p-6 font-bengali space-y-4 text-slate-800">
@@ -127,7 +127,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
                 {isAddMoney ? 'টাকা যোগ বিবরণী' : isIncome ? 'পেমেন্ট গ্রহণ / জমার বিবরণী' : isExpense ? 'পেমেন্ট প্রদান বিবরণী' : 'লেনদেন বিবরণী'}
               </h1>
               <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
-                {voucherNo}
+                {toBengaliDigits(voucherNo)}
               </span>
               <span className={cn("text-xs font-black px-2.5 py-0.5 rounded-full border", 
                 isAddMoney ? "bg-blue-100 text-blue-800 border-blue-200" : isIncome ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-rose-100 text-rose-800 border-rose-200"
@@ -161,7 +161,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
               className="rounded-lg h-9 px-3.5 text-xs font-bold text-slate-700 border-slate-300 bg-white hover:bg-slate-50 flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-slate-600" />
-              <span>ডাউনলোড (PDF)</span>
+              <span>পিডিএফ ডাউনলোড</span>
             </Button>
           )}
 
@@ -172,7 +172,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
               className="rounded-lg h-9 px-3.5 text-xs font-bold text-slate-700 border-slate-300 bg-white hover:bg-slate-50 flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Mail className="w-3.5 h-3.5 text-slate-600" />
-              <span>ই-মেইল পাঠান</span>
+              <span>ইমেইল পাঠান</span>
             </Button>
           )}
 
@@ -183,7 +183,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
               className="rounded-lg h-9 px-3.5 text-xs font-bold text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100 flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Edit className="w-3.5 h-3.5 text-amber-600" />
-              <span>এডিট করুন</span>
+              <span>সম্পাদনা করুন</span>
             </Button>
           )}
 
@@ -194,7 +194,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
               className="rounded-lg h-9 px-3.5 text-xs font-bold text-rose-700 border-rose-300 bg-rose-50 hover:bg-rose-100 flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-              <span>ডিলিট</span>
+              <span>মুছে ফেলুন</span>
             </Button>
           )}
 
@@ -223,7 +223,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500">ভাউচার নম্বর</span>
-                  <span className="font-mono font-bold text-slate-900">{voucherNo}</span>
+                  <span className="font-mono font-bold text-slate-900">{toBengaliDigits(voucherNo)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500">তারিখ</span>
@@ -299,7 +299,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
                 </div>
 
                 <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-100 space-y-1">
-                  <span className="text-[11px] font-bold text-slate-500 block">কথায় (In Words):</span>
+                  <span className="text-[11px] font-bold text-slate-500 block">কথায়:</span>
                   <p className="font-black text-xs text-slate-900">
                     {numberToBengaliWords(amount).replace(/ টাকা মাত্র$/, '')} টাকা মাত্র।
                   </p>
@@ -338,7 +338,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
               <div className="space-y-2 text-xs font-medium text-slate-700">
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500">ভাউচার নম্বর</span>
-                  <span className="font-mono font-bold text-slate-900">{voucherNo}</span>
+                  <span className="font-mono font-bold text-slate-900">{toBengaliDigits(voucherNo)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500">লেনদেনের তারিখ</span>
@@ -361,7 +361,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
             <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-xs">
               <div className="flex items-center gap-2 pb-2 border-b border-slate-100 text-slate-900 font-black text-sm">
                 <User className={cn("w-4 h-4", isIncome ? "text-emerald-600" : "text-rose-600")} />
-                <h3>{isIncome ? 'কাস্টমার / পার্টি তথ্য' : 'সরবরাহকারী / পার্টি তথ্য'}</h3>
+                <h3>{isIncome ? 'কাস্টমার / গ্রাহকের তথ্য' : 'সরবরাহকারীর তথ্য'}</h3>
               </div>
 
               <div className="space-y-2 text-xs font-medium text-slate-700">
@@ -428,7 +428,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
                 )}
                 {voucher.transactionRef && (
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-500">Txn / Ref ID</span>
+                    <span className="text-slate-500">লেনদেন রেফারেন্স আইডি</span>
                     <span className="font-mono font-bold">{toBengaliDigits(voucher.transactionRef)}</span>
                   </div>
                 )}
@@ -457,13 +457,13 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
 
                 {discountAmount > 0 && (
                   <div className="flex justify-between items-center text-amber-700">
-                    <span>বিশেষ ছাড় (Discount)</span>
+                    <span>বিশেষ ছাড়</span>
                     <span className="font-mono font-bold">৳ {toBengaliDigits(discountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                   </div>
                 )}
 
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
-                  <span className="text-[11px] font-bold text-slate-500 block">কথায় (In Words):</span>
+                  <span className="text-[11px] font-bold text-slate-500 block">কথায়:</span>
                   <p className="font-black text-sm text-slate-900">
                     {numberToBengaliWords(amount).replace(/ টাকা মাত্র$/, '')} টাকা মাত্র।
                   </p>
