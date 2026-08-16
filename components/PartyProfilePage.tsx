@@ -124,6 +124,169 @@ export interface LedgerEntry {
   account?: string;
 }
 
+export function generateLedgerEntries(
+  party: PartyProfile | null,
+  transactions: TransactionDoc[],
+  isCustomer: boolean
+): LedgerEntry[] {
+  const entries: LedgerEntry[] = [];
+  let cumulativeBalance = 0;
+
+  // 1. Opening Balance
+  if (party && Number(party.openingBalance || 0) > 0) {
+    cumulativeBalance += Number(party.openingBalance);
+    entries.push({
+      id: 'opening-balance',
+      date: new Date(party.joinedDate || party.createdAt || '2026-01-01'),
+      refNo: 'OP-BAL',
+      type: 'ADJUSTMENT',
+      description: 'পূর্বের প্রারম্ভিক বকেয়া (Opening Balance)',
+      invoiceNo: '—',
+      debit: Number(party.openingBalance),
+      credit: 0,
+      runningBalance: cumulativeBalance,
+      paymentMethod: '—',
+      dueAmount: Number(party.openingBalance)
+    });
+  }
+
+  const sorted = [...transactions].sort((a, b) => {
+    const da = new Date(a.createdAt || 0);
+    const db = new Date(b.createdAt || 0);
+    return da.getTime() - db.getTime();
+  });
+
+  sorted.forEach(tx => {
+    const txDate = tx.createdAt ? new Date(tx.createdAt) : new Date();
+    const txType = tx.transactionType;
+
+    if (txType === 'payment_in' || txType === 'payment_out') {
+      const creditVal = Number(tx.paidAmount || tx.totalAmount || 0);
+      const discountVal = Number(tx.discount || 0);
+      const totalCredit = creditVal + discountVal;
+      cumulativeBalance -= totalCredit;
+
+      const rcvPrefix = isCustomer ? 'RCV-2026-' : 'PAY-2026-';
+      const rcvNo = tx.invoiceNo || `${rcvPrefix}${tx.id.slice(0, 5).toUpperCase()}`;
+
+      let pMethodLabel = 'নগদ';
+      if (tx.paymentMethod === 'bank') pMethodLabel = 'ব্যাংক ট্রান্সফার';
+      else if (tx.paymentMethod === 'cheque' || tx.chequeNo) {
+        pMethodLabel = `চেক (${tx.bankName ? tx.bankName + ' - ' : ''}নম্বর: ${tx.chequeNo || '—'})`;
+      } else if (tx.paymentMethod === 'bkash' || tx.paymentMethod === 'mobile') {
+        pMethodLabel = 'মোবাইল ব্যাংকিং';
+      }
+
+      const payDesc = isCustomer 
+        ? `টাকা প্রাপ্তি / পেমেন্ট জমা [পদ্ধতি: ${pMethodLabel}]${discountVal > 0 ? ` (ছাড়: ৳${toBnDigits(discountVal)})` : ''}${tx.note ? ` - ${tx.note}` : ''}`
+        : `পেমেন্ট পরিশোধ [পদ্ধতি: ${pMethodLabel}]${discountVal > 0 ? ` (ছাড়: ৳${toBnDigits(discountVal)})` : ''}${tx.note ? ` - ${tx.note}` : ''}`;
+
+      entries.push({
+        id: `${tx.id}-payment`,
+        date: txDate,
+        refNo: rcvNo,
+        type: 'PAYMENT',
+        description: payDesc,
+        invoiceNo: '—',
+        debit: 0,
+        credit: totalCredit,
+        runningBalance: cumulativeBalance,
+        paymentMethod: pMethodLabel,
+        orderId: tx.id,
+        dueAmount: 0
+      });
+    } else if (txType === 'sale_return' || txType === 'purchase_return') {
+      const returnAmount = Number(tx.totalAmount || 0);
+      cumulativeBalance -= returnAmount;
+      const retPrefix = isCustomer ? 'RET-2026-' : 'PRET-2026-';
+      const retNo = tx.invoiceNo || `${retPrefix}${tx.id.slice(0, 5).toUpperCase()}`;
+
+      entries.push({
+        id: `${tx.id}-return`,
+        date: txDate,
+        refNo: retNo,
+        type: 'RETURN',
+        description: `${isCustomer ? 'বিক্রয় ফেরত' : 'ক্রয় ফেরত'} (${tx.note || 'পণ্য ফেরত সমন্বয়'})`,
+        invoiceNo: retNo,
+        debit: 0,
+        credit: returnAmount,
+        runningBalance: cumulativeBalance,
+        paymentMethod: '—',
+        orderId: tx.id,
+        dueAmount: 0
+      });
+    } else {
+      // Normal Sale or Purchase
+      const invPrefix = isCustomer ? 'INV-2026-' : 'PUR-2026-';
+      const invNo = tx.invoiceNo || `${invPrefix}${tx.id.slice(0, 5).toUpperCase()}`;
+
+      const itemDesc = tx.items && tx.items.length > 0
+        ? tx.items.map((it: any) => {
+            const name = it.product_name || it.name || 'পণ্য';
+            const qty = toBnDigits(it.quantity || 1);
+            const unit = it.unit || 'টি';
+            const price = it.price ? `@ ৳${toBnDigits(Number(it.price).toLocaleString('en-IN'))}` : '';
+            return `${name} (${qty} ${unit} ${price})`.trim();
+          }).join(', ')
+        : (isCustomer ? 'পণ্য বিক্রয় (চালান)' : 'পণ্য ক্রয় (চালান)');
+
+      const debitVal = Number(tx.totalAmount || 0);
+      cumulativeBalance += debitVal;
+
+      entries.push({
+        id: `${tx.id}-bill`,
+        date: txDate,
+        refNo: invNo,
+        type: isCustomer ? 'SALE' : 'PURCHASE',
+        description: itemDesc,
+        invoiceNo: invNo,
+        debit: debitVal,
+        credit: 0,
+        runningBalance: cumulativeBalance,
+        paymentMethod: '—',
+        orderId: tx.id,
+        dueAmount: Number(tx.dueAmount || 0)
+      });
+
+      const creditVal = Number(tx.paidAmount || 0);
+      if (creditVal > 0) {
+        cumulativeBalance -= creditVal;
+        const rcvPrefix = isCustomer ? 'RCV-2026-' : 'PAY-2026-';
+        const rcvNo = `${rcvPrefix}${tx.id.slice(0, 5).toUpperCase()}`;
+
+        let pMethodLabel = 'নগদ';
+        if (tx.paymentMethod === 'bank') pMethodLabel = 'ব্যাংক ট্রান্সফার';
+        else if (tx.paymentMethod === 'cheque' || tx.chequeNo) {
+          pMethodLabel = `চেক (${tx.bankName ? tx.bankName + ' - ' : ''}নম্বর: ${tx.chequeNo || '—'})`;
+        } else if (tx.paymentMethod === 'bkash' || tx.paymentMethod === 'mobile') {
+          pMethodLabel = 'বিকাশ / মোবাইল ব্যাংকিং';
+        }
+
+        const payDesc = isCustomer 
+          ? `টাকা প্রাপ্তি / পেমেন্ট জমা [পদ্ধতি: ${pMethodLabel}] (চালান: ${invNo})`
+          : `পেমেন্ট পরিশোধ [পদ্ধতি: ${pMethodLabel}] (চালান: ${invNo})`;
+
+        entries.push({
+          id: `${tx.id}-credit`,
+          date: txDate,
+          refNo: rcvNo,
+          type: 'PAYMENT',
+          description: payDesc,
+          invoiceNo: '—',
+          debit: 0,
+          credit: creditVal,
+          runningBalance: cumulativeBalance,
+          paymentMethod: pMethodLabel,
+          orderId: tx.id,
+          dueAmount: Number(tx.dueAmount || 0)
+        });
+      }
+    }
+  });
+
+  return entries;
+}
+
 export default function PartyProfilePage({ id, type }: { id: string; type: 'customer' | 'supplier' }) {
   const router = useRouter();
   const isCustomer = type === 'customer';
@@ -306,90 +469,8 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
   };
 
   // Generate Chronological Ledger Entries
-  const generateLedger = (): LedgerEntry[] => {
-    const entries: LedgerEntry[] = [];
-    let cumulativeBalance = 0;
+  const ledgerEntries = generateLedgerEntries(party, transactions, isCustomer);
 
-    const sorted = [...transactions].sort((a, b) => {
-      const da = new Date(a.createdAt || 0);
-      const db = new Date(b.createdAt || 0);
-      return da.getTime() - db.getTime();
-    });
-
-    sorted.forEach(tx => {
-      const txDate = new Date(tx.createdAt || Date.now());
-      const invPrefix = isCustomer ? 'INV-2026-' : 'PUR-2026-';
-      const invNo = `${invPrefix}${tx.id.slice(0, 5).toUpperCase()}`;
-
-      // Build rich item breakdown text with quantity, unit & rate
-      const itemDesc = tx.items && tx.items.length > 0
-        ? tx.items.map((it: any) => {
-            const name = it.name || 'পণ্য';
-            const qty = toBnDigits(it.quantity || 1);
-            const unit = it.unit || 'টি';
-            const price = it.price ? `@ ৳${toBnDigits(it.price.toLocaleString('en-IN'))}` : '';
-            return `${name} (${qty} ${unit} ${price})`.trim();
-          }).join(', ')
-        : (isCustomer ? 'পণ্য বিক্রয় (চালান)' : 'পণ্য ক্রয় (চালান)');
-
-      const debitVal = Number(tx.totalAmount || 0);
-      cumulativeBalance += debitVal;
-
-      entries.push({
-        id: `${tx.id}-bill`,
-        date: txDate,
-        refNo: invNo,
-        type: isCustomer ? 'SALE' : 'PURCHASE',
-        description: itemDesc,
-        invoiceNo: invNo,
-        debit: debitVal,
-        credit: 0,
-        runningBalance: cumulativeBalance,
-        paymentMethod: '—',
-        orderId: tx.id,
-        dueAmount: Number(tx.dueAmount || 0)
-      });
-
-      const creditVal = Number(tx.paidAmount || 0);
-      if (creditVal > 0) {
-        cumulativeBalance -= creditVal;
-        const rcvPrefix = isCustomer ? 'RCV-2026-' : 'PAY-2026-';
-        const rcvNo = `${rcvPrefix}${tx.id.slice(0, 5).toUpperCase()}`;
-
-        // Detailed Payment Method & Status Tag
-        let pMethodLabel = 'নগদ';
-        if (tx.paymentMethod === 'bank') pMethodLabel = 'ব্যাংক ট্রান্সফার';
-        else if (tx.paymentMethod === 'cheque' || tx.chequeNo) {
-          pMethodLabel = `চেক (${tx.bankName ? tx.bankName + ' - ' : ''}নম্বর: ${tx.chequeNo || '—'})`;
-        } else if (tx.paymentMethod === 'bkash' || tx.paymentMethod === 'mobile') {
-          pMethodLabel = 'বিকাশ / মোবাইল ব্যাংকিং';
-        }
-
-        const payDesc = isCustomer 
-          ? `টাকা প্রাপ্তি / পেমেন্ট জমা [পদ্ধতি: ${pMethodLabel}] (চালান: ${invNo})`
-          : `পেমেন্ট পরিশোধ [পদ্ধতি: ${pMethodLabel}] (চালান: ${invNo})`;
-
-        entries.push({
-          id: `${tx.id}-credit`,
-          date: txDate,
-          refNo: rcvNo,
-          type: 'PAYMENT',
-          description: payDesc,
-          invoiceNo: '—',
-          debit: 0,
-          credit: creditVal,
-          runningBalance: cumulativeBalance,
-          paymentMethod: pMethodLabel,
-          orderId: tx.id,
-          dueAmount: Number(tx.dueAmount || 0)
-        });
-      }
-    });
-
-    return entries;
-  };
-
-  const ledgerEntries = generateLedger();
 
   const filteredLedgerEntries = ledgerEntries.filter(entry => {
     if (ledgerSearch.trim()) {

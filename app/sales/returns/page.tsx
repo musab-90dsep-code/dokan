@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Shell } from '@/components/Shell';
 import { api, TransactionData } from '@/lib/api';
 import { 
@@ -30,6 +30,7 @@ import { printElement } from '@/lib/printUtils';
 
 interface ReturnEntry {
   id: string;
+  invoiceNo?: string;
   customerName: string;
   customerId: string;
   totalReturnValue: number;
@@ -47,6 +48,9 @@ interface ReturnItem {
   id: string;
   name: string;
   quantity: number;
+  maxQuantity?: number;
+  soldQuantity?: number;
+  alreadyReturnedQty?: number;
   price: number;
   unit: string;
   condition?: 'good' | 'damaged';
@@ -104,18 +108,10 @@ export default function SalesReturnsPage() {
   const [returnCart, setReturnCart] = useState<ReturnItem[]>([]);
   const [newTakenCart, setNewTakenCart] = useState<ReturnItem[]>([]);
 
-  // Return Workflow Mode: 'invoice' (from previous sales invoice) vs 'manual' (direct cascading picker)
-  const [returnMode, setReturnMode] = useState<'invoice' | 'manual'>('invoice');
   const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>('');
   const [itemCondition, setItemCondition] = useState<'good' | 'damaged'>('good');
-
-  // Manual Item selector helpers
-  const [selectedCascadingReturnProduct, setSelectedCascadingReturnProduct] = useState<SelectedProductDetails | null>(null);
-  const [returnProdId, setReturnProdId] = useState('');
-  const [returnQty, setReturnQty] = useState(1);
-  const [returnPrice, setReturnPrice] = useState(0);
 
   // New Taken / Exchange Selector Helpers
   const [selectedCascadingNewProduct, setSelectedCascadingNewProduct] = useState<SelectedProductDetails | null>(null);
@@ -134,6 +130,104 @@ export default function SalesReturnsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Helper to extract clean product name
+  const cleanProdName = (str: string) => {
+    if (!str) return '';
+    return str.replace(/\s*\[ড্যামেজ\]/g, '').replace(/\s*\(ইনভ:[^)]+\)/g, '').trim().toLowerCase();
+  };
+
+  // Helper to get already returned quantity for an item in an invoice
+  const getAlreadyReturnedQty = useCallback((invNo?: string, productId?: string | number | null, prodName?: string, excludeReturnId?: string) => {
+    if (!invNo) return 0;
+    const targetIdStr = productId ? String(productId) : '';
+    const targetCleanName = prodName ? cleanProdName(prodName) : '';
+
+    return returns.reduce((sum, ret) => {
+      if (excludeReturnId && String(ret.id) === String(excludeReturnId)) return sum;
+      if (ret.invoiceNo && ret.invoiceNo !== invNo) return sum;
+
+      const matchedItems = (ret.returnedItems || []).filter(item => {
+        if (targetIdStr && item.id && String(item.id) === targetIdStr) return true;
+        if (targetCleanName && cleanProdName(item.name) === targetCleanName) return true;
+        return false;
+      });
+
+      const returnedInThis = matchedItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+      return sum + returnedInThis;
+    }, 0);
+  }, [returns]);
+
+  // Helper to get returnable items breakdown for an invoice
+  const getInvoiceReturnableStatus = (inv: any) => {
+    const items = inv.items || [];
+    let returnableCount = 0;
+    const totalSoldItems = items.length;
+    let fullyReturnedCount = 0;
+
+    items.forEach((item: any) => {
+      const soldQty = Number(item.quantity || 1);
+      const alreadyReturned = getAlreadyReturnedQty(inv.invoice_no, item.product || item.id, item.product_name || item.name, editingReturn?.id);
+      const remaining = Math.max(0, soldQty - alreadyReturned);
+      if (remaining > 0) {
+        returnableCount++;
+      } else {
+        fullyReturnedCount++;
+      }
+    });
+
+    return {
+      totalSoldItems,
+      returnableCount,
+      fullyReturnedCount,
+      isFullyReturned: totalSoldItems > 0 && returnableCount === 0
+    };
+  };
+
+  // Function to load all items of an invoice into the return cart
+  const loadInvoiceItemsIntoReturnCart = useCallback((invoice: any) => {
+    if (!invoice || !invoice.items || invoice.items.length === 0) {
+      toast.info('এই মেমোতে কোনো পণ্য পাওয়া যায়নি');
+      setReturnCart([]);
+      return;
+    }
+
+    const mapped: ReturnItem[] = [];
+    let zeroRemainingCount = 0;
+
+    invoice.items.forEach((item: any, idx: number) => {
+      const soldQty = Number(item.quantity || 1);
+      const alreadyReturned = getAlreadyReturnedQty(invoice.invoice_no, item.product || item.id, item.product_name || item.name, editingReturn?.id);
+      const remainingReturnable = Math.max(0, soldQty - alreadyReturned);
+
+      if (remainingReturnable <= 0) {
+        zeroRemainingCount++;
+      } else {
+        mapped.push({
+          id: String(item.product || item.id || `ret-${idx}`),
+          name: item.product_name || item.name,
+          quantity: remainingReturnable,
+          maxQuantity: remainingReturnable,
+          soldQuantity: soldQty,
+          alreadyReturnedQty: alreadyReturned,
+          price: Number(item.price || 0),
+          unit: item.unit || 'পিস',
+          condition: itemCondition,
+          invoiceNo: invoice.invoice_no || ''
+        });
+      }
+    });
+
+    setReturnCart(mapped);
+
+    if (mapped.length === 0) {
+      toast.warning(`⚠️ মেমো #${invoice.invoice_no || invoice.id}-এর সমস্ত পণ্য ইতিমধ্যে ফেরত নেওয়া হয়ে গেছে! কোনো পণ্য অবশিষ্ট নেই।`);
+    } else if (zeroRemainingCount > 0) {
+      toast.info(`মেমো #${invoice.invoice_no || invoice.id}-এর অবশিষ্ট (${toBengaliDigits(mapped.length)}টি) ফেরতযোগ্য পণ্য লোড হয়েছে (${toBengaliDigits(zeroRemainingCount)}টি পূর্বেই ফেরত সম্পন্ন)`);
+    } else {
+      toast.success(`মেমো #${invoice.invoice_no || invoice.id}-এর সকল (${toBengaliDigits(mapped.length)}টি) পণ্য ফেরত তালিকায় লোড হয়েছে`);
+    }
+  }, [getAlreadyReturnedQty, editingReturn?.id, itemCondition]);
+
   // Fetch Customer Invoices when customer is selected
   useEffect(() => {
     let isSubscribed = true;
@@ -145,10 +239,14 @@ export default function SalesReturnsPage() {
           const list = res || [];
           setCustomerInvoices(list);
           if (list.length > 0) {
-            setSelectedInvoiceId(String(list[0].id));
+            const firstInv = list[0];
+            setSelectedInvoiceId(String(firstInv.id));
+            if (!editingReturn && firstInv.items?.length) {
+              loadInvoiceItemsIntoReturnCart(firstInv);
+            }
           } else {
             setSelectedInvoiceId('');
-            setReturnMode('manual');
+            setReturnCart([]);
           }
           setLoadingInvoices(false);
         })
@@ -162,7 +260,7 @@ export default function SalesReturnsPage() {
     return () => {
       isSubscribed = false;
     };
-  }, [selectedCustomerId]);
+  }, [selectedCustomerId, editingReturn, loadInvoiceItemsIntoReturnCart]);
 
   const handleEditReturn = (entry: ReturnEntry) => {
     setEditingReturn(entry);
@@ -226,8 +324,24 @@ export default function SalesReturnsPage() {
         const totalRetVal = Number(r.total_amount || 0);
         const netRefund = meta.netRefundValue !== undefined ? Number(meta.netRefundValue) : (totalRetVal - calcNewTakenVal);
 
+        let invoiceNo = meta.invoiceNo;
+        if (!invoiceNo && r.notes) {
+          const invMatch = r.notes.match(/\[মেমো:\s*([^\]]+)\]/);
+          if (invMatch) invoiceNo = invMatch[1].trim();
+        }
+        if (!invoiceNo && r.items && r.items.length > 0) {
+          for (const itm of r.items) {
+            const m = itm.product_name?.match(/\(ইনভ:([^)]+)\)/);
+            if (m) {
+              invoiceNo = m[1].trim();
+              break;
+            }
+          }
+        }
+
         return {
           id: String(r.id),
+          invoiceNo: invoiceNo,
           customerName: r.party_name || 'সাধারণ গ্রাহক',
           customerId: String(r.party || ''),
           totalReturnValue: totalRetVal,
@@ -318,40 +432,6 @@ export default function SalesReturnsPage() {
     toast.success(`"${itemName}" ফেরত তালিকায় যুক্ত হয়েছে`);
   };
 
-  // Add Item to Returned Items Cart (Manual Mode)
-  const handleAddReturnItem = () => {
-    const itemName = selectedCascadingReturnProduct?.name || products.find(p => p.id === returnProdId)?.name;
-    if (!itemName) {
-      toast.error('ফেরতকৃত পণ্য নির্বাচন করুন');
-      return;
-    }
-
-    const itemUnitToUse = selectedCascadingReturnProduct?.unit || 'পিস';
-    const itemId = String(selectedCascadingReturnProduct?.productId || returnProdId || `ret-m-${returnCart.length + 1}`);
-    const finalPrice = returnPrice || selectedCascadingReturnProduct?.price || 0;
-
-    const existingIdx = returnCart.findIndex(i => i.name === itemName && i.condition === itemCondition);
-    if (existingIdx > -1) {
-      const updated = [...returnCart];
-      updated[existingIdx].quantity += returnQty;
-      updated[existingIdx].price = finalPrice;
-      setReturnCart(updated);
-    } else {
-      setReturnCart([...returnCart, {
-        id: itemId,
-        name: itemName,
-        quantity: returnQty,
-        price: finalPrice,
-        unit: itemUnitToUse,
-        condition: itemCondition
-      }]);
-    }
-    setReturnProdId('');
-    setReturnQty(1);
-    setReturnPrice(0);
-    toast.success('ফেরত পণ্য যোগ করা হয়েছে');
-  };
-
   // Add Item to New Taken Items Cart
   const handleAddNewItem = () => {
     const itemName = selectedCascadingNewProduct?.name || products.find(p => p.id === newProdId)?.name;
@@ -391,18 +471,21 @@ export default function SalesReturnsPage() {
     toast.success('নতুন পণ্য যোগ করা হয়েছে');
   };
 
+  // Safe rounding helper to prevent float precision digit overflow
+  const round2 = (num: any) => Math.round((Number(num) || 0) * 100) / 100;
+
   // Financial Calculations
-  const totalReturnedValue = returnCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const totalNewTakenValue = newTakenCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const netRefundValue = totalReturnedValue - totalNewTakenValue;
+  const totalReturnedValue = round2(returnCart.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0));
+  const totalNewTakenValue = round2(newTakenCart.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0));
+  const netRefundValue = round2(totalReturnedValue - totalNewTakenValue);
 
   const selectedCust = customers.find(c => c.id === selectedCustomerId);
-  const currentDue = selectedCust?.totalDue || 0;
-  const dueAdjusted = netRefundValue > 0 ? Math.min(currentDue, netRefundValue) : 0;
-  const cashRefundPaid = netRefundValue > 0 ? (netRefundValue - dueAdjusted) : 0;
+  const currentDue = round2(selectedCust?.totalDue || 0);
+  const dueAdjusted = netRefundValue > 0 ? round2(Math.min(currentDue, netRefundValue)) : 0;
+  const cashRefundPaid = netRefundValue > 0 ? round2(netRefundValue - dueAdjusted) : 0;
   const newCustomerDue = netRefundValue > 0 
-    ? Math.max(0, currentDue - dueAdjusted)
-    : currentDue + Math.abs(netRefundValue);
+    ? round2(Math.max(0, currentDue - dueAdjusted))
+    : round2(currentDue + Math.abs(netRefundValue));
 
   // Active selected invoice object
   const activeInvoice = customerInvoices.find(inv => String(inv.id) === selectedInvoiceId);
@@ -431,18 +514,20 @@ export default function SalesReturnsPage() {
         party_name: selectedCust?.name || 'সাধারণ গ্রাহক',
         party_phone: selectedCust?.phone || '',
         transaction_type: 'sale_return' as const,
-        total_amount: totalReturnedValue,
-        paid_amount: cashRefundPaid,
-        due_amount: dueAdjusted,
+        total_amount: round2(totalReturnedValue),
+        paid_amount: round2(cashRefundPaid),
+        due_amount: round2(dueAdjusted),
         items: returnCart.map(item => {
           const numId = Number(item.id);
+          const q = round2(item.quantity);
+          const p = round2(item.price);
           return {
             product: !isNaN(numId) && numId > 0 ? numId : null,
             product_name: `${item.name}${item.condition === 'damaged' ? ' [ড্যামেজ]' : ''}${item.invoiceNo ? ` (ইনভ:${item.invoiceNo})` : ''}`,
-            quantity: item.quantity,
-            price: item.price,
-            unit: item.unit,
-            total: item.price * item.quantity
+            quantity: q,
+            price: p,
+            unit: item.unit || 'পিস',
+            total: round2(p * q)
           };
         }),
         notes: `${JSON.stringify(metaObj)}\n${reason || 'পণ্য ফেরত ও বকেয়া এডজাস্ট'}${activeInvoice ? ` [মেমো: ${activeInvoice.invoice_no}]` : ''}`
@@ -459,18 +544,20 @@ export default function SalesReturnsPage() {
           await api.transactions.create({
             party: Number(selectedCustomerId),
             transaction_type: 'sale',
-            total_amount: totalNewTakenValue,
+            total_amount: round2(totalNewTakenValue),
             paid_amount: 0,
-            due_amount: totalNewTakenValue,
+            due_amount: round2(totalNewTakenValue),
             items: newTakenCart.map(item => {
               const numId = Number(item.id);
+              const q = round2(item.quantity);
+              const p = round2(item.price);
               return {
                 product: !isNaN(numId) && numId > 0 ? numId : null,
                 product_name: item.name,
-                quantity: item.quantity,
-                price: item.price,
-                unit: item.unit,
-                total: item.price * item.quantity
+                quantity: q,
+                price: p,
+                unit: item.unit || 'পিস',
+                total: round2(p * q)
               };
             }),
             notes: `রিটার্ন এক্সচেঞ্জ ক্রয় (রিটার্ন: ${reason || 'পণ্য ফেরত'})`
@@ -910,269 +997,356 @@ export default function SalesReturnsPage() {
                     </CardContent>
                   </Card>
 
-                  {/* STEP 2: Returned Products */}
+                  {/* STEP 2: Returned Products from Sales Invoice */}
                   <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
                     <CardContent className="p-5 space-y-4">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                         <Label className="text-xs uppercase tracking-wider font-black text-rose-700 flex items-center gap-2">
-                          <RotateCcw className="w-4 h-4 text-rose-600" /> ২. ফেরতকৃত পণ্য (Returned Products)
+                          <RotateCcw className="w-4 h-4 text-rose-600" /> ২. বিক্রয় চালান থেকে ফেরতকৃত পণ্য (Returned Products)
                         </Label>
 
-                        {/* MODE TOGGLE BUTTONS */}
-                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-                          <button
-                            type="button"
-                            onClick={() => setReturnMode('invoice')}
-                            className={cn(
-                              "px-3 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1 cursor-pointer",
-                              returnMode === 'invoice'
-                                ? "bg-white text-blue-700 shadow-2xs"
-                                : "text-slate-600 hover:text-slate-900"
-                            )}
-                          >
-                            <Receipt className="w-3.5 h-3.5" />
-                            <span>পূর্ববর্তী ইনভয়েস থেকে</span>
-                            {customerInvoices.length > 0 && (
-                              <span className="ml-1 bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.2 rounded-full">
-                                {customerInvoices.length}
-                              </span>
-                            )}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setReturnMode('manual')}
-                            className={cn(
-                              "px-3 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1 cursor-pointer",
-                              returnMode === 'manual'
-                                ? "bg-white text-blue-700 shadow-2xs"
-                                : "text-slate-600 hover:text-slate-900"
-                            )}
-                          >
-                            <Sparkles className="w-3.5 h-3.5" />
-                            <span>সরাসরি পণ্য নির্বাচন</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* CONDITION PICKER */}
-                      <div className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-lg border border-slate-200/80 text-xs">
-                        <span className="font-bold text-slate-700">পণ্যের কন্ডিশন / অবস্থা:</span>
-                        <div className="flex items-center gap-2">
+                        {/* CONDITION PICKER */}
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="font-bold text-slate-700">ডিফল্ট কন্ডিশন:</span>
                           <button
                             type="button"
                             onClick={() => setItemCondition('good')}
                             className={cn(
-                              "px-3 py-1 rounded-md font-bold text-xs border transition-all flex items-center gap-1 cursor-pointer",
+                              "px-2.5 py-1 rounded-md font-bold text-xs border transition-all flex items-center gap-1 cursor-pointer",
                               itemCondition === 'good'
                                 ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
                                 : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
                             )}
                           >
                             <Check className="w-3.5 h-3.5" />
-                            <span>🟢 ভালো (স্টকে যোগ হবে)</span>
+                            <span>🟢 ভালো (স্টকে ইন)</span>
                           </button>
 
                           <button
                             type="button"
                             onClick={() => setItemCondition('damaged')}
                             className={cn(
-                              "px-3 py-1 rounded-md font-bold text-xs border transition-all flex items-center gap-1 cursor-pointer",
+                              "px-2.5 py-1 rounded-md font-bold text-xs border transition-all flex items-center gap-1 cursor-pointer",
                               itemCondition === 'damaged'
                                 ? "bg-rose-600 text-white border-rose-600 shadow-2xs"
                                 : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
                             )}
                           >
                             <ShieldAlert className="w-3.5 h-3.5" />
-                            <span>🔴 নষ্ট / ড্যামেজ</span>
+                            <span>🔴 ড্যামেজ (নষ্ট)</span>
                           </button>
                         </div>
                       </div>
 
                       {/* INVOICE-LINKED RETURN VIEW */}
-                      {returnMode === 'invoice' ? (
-                        <div className="space-y-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                          {!selectedCustomerId ? (
-                            <div className="text-center py-6 text-slate-500 text-xs font-bold">
-                              ⚠️ ইনভয়েস থেকে ফেরত নিতে প্রথমে উপরে কাস্টমার নির্বাচন করুন।
-                            </div>
-                          ) : loadingInvoices ? (
-                            <div className="text-center py-6 text-slate-500 text-xs font-bold flex items-center justify-center gap-2">
-                              <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
-                              কাস্টমারের পূর্বের ইনভয়েসগুলো লোড হচ্ছে...
-                            </div>
-                          ) : customerInvoices.length === 0 ? (
-                            <div className="text-center py-6 space-y-2">
-                              <p className="text-xs text-slate-500 font-bold">এই কাস্টমারের কোনো পূর্বের বিক্রয় চালান পাওয়া যায়নি।</p>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setReturnMode('manual')}
-                                className="text-xs font-bold text-blue-600 border-blue-200 hover:bg-blue-50 cursor-pointer"
+                      <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        {!selectedCustomerId ? (
+                          <div className="text-center py-8 text-slate-500 text-xs font-bold space-y-1">
+                            <AlertCircle className="w-6 h-6 text-amber-500 mx-auto mb-1" />
+                            <p className="text-slate-800">পণ্য ফেরত নিতে প্রথমে উপরে কাস্টমার নির্বাচন করুন।</p>
+                            <p className="text-[11px] text-slate-400 font-normal">কাস্টমার সিলেক্ট করলেই তার বিক্রয় মেমোগুলো এবং পণ্য এখানে চলে আসবে।</p>
+                          </div>
+                        ) : loadingInvoices ? (
+                          <div className="text-center py-8 text-slate-500 text-xs font-bold flex items-center justify-center gap-2">
+                            <RefreshCw className="w-5 h-5 animate-spin text-blue-600" />
+                            কাস্টমারের পূর্বের মেমোগুলো লোড হচ্ছে...
+                          </div>
+                        ) : customerInvoices.length === 0 ? (
+                          <div className="text-center py-6 space-y-2">
+                            <AlertCircle className="w-6 h-6 text-amber-500 mx-auto mb-1" />
+                            <p className="text-xs text-slate-700 font-bold">এই কাস্টমারের কোনো পূর্বের বিক্রয় চালান পাওয়া যায়নি।</p>
+                            <p className="text-[11px] text-slate-400">রিটার্ন করতে হলে কাস্টমারের ন্যূনতম একটি বিক্রয় মেমো থাকতে হবে।</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {/* Invoice Selector */}
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                                <span>বিক্রয় মেমো নির্বাচন করুন (মেমো সিলেক্ট করলেই সব আইটেম নিচে চলে আসবে):</span>
+                                {activeInvoice && (
+                                  <span className="text-blue-600 font-bold text-[11px]">
+                                    মোট {toBengaliDigits(activeInvoice.items?.length || 0)}টি আইটেম
+                                  </span>
+                                )}
+                              </Label>
+                              <Select 
+                                value={selectedInvoiceId} 
+                                onValueChange={(val: string | null) => {
+                                  const nextId = val || '';
+                                  setSelectedInvoiceId(nextId);
+                                  const found = customerInvoices.find(inv => String(inv.id) === nextId);
+                                  if (found) {
+                                    loadInvoiceItemsIntoReturnCart(found);
+                                  }
+                                }}
                               >
-                                সরাসরি পণ্য নির্বাচন মোডে যান
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="space-y-3">
-                              {/* Invoice Selector */}
-                              <div className="space-y-1">
-                                <Label className="text-xs font-bold text-slate-700">বিক্রয় মেমো নির্বাচন করুন:</Label>
-                                <Select value={selectedInvoiceId} onValueChange={(val: string | null) => setSelectedInvoiceId(val || '')}>
-                                  <SelectTrigger className="h-10 bg-white border-slate-300 font-bold text-xs rounded-lg">
-                                    <SelectValue placeholder="মেমো নির্বাচন করুন..." />
-                                  </SelectTrigger>
-                                  <SelectContent className="font-bengali text-xs max-h-56">
-                                    {customerInvoices.map((inv) => (
-                                      <SelectItem key={inv.id} value={String(inv.id)}>
-                                        মেমো: #{inv.invoice_no || inv.id} — {formatDate(inv.created_at)} — মোট: ৳{(inv.total_amount || 0).toLocaleString()} (আইটেম: {inv.items?.length || 0} টি)
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-
-                              {/* Items inside Selected Invoice */}
-                              {activeInvoice && (
-                                <div className="space-y-2 pt-2 border-t border-slate-200">
-                                  <p className="text-xs font-black text-slate-800">
-                                    মেমোর বিক্রিত পণ্যসমূহ (আইটেম যোগ করতে ক্লিক করুন):
-                                  </p>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {(activeInvoice.items || []).map((item: any, idx: number) => (
-                                      <div 
-                                        key={idx}
-                                        className="p-3 bg-white border border-slate-200 rounded-lg shadow-2xs flex items-center justify-between gap-2 hover:border-blue-400 transition-colors"
-                                      >
-                                        <div>
-                                          <p className="font-bold text-slate-900 text-xs">{item.product_name || item.name}</p>
-                                          <p className="text-[11px] text-slate-500 font-semibold">
-                                            বিক্রি: {item.quantity} {item.unit || 'পিস'} × ৳{item.price} = ৳{(item.total || item.quantity * item.price).toLocaleString()}
-                                          </p>
+                                <SelectTrigger className="h-11 bg-white border-slate-300 font-bold text-xs rounded-lg shadow-2xs">
+                                  <SelectValue placeholder="মেমো নির্বাচন করুন..." />
+                                </SelectTrigger>
+                                <SelectContent className="font-bengali text-xs max-h-64">
+                                  {customerInvoices.map((inv) => {
+                                    const status = getInvoiceReturnableStatus(inv);
+                                    return (
+                                      <SelectItem key={inv.id} value={String(inv.id)} className="py-2">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-black text-blue-700">#{inv.invoice_no || inv.id}</span>
+                                          <span className="text-slate-400">|</span>
+                                          <span className="text-slate-600">{formatDate(inv.created_at)}</span>
+                                          <span className="text-slate-400">|</span>
+                                          <span className="font-bold text-emerald-700">৳{(inv.total_amount || 0).toLocaleString()}</span>
+                                          <span className="text-slate-400">|</span>
+                                          {status.isFullyReturned ? (
+                                            <span className="text-rose-600 font-bold text-[10px] bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                                              সম্পূর্ণ ফেরত সম্পন্ন
+                                            </span>
+                                          ) : (
+                                            <span className="text-emerald-700 font-bold text-[10px] bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                              ফেরতযোগ্য: {toBengaliDigits(status.returnableCount)}টি
+                                            </span>
+                                          )}
                                         </div>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          onClick={() => handleAddFromInvoiceItem(item, activeInvoice.invoice_no)}
-                                          className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold h-8 px-2.5 rounded-md shrink-0 cursor-pointer"
-                                        >
-                                          + ফেরতে নিন
-                                        </Button>
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            {/* Active Invoice Info Card & Quick Action Buttons */}
+                            {activeInvoice && (
+                              <div className="p-3.5 bg-white border border-blue-200/80 rounded-xl shadow-2xs space-y-2.5">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                                      <Receipt className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-black text-slate-900 text-xs">মেমো #{activeInvoice.invoice_no || activeInvoice.id}</span>
+                                        <span className="text-[11px] text-slate-500 font-medium">({formatDate(activeInvoice.created_at)})</span>
                                       </div>
-                                    ))}
+                                      <div className="text-[11px] text-slate-600 font-bold mt-0.5">
+                                        মোট বিক্রয়: <span className="text-emerald-700">৳{(activeInvoice.total_amount || 0).toLocaleString()}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => loadInvoiceItemsIntoReturnCart(activeInvoice)}
+                                      className="text-xs font-bold text-blue-700 border-blue-200 bg-blue-50/50 hover:bg-blue-100 rounded-lg h-8 px-3 cursor-pointer"
+                                    >
+                                      <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                                      চালানের পণ্য আবার আনুন
+                                    </Button>
+                                    {returnCart.length > 0 && (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setReturnCart([])}
+                                        className="text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg h-8 px-2.5 cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5 mr-1" />
+                                        তালিকা খালি করুন
+                                      </Button>
+                                    )}
                                   </div>
                                 </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        /* DIRECT / CASCADING PRODUCT SELECTOR VIEW */
-                        <CascadingProductSelector
-                          products={products}
-                          onProductChange={(selected) => {
-                            setSelectedCascadingReturnProduct(selected);
-                            if (selected) {
-                              if (selected.productId) setReturnProdId(selected.productId);
-                              if (selected.price > 0) setReturnPrice(selected.price);
-                            }
-                          }}
-                          showPriceField={true}
-                          priceLabel="ফেরত একক দর (৳)"
-                          itemPrice={returnPrice}
-                          onPriceChange={setReturnPrice}
-                          itemQty={returnQty}
-                          onQtyChange={setReturnQty}
-                          onAddCartItem={handleAddReturnItem}
-                          buttonLabel="+ ফেরত যোগ করুন"
-                        />
-                      )}
 
-                      {/* Return Table */}
-                      <div className="border border-slate-200 rounded-md overflow-hidden mt-4">
+                                {getInvoiceReturnableStatus(activeInvoice).isFullyReturned && (
+                                  <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs font-bold flex items-center gap-2">
+                                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                                    <span>এই মেমোর সকল পণ্য ইতিপূর্বে সম্পূর্ণ ফেরত নেওয়া সম্পন্ন হয়েছে। নতুন কোনো পণ্য আর ফেরত নেওয়া যাবে না।</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Return Table & Inline Item Editor */}
+                      <div className="border border-slate-200 rounded-xl overflow-hidden mt-4 bg-white shadow-2xs">
+                        <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-slate-900 text-xs flex items-center gap-1.5">
+                              <RotateCcw className="w-4 h-4 text-rose-600" />
+                              ফেরত তালিকাভুক্ত পণ্যসমূহ ({toBengaliDigits(returnCart.length)}টি):
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-bold">
+                            (যে পণ্যটি ফেরত নিচ্ছে না, ডানে লাল 🗑️ বাটনে ক্লিক করে বাদ দিন)
+                          </span>
+                        </div>
+
                         <Table>
-                          <TableHeader className="bg-rose-50/50 text-slate-700 text-xs">
+                          <TableHeader className="bg-slate-50/50 text-slate-700 text-xs">
                             <TableRow>
-                              <TableHead className="font-bold">#</TableHead>
+                              <TableHead className="font-bold w-10 text-center">#</TableHead>
                               <TableHead className="font-bold">ফেরত পণ্যের নাম</TableHead>
-                              <TableHead className="font-bold">কন্ডিশন</TableHead>
-                              <TableHead className="text-center font-bold">পরিমাণ</TableHead>
-                              <TableHead className="text-right font-bold">একক দর</TableHead>
-                              <TableHead className="text-right font-bold">মোট ফেরত মূল্য</TableHead>
-                              <TableHead className="w-12"></TableHead>
+                              <TableHead className="font-bold w-32">কন্ডিশন</TableHead>
+                              <TableHead className="font-bold w-48 text-center">ফেরত পরিমাণ</TableHead>
+                              <TableHead className="font-bold w-32 text-right">একক দর (৳)</TableHead>
+                              <TableHead className="font-bold w-32 text-right">মোট মূল্য (৳)</TableHead>
+                              <TableHead className="w-12 text-center">অ্যাকশন</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody className="text-xs font-bold">
                             {returnCart.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={7} className="text-center py-6 text-slate-400 font-normal">
-                                  কোনো ফেরত পণ্য যোগ করা হয়নি।
+                                <TableCell colSpan={7} className="text-center py-8 text-slate-400 font-normal">
+                                  <div className="space-y-1">
+                                    <Package className="w-6 h-6 mx-auto text-slate-300 mb-1" />
+                                    <p className="font-bold text-slate-500">কোনো ফেরত পণ্য তালিকায় নেই।</p>
+                                    <p className="text-[11px] text-slate-400">মেমো নির্বাচন করুন (ইতিপূর্বে সব ফেরত হয়ে থাকলে তালিকা খালি থাকবে)।</p>
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             ) : (
                               returnCart.map((item, idx) => (
-                                <TableRow key={idx} className="hover:bg-slate-50">
-                                  <TableCell className="text-center font-semibold text-slate-500">{idx + 1}</TableCell>
-                                  <TableCell className="font-black text-slate-900">
-                                    {item.name}
+                                <TableRow key={idx} className="hover:bg-slate-50/80 transition-colors border-b border-slate-100">
+                                  <TableCell className="text-center font-semibold text-slate-500">{toBengaliDigits(idx + 1)}</TableCell>
+                                  
+                                  <TableCell className="py-2.5">
+                                    <div className="font-black text-slate-900 text-xs">{item.name}</div>
                                     {item.invoiceNo && (
-                                      <span className="block text-[10px] text-blue-600 font-normal">মেমো: #{item.invoiceNo}</span>
+                                      <span className="inline-block mt-0.5 text-[10px] text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded font-mono font-bold">
+                                        মেমো: #{item.invoiceNo}
+                                      </span>
                                     )}
                                   </TableCell>
-                                  <TableCell>
-                                    <span className={cn(
-                                      "px-2 py-0.5 rounded text-[10px] font-bold",
-                                      item.condition === 'damaged' 
-                                        ? "bg-rose-100 text-rose-700 border border-rose-200" 
-                                        : "bg-emerald-100 text-emerald-700 border border-emerald-200"
-                                    )}>
-                                      {item.condition === 'damaged' ? '🔴 ড্যামেজ' : '🟢 ভালো'}
-                                    </span>
+
+                                  <TableCell className="py-2.5">
+                                    <select
+                                      value={item.condition || 'good'}
+                                      onChange={(e) => {
+                                        const updated = [...returnCart];
+                                        updated[idx].condition = e.target.value as 'good' | 'damaged';
+                                        setReturnCart(updated);
+                                      }}
+                                      className={cn(
+                                        "h-8 px-2 rounded-md font-bold text-[11px] border cursor-pointer outline-none w-full",
+                                        item.condition === 'damaged'
+                                          ? "bg-rose-50 text-rose-700 border-rose-200 font-black"
+                                          : "bg-emerald-50 text-emerald-700 border-emerald-200 font-black"
+                                      )}
+                                    >
+                                      <option value="good">🟢 ভালো (স্টকে ইন)</option>
+                                      <option value="damaged">🔴 ড্যামেজ (নষ্ট)</option>
+                                    </select>
                                   </TableCell>
-                                  <TableCell className="text-center">
-                                    <div className="flex items-center justify-center gap-1">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          if (item.quantity > 1) {
+
+                                  <TableCell className="py-2.5 text-center">
+                                    <div className="flex flex-col items-center justify-center gap-0.5">
+                                      <div className="flex items-center justify-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (item.quantity > 1) {
+                                              const updated = [...returnCart];
+                                              updated[idx].quantity -= 1;
+                                              setReturnCart(updated);
+                                            }
+                                          }}
+                                          className="w-7 h-7 rounded-md bg-slate-100 hover:bg-slate-200 font-black text-xs flex items-center justify-center cursor-pointer text-slate-700 shrink-0"
+                                        >
+                                          -
+                                        </button>
+                                        <Input
+                                          type="number"
+                                          min="1"
+                                          max={item.maxQuantity}
+                                          value={item.quantity}
+                                          onChange={(e) => {
+                                            const entered = Number(e.target.value);
+                                            const max = item.maxQuantity || Infinity;
+                                            if (entered > max) {
+                                              toast.warning(`⚠️ এই চালানে বিক্রিত পরিমাণ ${max} ${item.unit}, এর বেশি ফেরত নেওয়া সম্ভব নয়!`);
+                                            }
+                                            const val = Math.min(Math.max(1, entered || 1), max);
                                             const updated = [...returnCart];
-                                            updated[idx].quantity -= 1;
+                                            updated[idx].quantity = val;
                                             setReturnCart(updated);
-                                          }
-                                        }}
-                                        className="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 font-black text-xs flex items-center justify-center cursor-pointer"
-                                      >
-                                        -
-                                      </button>
-                                      <span className="w-12 text-center">{item.quantity} {item.unit}</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const updated = [...returnCart];
-                                          updated[idx].quantity += 1;
-                                          setReturnCart(updated);
-                                        }}
-                                        className="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 font-black text-xs flex items-center justify-center cursor-pointer"
-                                      >
-                                        +
-                                      </button>
+                                          }}
+                                          className="w-16 h-7 text-center font-black text-xs rounded-md border-slate-300 p-0"
+                                        />
+                                        <button
+                                          type="button"
+                                          disabled={item.maxQuantity !== undefined && item.quantity >= item.maxQuantity}
+                                          onClick={() => {
+                                            const max = item.maxQuantity || Infinity;
+                                            if (item.quantity < max) {
+                                              const updated = [...returnCart];
+                                              updated[idx].quantity += 1;
+                                              setReturnCart(updated);
+                                            } else {
+                                              toast.warning(`⚠️ এই চালানে বিক্রিত পরিমাণ ${max} ${item.unit}, এর বেশি ফেরত নেওয়া সম্ভব নয়!`);
+                                            }
+                                          }}
+                                          className={cn(
+                                            "w-7 h-7 rounded-md font-black text-xs flex items-center justify-center shrink-0",
+                                            item.maxQuantity !== undefined && item.quantity >= item.maxQuantity
+                                              ? "bg-slate-100 text-slate-300 cursor-not-allowed"
+                                              : "bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                                          )}
+                                        >
+                                          +
+                                        </button>
+                                        <span className="text-[11px] text-slate-500 font-bold shrink-0 ml-1">{item.unit}</span>
+                                      </div>
+                                      <div className="text-[10px] text-slate-500 font-bold text-center leading-tight">
+                                        {item.soldQuantity !== undefined ? (
+                                          <span>
+                                            বিক্রি: {toBengaliDigits(item.soldQuantity)}
+                                            {item.alreadyReturnedQty ? ` (পূর্বে ফেরত: ${toBengaliDigits(item.alreadyReturnedQty)})` : ''}
+                                            {' | '}অবশিষ্ট: <strong className="text-blue-700 font-black">{toBengaliDigits(item.maxQuantity || item.quantity)} {item.unit}</strong>
+                                          </span>
+                                        ) : item.maxQuantity !== undefined ? (
+                                          <span>সর্বোচ্চ: {toBengaliDigits(item.maxQuantity)} {item.unit}</span>
+                                        ) : null}
+                                      </div>
                                     </div>
                                   </TableCell>
-                                  <TableCell className="text-right">
-                                    ৳ {item.price.toLocaleString()}
+
+                                  <TableCell className="py-2.5 text-right">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="any"
+                                      value={item.price}
+                                      onChange={(e) => {
+                                        const val = Math.max(0, Number(e.target.value) || 0);
+                                        const updated = [...returnCart];
+                                        updated[idx].price = val;
+                                        setReturnCart(updated);
+                                      }}
+                                      className="w-20 h-7 text-right font-black text-xs rounded-md border-slate-300 ml-auto"
+                                    />
                                   </TableCell>
-                                  <TableCell className="text-right text-rose-600 font-black">
-                                    ৳ {(item.quantity * item.price).toLocaleString()}
+
+                                  <TableCell className="py-2.5 text-right text-rose-600 font-black text-xs">
+                                    ৳ {toBengaliDigits((item.quantity * item.price).toLocaleString('en-IN'))}
                                   </TableCell>
-                                  <TableCell>
-                                    <button 
+
+                                  <TableCell className="py-2.5 text-center">
+                                    <Button 
                                       type="button" 
-                                      onClick={() => setReturnCart(returnCart.filter((_, i) => i !== idx))} 
-                                      className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer"
+                                      size="icon"
+                                      variant="ghost"
+                                      title="এই পণ্যটি ফেরত তালিকা থেকে বাদ দিন"
+                                      onClick={() => {
+                                        const updated = returnCart.filter((_, i) => i !== idx);
+                                        setReturnCart(updated);
+                                        toast.info(`"${item.name}" ফেরত তালিকা থেকে বাদ দেওয়া হয়েছে`);
+                                      }} 
+                                      className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
                                     >
                                       <Trash2 className="w-4 h-4" />
-                                    </button>
+                                    </Button>
                                   </TableCell>
                                 </TableRow>
                               ))
@@ -1202,8 +1376,7 @@ export default function SalesReturnsPage() {
                         onProductChange={(selected) => {
                           setSelectedCascadingNewProduct(selected);
                           if (selected) {
-                            if (selected.productId) setNewProdId(selected.productId);
-                            if (selected.price > 0) setNewPrice(selected.price);
+                            setNewProdId(selected.productId || '');
                           }
                         }}
                         showPriceField={true}
@@ -1239,9 +1412,73 @@ export default function SalesReturnsPage() {
                             ) : (
                               newTakenCart.map((item, idx) => (
                                 <TableRow key={idx} className="hover:bg-slate-50">
-                                  <TableCell className="text-center font-semibold text-slate-500">{idx + 1}</TableCell>
+                                  <TableCell className="text-center font-semibold text-slate-500">{toBengaliDigits(idx + 1)}</TableCell>
                                   <TableCell className="font-black text-slate-900">{item.name}</TableCell>
-                                  <TableCell className="text-center">{item.quantity} {item.unit}</TableCell>
+                                  <TableCell className="text-center">
+                                    <div className="flex flex-col items-center justify-center gap-0.5">
+                                      <div className="flex items-center justify-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (item.quantity > 1) {
+                                              const updated = [...newTakenCart];
+                                              updated[idx].quantity -= 1;
+                                              setNewTakenCart(updated);
+                                            }
+                                          }}
+                                          className="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 font-black text-xs flex items-center justify-center cursor-pointer text-slate-700"
+                                        >
+                                          -
+                                        </button>
+                                        <Input
+                                          type="number"
+                                          min="1"
+                                          max={item.maxQuantity}
+                                          value={item.quantity}
+                                          onChange={(e) => {
+                                            const entered = Number(e.target.value);
+                                            const max = item.maxQuantity || Infinity;
+                                            if (entered > max) {
+                                              toast.warning(`⚠️ স্টকে মাত্র ${max} ${item.unit} রয়েছে!`);
+                                            }
+                                            const val = Math.min(Math.max(1, entered || 1), max);
+                                            const updated = [...newTakenCart];
+                                            updated[idx].quantity = val;
+                                            setNewTakenCart(updated);
+                                          }}
+                                          className="w-14 h-6 text-center font-black text-xs rounded border-slate-300 p-0"
+                                        />
+                                        <button
+                                          type="button"
+                                          disabled={item.maxQuantity !== undefined && item.quantity >= item.maxQuantity}
+                                          onClick={() => {
+                                            const max = item.maxQuantity || Infinity;
+                                            if (item.quantity < max) {
+                                              const updated = [...newTakenCart];
+                                              updated[idx].quantity += 1;
+                                              setNewTakenCart(updated);
+                                            } else {
+                                              toast.warning(`⚠️ স্টকে মাত্র ${max} ${item.unit} রয়েছে!`);
+                                            }
+                                          }}
+                                          className={cn(
+                                            "w-6 h-6 rounded font-black text-xs flex items-center justify-center",
+                                            item.maxQuantity !== undefined && item.quantity >= item.maxQuantity
+                                              ? "bg-slate-100 text-slate-300 cursor-not-allowed"
+                                              : "bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                                          )}
+                                        >
+                                          +
+                                        </button>
+                                        <span className="text-[11px] text-slate-500 font-bold ml-1">{item.unit}</span>
+                                      </div>
+                                      {item.maxQuantity !== undefined && (
+                                        <span className="text-[10px] text-slate-400 font-bold">
+                                          (মজুদ: {toBengaliDigits(item.maxQuantity)} {item.unit})
+                                        </span>
+                                      )}
+                                    </div>
+                                  </TableCell>
                                   <TableCell className="text-right">৳ {item.price.toLocaleString()}</TableCell>
                                   <TableCell className="text-right text-emerald-600 font-black">
                                     ৳ {(item.quantity * item.price).toLocaleString()}

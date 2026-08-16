@@ -40,10 +40,15 @@ interface CascadingProductSelectorProps {
   onProductChange: (selection: SelectedProductDetails | null) => void;
   showPriceField: boolean; // true for Invoice/Purchase, false for Order
   onlyInStock?: boolean; // true for Invoice/Order (Sales), false for Purchase
+  autoLoadPrice?: boolean; // false by default: user manually enters unit price
   priceLabel?: string;
   itemPrice: number;
   onPriceChange: (price: number) => void;
   
+  showTotalPriceField?: boolean; // true for Purchase Invoice
+  itemTotalPrice?: number;
+  onTotalPriceChange?: (total: number) => void;
+
   showSellPriceField?: boolean; // true for Purchase Invoice
   itemSellPrice?: number;
   onSellPriceChange?: (price: number) => void;
@@ -115,14 +120,18 @@ export function CascadingProductSelector({
   onProductChange,
   showPriceField,
   onlyInStock = false,
+  autoLoadPrice = false,
   priceLabel = 'একক মূল্য (৳)',
   itemPrice,
   onPriceChange,
+  showTotalPriceField = false,
+  itemTotalPrice,
+  onTotalPriceChange,
   showSellPriceField = false,
   itemSellPrice = 0,
   onSellPriceChange,
   showAlertLimitField = false,
-  itemAlertLimit = 200,
+  itemAlertLimit = 0,
   onAlertLimitChange,
   itemQty,
   onQtyChange,
@@ -134,6 +143,9 @@ export function CascadingProductSelector({
   purchaseType,
   allowedCategories,
 }: CascadingProductSelectorProps) {
+  const isPurchaseMode = showTotalPriceField || showSellPriceField || !!purchaseType;
+  const [enteredTotal, setEnteredTotal] = useState<number | ''>('');
+
   const categoriesToDisplay = useMemo<('রড' | 'সিমেন্ট' | 'রিং' | 'অন্যান্য')[]>(() => {
     if (allowedCategories && allowedCategories.length > 0) return allowedCategories;
     if (purchaseType === 'rod') return ['রড', 'রিং'];
@@ -156,32 +168,6 @@ export function CascadingProductSelector({
   );
   const [otherProductId, setOtherProductId] = useState<string>('');
   const [customName, setCustomName] = useState<string>('');
-
-  // Handle Category Switch & defaults
-  const handleCategorySelect = useCallback((cat: 'রড' | 'সিমেন্ট' | 'রিং' | 'অন্যান্য') => {
-    setCategoryState(cat);
-    if (cat === 'রড') {
-      setSelectedMm('১০ মিলি');
-      setSelectedBrand('BSRM');
-      if (onUnitChange) onUnitChange('কেজি');
-      if (onAlertLimitChange) onAlertLimitChange(200);
-    } else if (cat === 'সিমেন্ট') {
-      setSelectedMm('');
-      setSelectedBrand('শাহ সিমেন্ট');
-      if (onUnitChange) onUnitChange('বস্তা');
-      if (onAlertLimitChange) onAlertLimitChange(50);
-    } else if (cat === 'রিং') {
-      setSelectedMm('৭″ × ৭″');
-      setSelectedBrand('৮ মিলি রিং');
-      if (onUnitChange) onUnitChange('পিস');
-      if (onAlertLimitChange) onAlertLimitChange(100);
-    } else {
-      setSelectedMm('');
-      setSelectedBrand('');
-      setOtherProductId('');
-      if (onUnitChange) onUnitChange('পিস');
-    }
-  }, [onUnitChange, onAlertLimitChange]);
 
   // Products with positive stock
   const inStockProducts = useMemo(() => {
@@ -286,8 +272,48 @@ export function CascadingProductSelector({
     return filtered;
   }, [onlyInStock, inStockProducts]);
 
+  // Handle Category Switch & defaults
+  const handleCategorySelect = useCallback((cat: 'রড' | 'সিমেন্ট' | 'রিং' | 'অন্যান্য') => {
+    setCategoryState(cat);
+    if (cat === 'রড') {
+      const defaultBrand = onlyInStock ? (availableRodBrands[0] || '') : 'BSRM';
+      const defaultMm = onlyInStock ? (availableRodMms[0] || '') : '১০ মিলি';
+      setSelectedMm(defaultMm);
+      setSelectedBrand(defaultBrand);
+      if (onUnitChange) onUnitChange('কেজি');
+    } else if (cat === 'সিমেন্ট') {
+      const defaultBrand = onlyInStock ? (availableCementBrands[0] || '') : 'শাহ সিমেন্ট';
+      setSelectedMm('');
+      setSelectedBrand(defaultBrand);
+      if (onUnitChange) onUnitChange('বস্তা');
+    } else if (cat === 'রিং') {
+      const defaultSz = onlyInStock ? (availableRingSizes[0] || '') : '৭″ × ৭″';
+      const defaultBrand = onlyInStock ? (availableRingBrands[0] || '') : '৮ মিলি রিং';
+      setSelectedMm(defaultSz);
+      setSelectedBrand(defaultBrand);
+      if (onUnitChange) onUnitChange('পিস');
+    } else {
+      setSelectedMm('');
+      setSelectedBrand('');
+      setOtherProductId('');
+      if (onUnitChange) onUnitChange('পিস');
+    }
+    if (onSellPriceChange) onSellPriceChange(0);
+    if (onAlertLimitChange) onAlertLimitChange(0);
+  }, [onlyInStock, availableRodBrands, availableRodMms, availableCementBrands, availableRingSizes, availableRingBrands, onUnitChange, onAlertLimitChange, onSellPriceChange]);
+
+
   // Derive effective activeBrand and activeMm based on availability
   const activeBrand = useMemo(() => {
+    if (onlyInStock) {
+      if (category === 'সিমেন্ট') {
+        return availableCementBrands.includes(selectedBrand) ? selectedBrand : (availableCementBrands[0] || '');
+      } else if (category === 'রড') {
+        return availableRodBrands.includes(selectedBrand) ? selectedBrand : (availableRodBrands[0] || '');
+      } else if (category === 'রিং') {
+        return availableRingBrands.includes(selectedBrand) ? selectedBrand : (availableRingBrands[0] || '');
+      }
+    }
     if (category === 'সিমেন্ট') {
       if (!availableCementBrands.includes(selectedBrand)) {
         return availableCementBrands[0] || 'শাহ সিমেন্ট';
@@ -302,29 +328,28 @@ export function CascadingProductSelector({
       }
     }
     return selectedBrand;
-  }, [category, availableRodBrands, availableCementBrands, availableRingBrands, selectedBrand]);
+  }, [onlyInStock, category, availableRodBrands, availableCementBrands, availableRingBrands, selectedBrand]);
 
   const activeMm = useMemo(() => {
     if (onlyInStock) {
-      if (category === 'রড' && availableRodMms.length > 0 && !availableRodMms.includes(selectedMm)) {
-        return availableRodMms[0];
+      if (category === 'রড') {
+        return availableRodMms.includes(selectedMm) ? selectedMm : (availableRodMms[0] || '');
       }
-      if (category === 'রিং' && availableRingSizes.length > 0 && !availableRingSizes.includes(selectedMm)) {
-        return availableRingSizes[0];
+      if (category === 'রিং') {
+        return availableRingSizes.includes(selectedMm) ? selectedMm : (availableRingSizes[0] || '');
       }
     }
     return selectedMm;
   }, [onlyInStock, category, availableRodMms, availableRingSizes, selectedMm]);
 
-
-
   // Derive constructed product name & match inventory product
   const matchedProductInfo = useMemo(() => {
     const isPurchaseMode = showSellPriceField;
+    const searchPool = onlyInStock ? inStockProducts : products;
 
     if (category === 'অন্যান্য') {
       if (otherProductId) {
-        const found = products.find(p => p.id === otherProductId);
+        const found = searchPool.find(p => p.id === otherProductId);
         if (found) {
           const buyP = Number(found.buyPrice || 0);
           const sellP = Number(found.sellPrice || 0);
@@ -352,18 +377,29 @@ export function CascadingProductSelector({
     let defaultUnit = 'পিস';
 
     if (category === 'রড') {
-      constructedName = `${activeBrand} ${activeMm} রড`.trim();
+      constructedName = activeBrand && activeMm ? `${activeBrand} ${activeMm} রড`.trim() : '';
       defaultUnit = 'কেজি';
     } else if (category === 'সিমেন্ট') {
-      constructedName = activeBrand.endsWith('সিমেন্ট') ? activeBrand : `${activeBrand} সিমেন্ট`;
+      constructedName = activeBrand ? (activeBrand.endsWith('সিমেন্ট') ? activeBrand : `${activeBrand} সিমেন্ট`) : '';
       defaultUnit = 'বস্তা';
     } else if (category === 'রিং') {
-      constructedName = `${activeMm} রিং ${activeBrand ? `(${activeBrand})` : ''}`.trim();
+      constructedName = activeMm ? `${activeMm} রিং ${activeBrand ? `(${activeBrand})` : ''}`.trim() : '';
       defaultUnit = 'পিস';
     }
 
-    // Exact match search
-    const exact = products.find(p => 
+    if (!constructedName) {
+      return {
+        productId: undefined,
+        name: '',
+        price: 0,
+        sellPrice: 0,
+        unit: defaultUnit,
+        stock: 0,
+      };
+    }
+
+    // Exact match search in searchPool
+    const exact = searchPool.find(p => 
       p.name.toLowerCase() === constructedName.toLowerCase() ||
       p.name.toLowerCase() === `${activeMm} ${activeBrand} রড`.toLowerCase() ||
       p.name.toLowerCase() === `${activeBrand} ${activeMm} রড`.toLowerCase()
@@ -381,17 +417,17 @@ export function CascadingProductSelector({
       };
     }
 
-    // Partial search (contains mm and brand)
-    const partial = products.find(p => {
+    // Partial search (contains mm and brand) in searchPool
+    const partial = searchPool.find(p => {
       const pName = p.name.toLowerCase();
       if (category === 'রড') {
-        return pName.includes(activeMm.toLowerCase()) && pName.includes(activeBrand.toLowerCase());
+        return activeMm && activeBrand && pName.includes(activeMm.toLowerCase()) && pName.includes(activeBrand.toLowerCase());
       }
       if (category === 'সিমেন্ট') {
-        return pName.includes(activeBrand.toLowerCase());
+        return activeBrand && pName.includes(activeBrand.toLowerCase());
       }
       if (category === 'রিং') {
-        return pName.includes(activeMm.toLowerCase());
+        return activeMm && pName.includes(activeMm.toLowerCase());
       }
       return false;
     });
@@ -417,7 +453,7 @@ export function CascadingProductSelector({
       unit: defaultUnit,
       stock: 0,
     };
-  }, [category, activeMm, activeBrand, otherProductId, customName, products, showSellPriceField]);
+  }, [category, activeMm, activeBrand, otherProductId, customName, onlyInStock, inStockProducts, products, showSellPriceField]);
 
   // Sync state up to parent when selection changes
   useEffect(() => {
@@ -433,14 +469,14 @@ export function CascadingProductSelector({
       stock: matchedProductInfo.stock,
     });
 
-    if (matchedProductInfo.price >= 0) {
-      onPriceChange(matchedProductInfo.price);
-    }
-    if (matchedProductInfo.sellPrice !== undefined && onSellPriceChange) {
-      onSellPriceChange(matchedProductInfo.sellPrice);
+    if (autoLoadPrice) {
+      onPriceChange(matchedProductInfo.price || 0);
+      if (onSellPriceChange) {
+        onSellPriceChange(matchedProductInfo.sellPrice || 0);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, selectedMm, selectedBrand, otherProductId, customName, matchedProductInfo]);
+  }, [category, activeMm, activeBrand, otherProductId, customName, matchedProductInfo, autoLoadPrice]);
 
   return (
     <div className={cn('p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-4 font-bengali', className)}>
@@ -496,7 +532,16 @@ export function CascadingProductSelector({
           <>
             <div className="sm:col-span-7 space-y-1">
               <Label className="text-[11px] font-bold text-slate-600">২. কোম্পানি / ব্র্যান্ড (Brand)</Label>
-              <Select value={activeBrand} onValueChange={(val: string | null) => setSelectedBrand(val || '')}>
+              <Select 
+                value={activeBrand} 
+                onValueChange={(val: string | null) => {
+                  setSelectedBrand(val || '');
+                  setEnteredTotal('');
+                  onPriceChange(0);
+                  if (onSellPriceChange) onSellPriceChange(0);
+                  if (onAlertLimitChange) onAlertLimitChange(0);
+                }}
+              >
                 <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
                   <SelectValue />
                 </SelectTrigger>
@@ -514,7 +559,16 @@ export function CascadingProductSelector({
 
             <div className="sm:col-span-5 space-y-1">
               <Label className="text-[11px] font-bold text-slate-600">৩. মিলি (mm / Size)</Label>
-              <Select value={activeMm} onValueChange={(val: string | null) => setSelectedMm(val || '')}>
+              <Select 
+                value={activeMm} 
+                onValueChange={(val: string | null) => {
+                  setSelectedMm(val || '');
+                  setEnteredTotal('');
+                  onPriceChange(0);
+                  if (onSellPriceChange) onSellPriceChange(0);
+                  if (onAlertLimitChange) onAlertLimitChange(0);
+                }}
+              >
                 <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
                   <SelectValue />
                 </SelectTrigger>
@@ -536,7 +590,16 @@ export function CascadingProductSelector({
         {category === 'সিমেন্ট' && (
           <div className="sm:col-span-12 space-y-1">
             <Label className="text-[11px] font-bold text-slate-600">২. সিমেন্ট ব্র্যান্ড (Brand)</Label>
-            <Select value={activeBrand} onValueChange={(val: string | null) => setSelectedBrand(val || '')}>
+            <Select 
+              value={activeBrand} 
+              onValueChange={(val: string | null) => {
+                setSelectedBrand(val || '');
+                setEnteredTotal('');
+                onPriceChange(0);
+                if (onSellPriceChange) onSellPriceChange(0);
+                if (onAlertLimitChange) onAlertLimitChange(0);
+              }}
+            >
               <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
                 <SelectValue />
               </SelectTrigger>
@@ -558,7 +621,16 @@ export function CascadingProductSelector({
           <>
             <div className="sm:col-span-5 space-y-1">
               <Label className="text-[11px] font-bold text-slate-600">২. রিং সাইজ (Size)</Label>
-              <Select value={activeMm} onValueChange={(val: string | null) => setSelectedMm(val || '')}>
+              <Select 
+                value={activeMm} 
+                onValueChange={(val: string | null) => {
+                  setSelectedMm(val || '');
+                  setEnteredTotal('');
+                  onPriceChange(0);
+                  if (onSellPriceChange) onSellPriceChange(0);
+                  if (onAlertLimitChange) onAlertLimitChange(0);
+                }}
+              >
                 <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
                   <SelectValue />
                 </SelectTrigger>
@@ -576,7 +648,16 @@ export function CascadingProductSelector({
 
             <div className="sm:col-span-7 space-y-1">
               <Label className="text-[11px] font-bold text-slate-600">৩. রিং গেজ / ক্যাটাগরি</Label>
-              <Select value={activeBrand} onValueChange={(val: string | null) => setSelectedBrand(val || '')}>
+              <Select 
+                value={activeBrand} 
+                onValueChange={(val: string | null) => {
+                  setSelectedBrand(val || '');
+                  setEnteredTotal('');
+                  onPriceChange(0);
+                  if (onSellPriceChange) onSellPriceChange(0);
+                  if (onAlertLimitChange) onAlertLimitChange(0);
+                }}
+              >
                 <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 text-xs font-bold">
                   <SelectValue />
                 </SelectTrigger>
@@ -594,6 +675,9 @@ export function CascadingProductSelector({
           </>
         )}
 
+
+
+
         {/* OTHERS FLOW: Existing Product Select */}
         {category === 'অন্যান্য' && (
           <div className="sm:col-span-12 space-y-1">
@@ -604,7 +688,7 @@ export function CascadingProductSelector({
                 const v = val || '';
                 setOtherProductId(v);
                 const match = products.find(p => p.id === v);
-                if (match) {
+                if (match && autoLoadPrice) {
                   if (showPriceField) onPriceChange(match.buyPrice || match.sellPrice || 0);
                   if (showSellPriceField && onSellPriceChange) onSellPriceChange(match.sellPrice || 0);
                 }
@@ -628,7 +712,7 @@ export function CascadingProductSelector({
       {/* 3. Quantities, Prices & Alert Limit Row */}
       <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end pt-1">
         {/* Quantity Field */}
-        <div className="sm:col-span-3 space-y-1">
+        <div className={cn(isPurchaseMode ? 'sm:col-span-3' : 'sm:col-span-4', 'space-y-1')}>
           <Label className="text-[11px] font-bold text-slate-600">পরিমাণ ({matchedProductInfo.unit})</Label>
           <Input
             type="number"
@@ -640,7 +724,14 @@ export function CascadingProductSelector({
                 onQtyChange('' as any);
               } else {
                 const parsed = parseFloat(val);
-                onQtyChange(isNaN(parsed) ? ('' as any) : parsed);
+                const newQty = isNaN(parsed) ? ('' as any) : parsed;
+                onQtyChange(newQty);
+                if (typeof newQty === 'number' && newQty > 0 && enteredTotal !== '' && Number(enteredTotal) > 0) {
+                  const computedPrice = Math.round((Number(enteredTotal) / newQty) * 100) / 100;
+                  onPriceChange(computedPrice);
+                } else if (typeof newQty === 'number' && newQty > 0 && itemPrice > 0) {
+                  setEnteredTotal(Math.round(newQty * itemPrice * 100) / 100);
+                }
               }
             }}
             onFocus={(e) => e.target.select()}
@@ -648,13 +739,51 @@ export function CascadingProductSelector({
           />
         </div>
 
-        {/* Primary Price Field (Buy Price or Unit Price) */}
-        {showPriceField && (
-          <div className={cn(showSellPriceField ? 'sm:col-span-3' : 'sm:col-span-4', 'space-y-1')}>
+        {/* Total Price Input (For Purchase Invoice) */}
+        {isPurchaseMode && (
+          <div className="sm:col-span-4 space-y-1">
+            <Label className="text-[11px] font-black text-indigo-700 flex items-center justify-between">
+              <span>মোট ক্রয় মূল্য (৳)</span>
+              <span className="text-[9px] font-bold text-indigo-500">(ইনভয়েস মোট টাকা)</span>
+            </Label>
+            <Input
+              type="number"
+              min="0"
+              value={enteredTotal !== '' ? enteredTotal : ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '') {
+                  setEnteredTotal('');
+                  onPriceChange(0);
+                  if (onTotalPriceChange) onTotalPriceChange(0);
+                } else {
+                  const parsed = parseFloat(val);
+                  const newTotal = isNaN(parsed) ? '' : parsed;
+                  setEnteredTotal(newTotal);
+                  if (typeof newTotal === 'number') {
+                    if (onTotalPriceChange) onTotalPriceChange(newTotal);
+                    if (itemQty > 0) {
+                      const computedPrice = Math.round((newTotal / itemQty) * 100) / 100;
+                      onPriceChange(computedPrice);
+                    }
+                  }
+                }
+              }}
+              onFocus={(e) => e.target.select()}
+              placeholder="মোট টাকা লিখুন"
+              className="rounded-xl h-10 bg-indigo-50/70 border-indigo-200 text-center font-black text-xs text-indigo-700 focus:bg-white transition-colors"
+            />
+          </div>
+        )}
+
+        {/* Primary Price Field (Only in Non-Purchase / Sales mode) */}
+        {showPriceField && !isPurchaseMode && (
+          <div className="sm:col-span-4 space-y-1">
             <Label className="text-[11px] font-bold text-slate-600">{priceLabel}</Label>
             <Input
               type="number"
               min="0"
+              step="any"
               value={!itemPrice && itemPrice !== 0 ? '' : itemPrice}
               onChange={(e) => {
                 const val = e.target.value;
@@ -674,7 +803,7 @@ export function CascadingProductSelector({
 
         {/* Sell Price Field (For Purchase Invoice) */}
         {showSellPriceField && onSellPriceChange && (
-          <div className="sm:col-span-3 space-y-1">
+          <div className="sm:col-span-2 space-y-1">
             <Label className="text-[11px] font-bold text-slate-600">বিক্রয় মূল্য (৳)</Label>
             <Input
               type="number"
@@ -698,8 +827,8 @@ export function CascadingProductSelector({
 
         {/* Stock Alert Limit Field (For Purchase Invoice) */}
         {showAlertLimitField && onAlertLimitChange && (
-          <div className="sm:col-span-3 space-y-1">
-            <Label className="text-[11px] font-bold text-slate-600">স্টক অ্যালার্ট লিমিট</Label>
+          <div className="sm:col-span-1 space-y-1">
+            <Label className="text-[11px] font-bold text-slate-600">অ্যালার্ট</Label>
             <Input
               type="number"
               min="0"
@@ -721,15 +850,22 @@ export function CascadingProductSelector({
         )}
 
         {/* Add Row Button */}
-        <div className="sm:col-span-3 flex items-end">
+        <div className={cn(isPurchaseMode ? 'sm:col-span-2' : 'sm:col-span-4', 'flex items-end')}>
           <Button
             type="button"
             onClick={() => {
-              if (onlyInStock && matchedProductInfo.stock <= 0) {
-                toast.error('এই পণ্যটি বর্তমানে স্টকে নেই! কেবল স্টকে থাকা পণ্য ইনভয়েসে যোগ করা যাবে।');
-                return;
+              if (onlyInStock) {
+                if (matchedProductInfo.stock <= 0) {
+                  toast.error('এই পণ্যটি বর্তমানে স্টকে নেই!');
+                  return;
+                }
+                if (itemQty > matchedProductInfo.stock) {
+                  toast.error(`⚠️ স্টকে মাত্র ${matchedProductInfo.stock} ${matchedProductInfo.unit} রয়েছে! এর বেশি বিক্রি/নেওয়া সম্ভব নয়।`);
+                  return;
+                }
               }
               onAddCartItem();
+              setEnteredTotal('');
             }}
             className="w-full bg-orange-600 hover:bg-orange-700 text-white h-10 rounded-xl font-bold text-xs shadow-xs"
           >
@@ -746,9 +882,9 @@ export function CascadingProductSelector({
           <span className="text-slate-500 font-bold">({toBengaliDigits(itemQty)} {matchedProductInfo.unit})</span>
         </div>
         <div className="flex items-center gap-3">
-          {showPriceField && (
-            <span className="font-black text-orange-600">
-              মোট: ৳{toBengaliDigits((itemQty * (itemPrice || matchedProductInfo.price || 0)).toLocaleString('en-IN'))}
+          {(isPurchaseMode ? (enteredTotal !== '' || (itemPrice > 0 && itemQty > 0)) : showPriceField) && (
+            <span className="font-black text-indigo-700">
+              মোট: ৳{toBengaliDigits(((enteredTotal !== '' && Number(enteredTotal) > 0) ? Number(enteredTotal) : (itemQty * (itemPrice || 0))).toLocaleString('en-IN'))}
             </span>
           )}
           {showSellPriceField && itemSellPrice > 0 && (
@@ -758,6 +894,8 @@ export function CascadingProductSelector({
           )}
         </div>
       </div>
+
     </div>
   );
 }
+

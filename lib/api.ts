@@ -66,6 +66,44 @@ export interface ProductData {
   needs_price_review?: boolean;
 }
 
+export interface ProductCostLogEntry {
+  transaction_id: number;
+  invoice_no: string;
+  date: string;
+  raw_date: string;
+  is_edited?: boolean;
+  edited_at?: string;
+  recalculation_reason?: string;
+  subsequent_purchases_recalculated?: number;
+  subsequent_transactions_recalculated?: number;
+  was_recomputed_due_to_prior_edit?: boolean;
+  transaction_type: string;
+  transaction_type_label: string;
+  party_name: string;
+  quantity: number;
+  unit: string;
+  rate: number;
+  extra_per_unit: number;
+  landed_cost: number;
+  stock_before: number;
+  stock_after: number;
+  cost_before: number;
+  cost_after: number;
+  cost_change: number;
+  formula: string;
+}
+
+export interface ProductCostLogData {
+  product_id: number;
+  product_name: string;
+  unit: string;
+  current_stock: number;
+  current_purchase_price: number;
+  has_recalculations?: boolean;
+  latest_recalculation_date?: string;
+  logs: ProductCostLogEntry[];
+}
+
 export interface TransactionItemData {
   id?: number;
   product?: number | null;
@@ -313,6 +351,15 @@ export const api = {
     },
     delete: async (id: string | number): Promise<void> => {
       return request<void>(`/products/${id}/`, { method: 'DELETE' });
+    },
+    getCostLogs: async (productId?: string | number): Promise<ProductCostLogData | ProductCostLogData[]> => {
+      try {
+        const query = productId ? `?product_id=${productId}` : '';
+        return await request<any>(`/products/cost_logs/${query}`);
+      } catch (e) {
+        console.error('getCostLogs error:', e);
+        return productId ? { product_id: Number(productId), product_name: '', unit: '', current_stock: 0, current_purchase_price: 0, logs: [] } : [];
+      }
     }
   },
 

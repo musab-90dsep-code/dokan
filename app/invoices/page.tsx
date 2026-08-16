@@ -283,6 +283,7 @@ function InvoicesContent() {
           customerPhone: s.party_phone || '',
           customerId: String(s.party || ''),
           items: (s.items || []).map(i => ({
+            id: String(i.product || ''),
             name: i.product_name,
             price: i.price,
             quantity: i.quantity,
@@ -399,6 +400,7 @@ function InvoicesContent() {
                 customerPhone: raw.party_phone || '',
                 customerId: String(raw.party || ''),
                 items: (raw.items || []).map(i => ({
+                  id: String(i.product || ''),
                   name: i.product_name,
                   price: i.price,
                   quantity: i.quantity,
@@ -470,20 +472,32 @@ function InvoicesContent() {
       return;
     }
 
-    if (selectedCascadingProduct && selectedCascadingProduct.stock <= 0) {
-      toast.error('পণ্যটি স্টকে নেই! বিক্রয় চালানে কেবল স্টকে থাকা পণ্য যোগ করা যাবে।');
+    const foundProd = products.find(p => p.id === (selectedCascadingProduct?.productId || selectedProductId) || p.name === itemName);
+    const availableStock = Number(foundProd?.stock ?? selectedCascadingProduct?.stock ?? 0);
+
+    if (availableStock <= 0) {
+      toast.error('⚠️ পণ্যটি স্টকে নেই! বিক্রয় চালানে কেবল স্টকে থাকা পণ্য যোগ করা যাবে।');
       return;
     }
 
-    const itemUnitToUse = selectedCascadingProduct?.unit || 'পিস';
-    const itemId = selectedCascadingProduct?.productId || selectedProductId || String(Date.now());
-    const finalPrice = itemPrice || selectedCascadingProduct?.price || 0;
+    const requestedQty = Number(itemQty) || 1;
+    const existing = cart.find(i => i.name === itemName || (foundProd && String(i.id) === String(foundProd.id)));
+    const currentInCart = existing ? Number(existing.quantity) : 0;
+
+    if (currentInCart + requestedQty > availableStock) {
+      toast.error(`⚠️ স্টকে মাত্র ${availableStock} ${foundProd?.unit || 'পিস'} রয়েছে! (কার্টে ইতিমধ্যে আছে: ${currentInCart} ${foundProd?.unit || 'পিস'}), এর বেশি যোগ করা সম্ভব নয়।`);
+      return;
+    }
+
+    const itemUnitToUse = selectedCascadingProduct?.unit || foundProd?.unit || 'পিস';
+    const itemId = selectedCascadingProduct?.productId || selectedProductId || foundProd?.id || String(Date.now());
+    const finalPrice = itemPrice || selectedCascadingProduct?.price || foundProd?.sellPrice || 0;
 
     setCart(prev => {
-      const existing = prev.find(i => i.name === itemName);
-      if (existing) {
-        const updatedQty = existing.quantity + itemQty;
-        return prev.map(i => i.name === itemName ? { 
+      const existingItem = prev.find(i => i.name === itemName || String(i.id) === String(itemId));
+      if (existingItem) {
+        const updatedQty = existingItem.quantity + requestedQty;
+        return prev.map(i => (i.name === itemName || String(i.id) === String(itemId)) ? { 
           ...i, 
           quantity: updatedQty, 
           price: finalPrice, 
@@ -494,14 +508,14 @@ function InvoicesContent() {
       return [...prev, {
         id: itemId,
         name: itemName,
-        category: selectedCascadingProduct?.category,
-        brand: selectedCascadingProduct?.brand,
+        category: selectedCascadingProduct?.category || (foundProd as any)?.category,
+        brand: selectedCascadingProduct?.brand || (foundProd as any)?.brand,
         mmSize: selectedCascadingProduct?.mmSize,
         unit: itemUnitToUse,
         price: finalPrice,
-        quantity: itemQty,
+        quantity: requestedQty,
         discount: itemDiscount || 0,
-        total: finalPrice * itemQty
+        total: finalPrice * requestedQty
       }];
     });
 
@@ -522,9 +536,18 @@ function InvoicesContent() {
 
   const handleUpdateCartQty = (id: string | number, newQty: number, index?: number) => {
     if (newQty < 1) return;
+    const targetItem = cart.find((i, idx) => index !== undefined ? idx === index : String(i.id) === String(id));
+    if (targetItem) {
+      const foundProd = products.find(p => p.id === String(targetItem.id) || p.name === targetItem.name);
+      const availableStock = Number(foundProd?.stock || 0);
+      if (availableStock > 0 && newQty > availableStock) {
+        toast.error(`⚠️ স্টকে মাত্র ${availableStock} ${targetItem.unit || 'পিস'} রয়েছে, এর বেশি বিক্রি করা সম্ভব নয়!`);
+        newQty = availableStock;
+      }
+    }
     setCart(prev => prev.map((i, idx) => {
-      if (index !== undefined && idx === index) return { ...i, quantity: newQty };
-      if (String(i.id) === String(id)) return { ...i, quantity: newQty };
+      if (index !== undefined && idx === index) return { ...i, quantity: newQty, total: (i.price || 0) * newQty };
+      if (String(i.id) === String(id)) return { ...i, quantity: newQty, total: (i.price || 0) * newQty };
       return i;
     }));
   };
@@ -807,13 +830,17 @@ function InvoicesContent() {
           due_amount: safeDueAmount,
           payment_method: effectivePaymentMethod,
           ...chequePayload,
-          items: cart.map(i => ({
-            product_name: i.name,
-            quantity: i.quantity,
-            price: round2(i.price),
-            unit: i.unit,
-            total: round2(i.price * i.quantity)
-          })),
+          items: cart.map(i => {
+            const prodId = Number(i.id);
+            return {
+              product: !isNaN(prodId) && prodId > 0 ? prodId : undefined,
+              product_name: i.name,
+              quantity: i.quantity,
+              price: round2(i.price),
+              unit: i.unit,
+              total: round2(i.price * i.quantity)
+            };
+          }),
           notes: finalNotesPayload
         });
         toast.success('চালান সফলভাবে এডিট ও আপডেট করা হয়েছে!');
@@ -828,13 +855,17 @@ function InvoicesContent() {
           due_amount: safeDueAmount,
           payment_method: effectivePaymentMethod,
           ...chequePayload,
-          items: cart.map(i => ({
-            product_name: i.name,
-            quantity: i.quantity,
-            price: round2(i.price),
-            unit: i.unit,
-            total: round2(i.price * i.quantity)
-          })),
+          items: cart.map(i => {
+            const prodId = Number(i.id);
+            return {
+              product: !isNaN(prodId) && prodId > 0 ? prodId : undefined,
+              product_name: i.name,
+              quantity: i.quantity,
+              price: round2(i.price),
+              unit: i.unit,
+              total: round2(i.price * i.quantity)
+            };
+          }),
           notes: finalNotesPayload
         });
         toast.success(convertedOrderId ? 'বিক্রয় অর্ডার চালানে রূপান্তর করা হয়েছে!' : 'বিক্রয় চালান সফলভাবে সম্পন্ন হয়েছে!');
@@ -1522,13 +1553,22 @@ function InvoicesContent() {
                             placeholder="কাস্টমার / দোকান সার্চ করুন..."
                           />
                         ) : (
-                          <Input
-                            required
-                            placeholder="কাস্টমারের নাম"
-                            value={newCustomerData.name}
-                            onChange={e => setNewCustomerData({ ...newCustomerData, name: e.target.value })}
-                            className="rounded-md h-11 bg-slate-50 border-slate-200 text-xs font-bold"
-                          />
+                          <div className="space-y-2">
+                            <Input
+                              required
+                              placeholder="কাস্টমারের নাম"
+                              value={newCustomerData.name}
+                              onChange={e => setNewCustomerData({ ...newCustomerData, name: e.target.value })}
+                              className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                            />
+                            <Input
+                              placeholder="মোবাইল নম্বর (১১ ডিজিট)"
+                              value={newCustomerData.phone}
+                              maxLength={11}
+                              onChange={e => setNewCustomerData({ ...newCustomerData, phone: e.target.value.replace(/[^0-9]/g, '').slice(0, 11) })}
+                              className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-mono"
+                            />
+                          </div>
                         )}
                       </div>
 
@@ -1603,9 +1643,8 @@ function InvoicesContent() {
                       onlyInStock={true}
                       onProductChange={(selected) => {
                         setSelectedCascadingProduct(selected);
-                        if (selected) {
-                          if (selected.productId) setSelectedProductId(selected.productId);
-                          if (selected.price > 0) setItemPrice(selected.price);
+                        if (selected && selected.productId) {
+                          setSelectedProductId(selected.productId);
                         }
                       }}
                       showPriceField={true}
@@ -1702,9 +1741,10 @@ function InvoicesContent() {
                         <Label className="text-[11px] font-bold text-slate-600">ড্রাইভারের মোবাইল নম্বর</Label>
                         <Input
                           value={driverPhone}
-                          onChange={e => setDriverPhone(e.target.value)}
+                          maxLength={11}
+                          onChange={e => setDriverPhone(e.target.value.replace(/[^0-9]/g, '').slice(0, 11))}
                           placeholder="০১৭XXXXXXXX"
-                          className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                          className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-mono"
                         />
                       </div>
 

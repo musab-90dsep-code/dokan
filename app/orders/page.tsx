@@ -203,7 +203,7 @@ export default function OrdersPage() {
         invoiced: s.status === 'completed',
         paymentStatus: s.due_amount <= 0 ? 'paid' : 'unpaid',
         items: (s.items || []).map(i => ({
-          id: String(i.id || Math.random()),
+          id: String(i.product || i.id || ''),
           name: fixMiliName(i.product_name),
           price: i.price,
           quantity: i.quantity,
@@ -478,13 +478,17 @@ export default function OrdersPage() {
           paid_amount: advancePaid,
           due_amount: cartDueAmount,
           payment_method: (advanceMethod.toLowerCase().includes('bank') ? 'bank' : advanceMethod.toLowerCase().includes('cheque') ? 'cheque' : advanceMethod.toLowerCase()),
-          items: cart.map(i => ({
-            product_name: i.name,
-            quantity: i.quantity,
-            price: i.price,
-            unit: i.unit,
-            total: i.price * i.quantity
-          })),
+          items: cart.map(i => {
+            const prodId = Number(i.id);
+            return {
+              product: !isNaN(prodId) && prodId > 0 ? prodId : undefined,
+              product_name: i.name,
+              quantity: i.quantity,
+              price: i.price,
+              unit: i.unit,
+              total: i.price * i.quantity
+            };
+          }),
           notes: orderNote
         });
         toast.success('বিক্রয় অর্ডার সফলভাবে আপডেট করা হয়েছে!');
@@ -497,13 +501,17 @@ export default function OrdersPage() {
           paid_amount: advancePaid,
           due_amount: cartDueAmount,
           payment_method: (advanceMethod.toLowerCase().includes('bank') ? 'bank' : advanceMethod.toLowerCase().includes('cheque') ? 'cheque' : advanceMethod.toLowerCase()),
-          items: cart.map(i => ({
-            product_name: i.name,
-            quantity: i.quantity,
-            price: i.price,
-            unit: i.unit,
-            total: i.price * i.quantity
-          })),
+          items: cart.map(i => {
+            const prodId = Number(i.id);
+            return {
+              product: !isNaN(prodId) && prodId > 0 ? prodId : undefined,
+              product_name: i.name,
+              quantity: i.quantity,
+              price: i.price,
+              unit: i.unit,
+              total: i.price * i.quantity
+            };
+          }),
           notes: orderNote
         });
         toast.success('নতুন রড ও সিমেন্ট বিক্রয় অর্ডার সফলভাবে সংরক্ষিত হয়েছে!');

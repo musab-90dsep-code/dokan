@@ -136,7 +136,7 @@ export default function PurchasesPage() {
   const [itemQty, setItemQty] = useState<number>(1);
   const [itemPrice, setItemPrice] = useState<number>(0);
   const [itemSellPrice, setItemSellPrice] = useState<number>(0);
-  const [itemAlertLimit, setItemAlertLimit] = useState<number>(200);
+  const [itemAlertLimit, setItemAlertLimit] = useState<number>(0);
   const [itemUnit, setItemUnit] = useState<string>('কেজি');
 
   const handleAddLineItem = async () => {
@@ -494,6 +494,26 @@ export default function PurchasesPage() {
       if (index !== undefined && idx === index) return { ...i, quantity: newQty };
       if (String(i.id) === String(id)) return { ...i, quantity: newQty };
       return i;
+    }));
+  };
+
+  const handleUpdateCartPrice = (id: string | number, newPrice: number, index?: number) => {
+    if (newPrice < 0) return;
+    setCart(prev => prev.map((i, idx) => {
+      if (index !== undefined && idx === index) return { ...i, price: newPrice };
+      if (String(i.id) === String(id)) return { ...i, price: newPrice };
+      return i;
+    }));
+  };
+
+  const handleUpdateCartTotal = (id: string | number, newTotal: number, index?: number) => {
+    if (newTotal < 0) return;
+    setCart(prev => prev.map((i, idx) => {
+      const isMatch = (index !== undefined && idx === index) || String(i.id) === String(id);
+      if (!isMatch) return i;
+      const qty = Number(i.quantity) || 1;
+      const unitPrice = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : 0;
+      return { ...i, price: unitPrice };
     }));
   };
 
@@ -1205,13 +1225,22 @@ export default function PurchasesPage() {
                             placeholder={purchaseType === 'rod' ? "রড সরবরাহকারী কোম্পানি খুঁজুন..." : "সিমেন্ট সরবরাহকারী কোম্পানি খুঁজুন..."}
                           />
                         ) : (
-                          <Input
-                            required
-                            placeholder="কোম্পানি / সরবরাহকারীর নাম"
-                            value={newSupplierData.name || newSupplierData.businessName}
-                            onChange={e => setNewSupplierData({ ...newSupplierData, name: e.target.value, businessName: e.target.value })}
-                            className="rounded-xl h-11 bg-slate-50 border-slate-200 text-xs font-bold"
-                          />
+                          <div className="space-y-2">
+                            <Input
+                              required
+                              placeholder="কোম্পানি / সরবরাহকারীর নাম"
+                              value={newSupplierData.name || newSupplierData.businessName}
+                              onChange={e => setNewSupplierData({ ...newSupplierData, name: e.target.value, businessName: e.target.value })}
+                              className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                            />
+                            <Input
+                              placeholder="মোবাইল নম্বর (১১ ডিজিট)"
+                              value={newSupplierData.phone}
+                              maxLength={11}
+                              onChange={e => setNewSupplierData({ ...newSupplierData, phone: e.target.value.replace(/[^0-9]/g, '').slice(0, 11) })}
+                              className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-mono"
+                            />
+                          </div>
                         )}
                       </div>
 
@@ -1276,12 +1305,9 @@ export default function PurchasesPage() {
                       onProductChange={(selected) => {
                         setSelectedCascadingProduct(selected);
                         setSelectedProductId(selected?.productId || '');
-                        if (selected) {
-                          if (selected.price > 0) setItemPrice(selected.price);
-                          if (selected.sellPrice && selected.sellPrice > 0) setItemSellPrice(selected.sellPrice);
-                        }
                       }}
                       showPriceField={true}
+                      showTotalPriceField={true}
                       priceLabel="ক্রয় মূল্য (৳)"
                       itemPrice={itemPrice}
                       onPriceChange={setItemPrice}
@@ -1299,6 +1325,7 @@ export default function PurchasesPage() {
                       buttonLabel="+ কার্টে পণ্য যোগ করুন"
                     />
 
+
                     {/* Table */}
                     <div className="border border-slate-200 rounded-xl overflow-x-auto">
                       <Table>
@@ -1309,20 +1336,20 @@ export default function PurchasesPage() {
                             <TableHead className="text-center font-black">ব্র্যান্ড</TableHead>
                             <TableHead className="text-center font-black">সাইজ</TableHead>
                             <TableHead className="text-center font-black">পরিমাণ</TableHead>
-                            <TableHead className="text-right font-black">একক ক্রয় মূল্য</TableHead>
-                            <TableHead className="text-right font-black">মোট মূল্য</TableHead>
+                            <TableHead className="text-right font-black">মোট ক্রয় মূল্য (৳)</TableHead>
                             <TableHead className="w-10 text-center font-black">🗑️</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {cart.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={8} className="text-center py-8 text-xs text-slate-400 font-semibold">
+                              <TableCell colSpan={7} className="text-center py-8 text-xs text-slate-400 font-semibold">
                                 কার্ট খালি। উপর থেকে পণ্য নির্বাচন করে যোগ করুন।
                               </TableCell>
                             </TableRow>
                           ) : cart.map((item, idx) => {
                             const parsed = parseProductDetails(item);
+                            const lineTotal = Math.round(item.price * item.quantity * 100) / 100;
                             return (
                               <TableRow key={item.id ? `${item.id}-${idx}` : `${item.name}-${idx}`} className="text-xs border-b border-slate-100">
                                 <TableCell className="text-center font-bold text-slate-400">{toBengaliDigits(idx + 1)}</TableCell>
@@ -1332,31 +1359,44 @@ export default function PurchasesPage() {
                                 <TableCell className="text-center">
                                   <div className="inline-flex items-center gap-1.5">
                                     <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity - 1, idx)} className="w-6 h-6 rounded bg-slate-100 font-bold hover:bg-slate-200">-</button>
-                                    <span className="font-bold">{toBengaliDigits(item.quantity)} {item.unit}</span>
+                                    <span className="font-bold min-w-[50px] text-center">{toBengaliDigits(item.quantity)} {item.unit}</span>
                                     <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity + 1, idx)} className="w-6 h-6 rounded bg-slate-100 font-bold hover:bg-slate-200">+</button>
                                   </div>
                                 </TableCell>
-                                <TableCell className="text-right font-medium text-slate-600">
-                                  <div>
-                                    <span className="font-bold text-slate-800">৳{toBengaliDigits(item.price.toLocaleString('en-IN'))}</span>
+                                <TableCell className="text-right font-black text-slate-900">
+                                  <div className="flex flex-col items-end gap-1">
+                                    <div className="flex items-center justify-end gap-1">
+                                      <span className="text-slate-400 font-bold">৳</span>
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        value={lineTotal}
+                                        onChange={(e) => {
+                                          const val = parseFloat(e.target.value);
+                                          handleUpdateCartTotal(item.id || idx, isNaN(val) ? 0 : val, idx);
+                                        }}
+                                        className="w-28 h-8 text-right font-black text-indigo-700 bg-indigo-50/70 border-indigo-200 text-xs rounded-lg px-2 focus:bg-white"
+                                        title="মোট মূল্য পরিবর্তন করলে সিস্টেম স্বয়ংক্রিয় ভাগ করে নিবে"
+                                      />
+                                    </div>
                                     {isLandedCostAuto && ((shippingCost || 0) + (laborCost || 0) > 0) && cartSubtotal > 0 && (
-                                      <div className="text-[10px] font-black text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-md mt-0.5 inline-block shadow-2xs">
+                                      <div className="text-[10px] font-black text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-md inline-block shadow-2xs">
                                         {(() => {
                                           const extraCharges = (shippingCost || 0) + (laborCost || 0);
                                           const extraPerUnit = (cartSubtotal > 0 && item.quantity > 0)
                                             ? (((item.price * item.quantity / cartSubtotal) * extraCharges) / item.quantity)
                                             : 0;
-                                          const landedPrice = item.price + extraPerUnit;
-                                          const displayLanded = landedPrice % 1 === 0 
-                                            ? landedPrice.toLocaleString('en-IN')
-                                            : landedPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                                          return `প্রকৃত কেনা: ৳${toBengaliDigits(displayLanded)}`;
+                                          const landedTotal = (item.price + extraPerUnit) * item.quantity;
+                                          const displayLanded = landedTotal % 1 === 0 
+                                            ? landedTotal.toLocaleString('en-IN')
+                                            : landedTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                          return `খরচসহ মোট: ৳${toBengaliDigits(displayLanded)}`;
                                         })()}
                                       </div>
                                     )}
                                   </div>
                                 </TableCell>
-                                <TableCell className="text-right font-black text-slate-900">৳{toBengaliDigits((item.price * item.quantity).toLocaleString('en-IN'))}</TableCell>
                                 <TableCell className="text-center">
                                   <button type="button" onClick={() => handleRemoveCartItem(item.id, idx)} className="p-1 text-rose-500 hover:bg-rose-50 rounded cursor-pointer transition-colors" title="আইটেম বাদ দিন">
                                     <Trash2 className="w-4 h-4" />
@@ -1368,6 +1408,8 @@ export default function PurchasesPage() {
                         </TableBody>
                       </Table>
                     </div>
+
+
                   </CardContent>
                 </Card>
 
@@ -1404,9 +1446,10 @@ export default function PurchasesPage() {
                         <Label className="text-[11px] font-bold text-slate-600">Driver Phone (মোবাইল)</Label>
                         <Input
                           value={driverPhone}
-                          onChange={e => setDriverPhone(e.target.value)}
+                          maxLength={11}
+                          onChange={e => setDriverPhone(e.target.value.replace(/[^0-9]/g, '').slice(0, 11))}
                           placeholder="০১৭XXXXXXXX"
-                          className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                          className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-mono"
                         />
                       </div>
 

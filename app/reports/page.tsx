@@ -153,9 +153,8 @@ function MasterReportsContent() {
   const [banks, setBanks] = useState<Bank[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [commissions, setCommissions] = useState<Commission[]>([]);
-
-  const [filterStartDate, setFilterStartDate] = useState<string>('01/05/2026');
-  const [filterEndDate, setFilterEndDate] = useState<string>('28/05/2026');
+  const [filterStartDate, setFilterStartDate] = useState<string>(() => format(new Date(), 'yyyy-MM-01'));
+  const [filterEndDate, setFilterEndDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
   const [filterBranch, setFilterBranch] = useState<string>('all');
   const [filterProduct, setFilterProduct] = useState<string>('all');
   const [filterCustomer, setFilterCustomer] = useState<string>('all');

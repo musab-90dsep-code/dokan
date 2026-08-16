@@ -66,7 +66,7 @@ const menuStructure: MenuItem[] = [
     ],
   },
   {
-    name: 'খরচ (Expense)',
+    name: 'খরচ',
     icon: Wallet,
     href: '/expenses',
   },

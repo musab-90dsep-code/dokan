@@ -350,10 +350,6 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       toast.error(isCustomer ? 'গ্রাহকের নাম পূরণ করুন' : 'কোম্পানি বা প্রতিনিধির নাম পূরণ করুন');
       return;
     }
-    if (isCustomer && !formData.businessName.trim()) {
-      toast.error('ব্যবসা / প্রতিষ্ঠানের নাম পূরণ করুন');
-      return;
-    }
     if (!formData.phone.trim()) {
       toast.error('মোবাইল নম্বর পূরণ করুন');
       return;
@@ -362,7 +358,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
     const payload: PartyData = {
       party_type: type,
       name: formData.name.trim(),
-      business_name: isCustomer ? formData.businessName.trim() : (formData.businessName.trim() || formData.name.trim()),
+      business_name: formData.businessName.trim() || formData.name.trim(),
       customer_type: formData.customerType,
       supply_type: formData.customerType,
       phone: formData.phone,
@@ -958,13 +954,12 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                       {isCustomer && (
                         <div className="space-y-1">
                           <Label className="text-xs font-bold text-slate-700">
-                            ব্যবসা / প্রতিষ্ঠানের নাম <span className="text-rose-500">*</span>
+                            ব্যবসা / প্রতিষ্ঠানের নাম <span className="text-xs font-normal text-slate-400">(ঐচ্ছিক)</span>
                           </Label>
                           <Input
-                            required
                             value={formData.businessName}
                             onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                            placeholder="যেমন: রফিক ট্রেডার্স"
+                            placeholder="যেমন: রফিক ট্রেডার্স (ঐচ্ছিক)"
                             className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                           />
                         </div>
@@ -1023,9 +1018,10 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                             <Input
                               required
                               value={formData.phone}
-                              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                              placeholder="০১৭১১-XXXXXX"
-                              className="rounded-xl h-10 bg-white border-slate-200 pr-9 font-bold"
+                              maxLength={11}
+                              onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/[^0-9]/g, '').slice(0, 11) })}
+                              placeholder="০১৭১১XXXXXX"
+                              className="rounded-xl h-10 bg-white border-slate-200 pr-9 font-bold font-mono"
                             />
                           </div>
                           {formData.altPhone !== undefined && (
@@ -1033,9 +1029,10 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                               <Phone className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
                               <Input
                                 value={formData.altPhone}
-                                onChange={(e) => setFormData({ ...formData, altPhone: e.target.value })}
+                                maxLength={11}
+                                onChange={(e) => setFormData({ ...formData, altPhone: e.target.value.replace(/[^0-9]/g, '').slice(0, 11) })}
                                 placeholder="বিকল্প মোবাইল নম্বর"
-                                className="rounded-xl h-10 bg-white border-slate-200 pr-9 font-bold"
+                                className="rounded-xl h-10 bg-white border-slate-200 pr-9 font-bold font-mono"
                               />
                             </div>
                           )}

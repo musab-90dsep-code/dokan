@@ -251,27 +251,22 @@ export default function ExpensePage() {
     }
 
     try {
+      const payload = {
+        title: newExpense.title,
+        category_name: categoriesList.find(c => c.id === newExpense.category)?.name || newExpense.category,
+        amount: newExpense.amount,
+        date: newExpense.date,
+        payment_method: newExpense.paymentMethod === 'Bank' ? 'bank' : 'cash',
+        bank_account: newExpense.paymentMethod === 'Bank' && newExpense.bankId ? Number(newExpense.bankId) : null,
+        reference_no: newExpense.billNo || newExpense.vendor || '',
+        notes: newExpense.note
+      };
+
       if (editingExpenseId) {
-        await api.expenses.update(editingExpenseId, {
-          title: newExpense.title,
-          category_name: categoriesList.find(c => c.id === newExpense.category)?.name || newExpense.category,
-          amount: newExpense.amount,
-          date: newExpense.date,
-          payment_method: (newExpense.paymentMethod.toLowerCase().includes('bank') ? 'bank' : newExpense.paymentMethod.toLowerCase().includes('cheque') ? 'cheque' : newExpense.paymentMethod.toLowerCase()),
-          reference_no: newExpense.billNo || newExpense.vendor || '',
-          notes: newExpense.note
-        });
+        await api.expenses.update(editingExpenseId, payload);
         toast.success('খরচ সফলভাবে আপডেট করা হয়েছে');
       } else {
-        await api.expenses.create({
-          title: newExpense.title,
-          category_name: categoriesList.find(c => c.id === newExpense.category)?.name || newExpense.category,
-          amount: newExpense.amount,
-          date: newExpense.date,
-          payment_method: (newExpense.paymentMethod.toLowerCase().includes('bank') ? 'bank' : newExpense.paymentMethod.toLowerCase().includes('cheque') ? 'cheque' : newExpense.paymentMethod.toLowerCase()),
-          reference_no: newExpense.billNo || newExpense.vendor || '',
-          notes: newExpense.note
-        });
+        await api.expenses.create(payload);
         toast.success('নতুন খরচ সফলভাবে সংরক্ষণ করা হয়েছে');
       }
 
@@ -358,12 +353,20 @@ export default function ExpensePage() {
     return expenses.filter(e => e.category === catId).length;
   };
 
-  // Donut Chart Category Breakdown
+  // Donut Chart Category Breakdown (Real Data from Database)
+  const currentMonthExpenses = expenses.filter(e => {
+    const d = safeDate(e.date || e.createdAt);
+    return d ? isSameMonth(d, new Date()) : false;
+  });
+
   const categoryTotals = categoriesList.filter(c => c.id !== 'all').map(c => {
-    const total = expenses.filter(e => e.category === c.id).reduce((a, b) => a + (b.amount || 0), 0);
+    const total = currentMonthExpenses.filter(e => e.category === c.id || e.category === c.name).reduce((a, b) => a + (b.amount || 0), 0);
     const pct = monthSum > 0 ? Math.round((total / monthSum) * 100) : 0;
     return { ...c, total, pct };
-  }).filter(c => c.total > 0 || c.id === 'electric' || c.id === 'rent' || c.id === 'transport' || c.id === 'internet' || c.id === 'office' || c.id === 'others');
+  }).filter(c => c.total > 0);
+
+  // Real Due / Unpaid Expenses from Database
+  const dueExpensesList = expenses.filter(e => e.status === 'বকেয়া');
 
   return (
     <Shell>
@@ -373,10 +376,10 @@ export default function ExpensePage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-              খরচ ব্যবস্থাপনা (Expense)
+              খরচ ব্যবস্থাপনা
             </h1>
             <p className="text-xs text-slate-500 font-semibold mt-1">
-              আপনার ব্যবসার সকল খরচ দেখুন, যোগ করুন এবং ব্যবস্থাপনা করুন
+              আপনার ব্যবসার সকল খরচ দেখুন, নতুন খরচ যুক্ত করুন এবং হিসাব রাখুন
             </p>
           </div>
 
@@ -384,7 +387,7 @@ export default function ExpensePage() {
           <div className="flex flex-wrap items-center gap-2.5">
             <Button 
               onClick={handleOpenCreateExpense}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all text-xs"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all text-xs cursor-pointer"
             >
               <Plus className="w-4 h-4 mr-1.5" /> + নতুন খরচ যোগ করুন
             </Button>
@@ -392,25 +395,25 @@ export default function ExpensePage() {
             <Button 
               variant="outline" 
               onClick={() => setIsUploadReceiptOpen(true)}
-              className="h-11 px-4 rounded-xl border-slate-200 text-slate-700 bg-white font-bold text-xs hover:bg-slate-50"
+              className="h-11 px-4 rounded-xl border-slate-200 text-slate-700 bg-white font-bold text-xs hover:bg-slate-50 cursor-pointer"
             >
               <Camera className="w-4 h-4 mr-1.5 text-blue-600" /> বিলের ছবি আপলোড
             </Button>
 
             <Button 
               variant="outline" 
-              onClick={() => toast.info('Recurring খরচ অপশন চালু করা হয়েছে')}
-              className="h-11 px-4 rounded-xl border-slate-200 text-slate-700 bg-white font-bold text-xs hover:bg-slate-50"
+              onClick={() => toast.info('নিয়মিত খরচের তালিকা দেখানো হচ্ছে')}
+              className="h-11 px-4 rounded-xl border-slate-200 text-slate-700 bg-white font-bold text-xs hover:bg-slate-50 cursor-pointer"
             >
-              <RefreshCcw className="w-4 h-4 mr-1.5 text-indigo-600" /> Recurring খরচ
+              <RefreshCcw className="w-4 h-4 mr-1.5 text-indigo-600" /> নিয়মিত খরচ
             </Button>
 
             <Button 
               variant="outline" 
               onClick={() => window.print()}
-              className="h-11 px-4 rounded-xl border-slate-200 text-slate-700 bg-white font-bold text-xs hover:bg-slate-50"
+              className="h-11 px-4 rounded-xl border-slate-200 text-slate-700 bg-white font-bold text-xs hover:bg-slate-50 cursor-pointer"
             >
-              <BarChart3 className="w-4 h-4 mr-1.5 text-slate-600" /> রিপোর্ট <ChevronDown className="w-3.5 h-3.5 ml-1" />
+              <BarChart3 className="w-4 h-4 mr-1.5 text-slate-600" /> খরচের রিপোর্ট <ChevronDown className="w-3.5 h-3.5 ml-1" />
             </Button>
           </div>
         </div>
@@ -428,8 +431,7 @@ export default function ExpensePage() {
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">আজকের মোট খরচ</p>
                 <h3 className="text-2xl font-black text-emerald-600 mt-0.5">৳ {toBengaliDigits(todaySum.toLocaleString('bn-BD'))}</h3>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[11px] text-slate-400 font-semibold">মোট {toBengaliDigits(todayCount)}টি খরচ</span>
-                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">▲ ১২% গতকালের চেয়ে</span>
+                  <span className="text-[11px] text-slate-500 font-semibold">মোট {toBengaliDigits(todayCount)}টি এন্ট্রি</span>
                 </div>
               </div>
             </div>
@@ -445,8 +447,7 @@ export default function ExpensePage() {
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">এই মাসের খরচ</p>
                 <h3 className="text-2xl font-black text-blue-600 mt-0.5">৳ {toBengaliDigits(monthSum.toLocaleString('bn-BD'))}</h3>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[11px] text-slate-400 font-semibold">মোট {toBengaliDigits(monthCount)}টি খরচ</span>
-                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">▲ ৮% গত মাসের চেয়ে</span>
+                  <span className="text-[11px] text-slate-500 font-semibold">মোট {toBengaliDigits(monthCount)}টি এন্ট্রি</span>
                 </div>
               </div>
             </div>
@@ -462,8 +463,7 @@ export default function ExpensePage() {
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">এই বছরের খরচ</p>
                 <h3 className="text-2xl font-black text-purple-700 mt-0.5">৳ {toBengaliDigits(yearSum.toLocaleString('bn-BD'))}</h3>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[11px] text-slate-400 font-semibold">মোট {toBengaliDigits(yearCount)}টি খরচ</span>
-                  <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">▲ ১৫% গত বছরের চেয়ে</span>
+                  <span className="text-[11px] text-slate-500 font-semibold">মোট {toBengaliDigits(yearCount)}টি এন্ট্রি</span>
                 </div>
               </div>
             </div>
@@ -545,7 +545,7 @@ export default function ExpensePage() {
               <Button 
                 variant="outline" 
                 onClick={() => toast.info('ক্যাটাগরি কাস্টমাইজেশন ফিচার সক্রিয় আছে')}
-                className="w-full h-10 rounded-xl border-slate-200 text-slate-700 font-bold text-xs mt-2"
+                className="w-full h-10 rounded-xl border-slate-200 text-slate-700 font-bold text-xs mt-2 cursor-pointer"
               >
                 <Settings className="w-3.5 h-3.5 mr-1.5 text-slate-500" /> ক্যাটাগরি ব্যবস্থাপনা
               </Button>
@@ -598,7 +598,7 @@ export default function ExpensePage() {
                   </div>
                 ) : (
                   filteredExpenses.map((exp) => {
-                    const catObj = categoriesList.find(c => c.id === exp.category) || categoriesList[10];
+                    const catObj = categoriesList.find(c => c.id === exp.category || c.name === exp.category) || categoriesList[10];
                     const IconComp = catObj.icon;
                     const expDate = safeDate(exp.date) || new Date();
                     return (
@@ -615,9 +615,6 @@ export default function ExpensePage() {
                           </p>
                           <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">
                             {toBengaliDigits(format(expDate, 'MMM, yyyy', { locale: bn }))}
-                          </p>
-                          <p className="text-[9px] text-slate-400 font-mono mt-0.5">
-                            {toBengaliDigits(exp.time || '১০:১৫ AM')}
                           </p>
                         </div>
 
@@ -676,8 +673,8 @@ export default function ExpensePage() {
 
               {/* SEE MORE BUTTON */}
               <div className="text-center pt-2">
-                <Button variant="ghost" className="text-slate-500 font-bold text-xs hover:text-slate-800">
-                  আরও খরচ দেখুন <ChevronDown className="w-4 h-4 ml-1" />
+                <Button variant="ghost" className="text-slate-500 font-bold text-xs hover:text-slate-800 cursor-pointer">
+                  সকল খরচ সংরক্ষিত আছে
                 </Button>
               </div>
 
@@ -693,55 +690,23 @@ export default function ExpensePage() {
                 <PieChart className="w-4 h-4 text-purple-600" /> খরচ বিশ্লেষণ (এই মাস)
               </h3>
 
-              {/* DONUT BREAKDOWN LIST */}
+              {/* DYNAMIC CATEGORY BREAKDOWN LIST */}
               <div className="space-y-2.5 text-xs font-semibold">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                    <span className="text-slate-700">বিদ্যুৎ বিল</span>
-                  </div>
-                  <span className="font-bold text-slate-900">২৮% <span className="text-slate-400 font-normal">(৳ ৩৪,৮৫০)</span></span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-                    <span className="text-slate-700">অফিস ভাড়া</span>
-                  </div>
-                  <span className="font-bold text-slate-900">২০% <span className="text-slate-400 font-normal">(৳ ২৫,০০০)</span></span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
-                    <span className="text-slate-700">পরিবহন খরচ</span>
-                  </div>
-                  <span className="font-bold text-slate-900">১৬% <span className="text-slate-400 font-normal">(৳ ২০,০০০)</span></span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                    <span className="text-slate-700">ইন্টারনেট বিল</span>
-                  </div>
-                  <span className="font-bold text-slate-900">১০% <span className="text-slate-400 font-normal">(৳ ১২,৫০০)</span></span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
-                    <span className="text-slate-700">অফিস খরচ</span>
-                  </div>
-                  <span className="font-bold text-slate-900">৮% <span className="text-slate-400 font-normal">(৳ ৯,৮০০)</span></span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
-                    <span className="text-slate-700">অন্যান্য</span>
-                  </div>
-                  <span className="font-bold text-slate-900">১৮% <span className="text-slate-400 font-normal">(৳ ২২,৭০০)</span></span>
-                </div>
+                {categoryTotals.length === 0 ? (
+                  <p className="text-center py-4 text-slate-400 font-bold text-xs">এই মাসে কোনো খরচ এন্ট্রি নেই</p>
+                ) : (
+                  categoryTotals.map(cat => (
+                    <div key={cat.id} className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <span className={cn("w-2.5 h-2.5 rounded-full", cat.color.split(' ')[0])}></span>
+                        <span className="text-slate-700">{cat.name}</span>
+                      </div>
+                      <span className="font-bold text-slate-900">
+                        {toBengaliDigits(cat.pct)}% <span className="text-slate-400 font-normal">(৳ {toBengaliDigits(cat.total.toLocaleString('bn-BD'))})</span>
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex justify-between items-center">
@@ -750,59 +715,38 @@ export default function ExpensePage() {
               </div>
             </Card>
 
-            {/* CARD B: আগামী বিল (Due) */}
+            {/* CARD B: আসন্ন বিল ও বকেয়া (Real from Database) */}
             <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs p-5 space-y-3">
               <h3 className="font-black text-slate-900 text-sm border-b border-slate-100 pb-3 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-amber-500" /> আগামী বিল (Due)
+                <Clock className="w-4 h-4 text-amber-500" /> আসন্ন বিল ও বকেয়া
               </h3>
 
               <div className="space-y-3 text-xs">
-                
-                {/* Bill 1 */}
-                <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-100 space-y-1">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-2">
-                      <Zap className="w-4 h-4 text-amber-500" />
-                      <div>
-                        <p className="font-black text-slate-900">বিদ্যুৎ বিল (DESCO)</p>
-                        <p className="text-[10px] text-slate-500 font-mono">বিল নং: ২০২৬০৮-৫৪১২৪৫৭</p>
-                      </div>
-                    </div>
-                    <span className="text-xs font-black text-rose-600">৳ ৭,৮৫০.০০</span>
+                {dueExpensesList.length === 0 ? (
+                  <div className="text-center py-6 text-slate-400 space-y-1">
+                    <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500 opacity-60" />
+                    <p className="font-bold text-xs text-slate-600">কোনো বকেয়া বিল নেই</p>
+                    <p className="text-[10px] text-slate-400">সকল খরচের বিল পরিশোধিত আছে</p>
                   </div>
-                  <span className="inline-block text-[9px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded float-right">২ দিন পর (৩০/০৭/২০২৬)</span>
-                </div>
-
-                {/* Bill 2 */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-1">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-2">
-                      <Wifi className="w-4 h-4 text-purple-500" />
-                      <div>
-                        <p className="font-black text-slate-900">ইন্টারনেট বিল (Link3)</p>
-                        <p className="text-[10px] text-slate-500 font-mono">একাউন্ট নং: ১২৫৪৭৮</p>
+                ) : (
+                  dueExpensesList.map((exp) => (
+                    <div key={exp.id} className="p-3 bg-amber-50/50 rounded-xl border border-amber-100 space-y-1">
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-2">
+                          <Zap className="w-4 h-4 text-amber-500" />
+                          <div>
+                            <p className="font-black text-slate-900">{exp.title}</p>
+                            {exp.billNo && <p className="text-[10px] text-slate-500 font-mono">বিল নং: {toBengaliDigits(exp.billNo)}</p>}
+                          </div>
+                        </div>
+                        <span className="text-xs font-black text-rose-600">৳ {toBengaliDigits(exp.amount.toLocaleString('bn-BD'))}</span>
                       </div>
+                      <span className="inline-block text-[9px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded float-right">
+                        বকেয়া ({toBengaliDigits(exp.date)})
+                      </span>
                     </div>
-                    <span className="text-xs font-black text-slate-900">৳ ৯৫০.০০</span>
-                  </div>
-                  <span className="inline-block text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded float-right">৫ দিন পর (০২/০৮/২০২৬)</span>
-                </div>
-
-                {/* Bill 3 */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-1">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-2">
-                      <Droplets className="w-4 h-4 text-blue-500" />
-                      <div>
-                        <p className="font-black text-slate-900">পানি বিল (ওয়াসা)</p>
-                        <p className="text-[10px] text-slate-500 font-mono">একাউন্ট নং: WASA-৭৮৫৪১</p>
-                      </div>
-                    </div>
-                    <span className="text-xs font-black text-slate-900">৳ ১,২৫০.০০</span>
-                  </div>
-                  <span className="inline-block text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded float-right">৭ দিন পর (০৪/০৮/২০২৬)</span>
-                </div>
-
+                  ))
+                )}
               </div>
             </Card>
 
@@ -816,7 +760,7 @@ export default function ExpensePage() {
                 
                 <button 
                   onClick={handleOpenCreateExpense}
-                  className="p-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-2xl text-center space-y-1.5 transition-all group"
+                  className="p-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-2xl text-center space-y-1.5 transition-all group cursor-pointer"
                 >
                   <Plus className="w-5 h-5 mx-auto text-emerald-600 group-hover:scale-110 transition-transform" />
                   <p className="text-[11px] font-black text-emerald-900">নতুন খরচ যোগ করুন</p>
@@ -824,26 +768,26 @@ export default function ExpensePage() {
 
                 <button 
                   onClick={() => setIsUploadReceiptOpen(true)}
-                  className="p-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-2xl text-center space-y-1.5 transition-all group"
+                  className="p-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-2xl text-center space-y-1.5 transition-all group cursor-pointer"
                 >
                   <Camera className="w-5 h-5 mx-auto text-blue-600 group-hover:scale-110 transition-transform" />
                   <p className="text-[11px] font-black text-blue-900">বিলের ছবি আপলোড</p>
                 </button>
 
                 <button 
-                  onClick={() => toast.info('Recurring খরচ সেট করা হচ্ছে')}
-                  className="p-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-2xl text-center space-y-1.5 transition-all group"
+                  onClick={() => toast.info('নিয়মিত খরচের তালিকা দেখানো হচ্ছে')}
+                  className="p-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-2xl text-center space-y-1.5 transition-all group cursor-pointer"
                 >
                   <RefreshCcw className="w-5 h-5 mx-auto text-purple-600 group-hover:scale-110 transition-transform" />
-                  <p className="text-[11px] font-black text-purple-900">Recurring খরচ সেট করুন</p>
+                  <p className="text-[11px] font-black text-purple-900">নিয়মিত খরচ সেট করুন</p>
                 </button>
 
                 <button 
                   onClick={() => window.print()}
-                  className="p-3 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-2xl text-center space-y-1.5 transition-all group"
+                  className="p-3 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-2xl text-center space-y-1.5 transition-all group cursor-pointer"
                 >
                   <BarChart3 className="w-5 h-5 mx-auto text-orange-600 group-hover:scale-110 transition-transform" />
-                  <p className="text-[11px] font-black text-orange-900">খরচ রিপোর্ট দেখুন</p>
+                  <p className="text-[11px] font-black text-orange-900">খরচের রিপোর্ট দেখুন</p>
                 </button>
 
               </div>
@@ -947,8 +891,8 @@ export default function ExpensePage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="font-bengali text-xs font-bold">
-                    <SelectItem value="Cash">💵 নগদ (Cash)</SelectItem>
-                    <SelectItem value="Bank">🏦 ব্যাংক (Bank)</SelectItem>
+                    <SelectItem value="Cash">💵 নগদ টাকা</SelectItem>
+                    <SelectItem value="Bank">🏦 ব্যাংক একাউন্ট</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -976,17 +920,17 @@ export default function ExpensePage() {
                 <Input 
                   value={newExpense.billNo}
                   onChange={e => setNewExpense({ ...newExpense, billNo: e.target.value })}
-                  placeholder="যেমন: BILL-102" 
+                  placeholder="যেমন: বিল-১০২" 
                   className="rounded-xl h-11 text-xs"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-700">ভেনডর / প্রতিষ্ঠান (ঐচ্ছিক)</Label>
+                <Label className="text-xs font-bold text-slate-700">প্রতিষ্ঠান / ব্যক্তি (ঐচ্ছিক)</Label>
                 <Input 
                   value={newExpense.vendor}
                   onChange={e => setNewExpense({ ...newExpense, vendor: e.target.value })}
-                  placeholder="যেমন: DESCO, WASA..." 
+                  placeholder="যেমন: ডেসকো, ওয়াসা, বাড়িওয়ালা..." 
                   className="rounded-xl h-11 text-xs"
                 />
               </div>
@@ -1003,10 +947,10 @@ export default function ExpensePage() {
             </div>
 
             <DialogFooter className="grid grid-cols-2 gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => { setIsAddExpenseOpen(false); setEditingExpenseId(null); }} className="h-11 rounded-xl font-bold text-slate-600">
+              <Button type="button" variant="outline" onClick={() => { setIsAddExpenseOpen(false); setEditingExpenseId(null); }} className="h-11 rounded-xl font-bold text-slate-600 cursor-pointer">
                 বাতিল
               </Button>
-              <Button type="submit" className={cn("h-11 text-white rounded-xl font-bold", editingExpenseId ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700")}>
+              <Button type="submit" className={cn("h-11 text-white rounded-xl font-bold cursor-pointer", editingExpenseId ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700")}>
                 {editingExpenseId ? 'আপডেট করুন' : 'সংরক্ষণ করুন'}
               </Button>
             </DialogFooter>
@@ -1027,19 +971,20 @@ export default function ExpensePage() {
             <div className="border-2 border-dashed border-blue-200 hover:border-blue-400 transition-colors rounded-2xl p-8 bg-blue-50/30 cursor-pointer">
               <UploadCloud className="w-10 h-10 text-blue-500 mx-auto mb-2" />
               <p className="text-xs font-bold text-slate-800">বিলের ছবি বা পিডিএফ সিলেক্ট করুন</p>
-              <p className="text-[10px] text-slate-400 mt-1">সর্বোচ্চ ফাইল সাইজ: ৫MB</p>
+              <p className="text-[10px] text-slate-400 mt-1">সর্বোচ্চ ফাইল সাইজ: ৫ মেগাবাইট</p>
             </div>
             <DialogFooter className="grid grid-cols-2 gap-3">
-              <Button variant="outline" onClick={() => setIsUploadReceiptOpen(false)} className="rounded-xl h-10 font-bold text-xs">
+              <Button variant="outline" onClick={() => setIsUploadReceiptOpen(false)} className="rounded-xl h-10 font-bold text-xs cursor-pointer">
                 বাতিল
               </Button>
-              <Button onClick={() => { toast.success('ছবি আপলোড করা হয়েছে'); setIsUploadReceiptOpen(false); }} className="bg-blue-600 text-white rounded-xl h-10 font-bold text-xs">
+              <Button onClick={() => { toast.success('ছবি আপলোড করা হয়েছে'); setIsUploadReceiptOpen(false); }} className="bg-blue-600 text-white rounded-xl h-10 font-bold text-xs cursor-pointer">
                 আপলোড করুন
               </Button>
             </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
+
 
       {/* VIEW EXPENSE DETAILS MODAL */}
       {selectedExpenseForView && (

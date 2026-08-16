@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { Shell } from '@/components/Shell';
-import { api } from '@/lib/api';
-import { Search, Package, AlertCircle, AlertTriangle, Trash2, CheckCircle2, Edit3 } from 'lucide-react';
+import { api, ProductCostLogData, ProductCostLogEntry } from '@/lib/api';
+import { Search, Package, AlertCircle, AlertTriangle, Trash2, CheckCircle2, Edit3, History, ArrowUpRight, ArrowDownRight, RefreshCw, Calculator, Clock, Layers, Filter } from 'lucide-react';
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from '@/components/ui/table';
@@ -47,6 +47,13 @@ export default function InventoryPage() {
   const [editBuyPrice, setEditBuyPrice] = useState<number | string>('');
   const [editSellPrice, setEditSellPrice] = useState<number | string>('');
   const [isSavingPrice, setIsSavingPrice] = useState(false);
+
+  // Cost Log & History State
+  const [isCostLogOpen, setIsCostLogOpen] = useState(false);
+  const [costLogLoading, setCostLogLoading] = useState(false);
+  const [costLogs, setCostLogs] = useState<ProductCostLogData[]>([]);
+  const [selectedLogProductId, setSelectedLogProductId] = useState<string>('all');
+  const [filterLogType, setFilterLogType] = useState<string>('all');
 
   const fetchProducts = async () => {
     try {
@@ -165,6 +172,41 @@ export default function InventoryPage() {
     }
   };
 
+  const openCostLogModal = async (productId?: string) => {
+    setIsCostLogOpen(true);
+    setCostLogLoading(true);
+    if (productId) {
+      setSelectedLogProductId(String(productId));
+    } else {
+      setSelectedLogProductId('all');
+    }
+    try {
+      const res = await api.inventory.getCostLogs();
+      const safeData = Array.isArray(res) ? res : [res];
+      setCostLogs(safeData);
+    } catch (e) {
+      console.error('Error fetching cost logs:', e);
+      toast.error('হিস্ট্রি লগ লোড করা সম্ভব হয়নি');
+    } finally {
+      setCostLogLoading(false);
+    }
+  };
+
+  const handleRefreshCostLogs = async () => {
+    setCostLogLoading(true);
+    try {
+      const res = await api.inventory.getCostLogs();
+      const safeData = Array.isArray(res) ? res : [res];
+      setCostLogs(safeData);
+      toast.success('হিস্ট্রি লগ রিফ্রেশ করা হয়েছে');
+    } catch (e) {
+      console.error('Error refreshing cost logs:', e);
+      toast.error('রিফ্রেশ করা সম্ভব হয়নি');
+    } finally {
+      setCostLogLoading(false);
+    }
+  };
+
   const filtered = products.filter(p => 
     (filterCat === 'সব' || p.category === filterCat) &&
     (p.name.toLowerCase().includes(search.toLowerCase()) || (p.brand && p.brand.toLowerCase().includes(search.toLowerCase())))
@@ -174,6 +216,29 @@ export default function InventoryPage() {
   const priceReviewItems = products.filter(p => p.needsPriceReview);
   const totalStockValue = products.reduce((acc, p) => acc + (p.buyPrice * p.stock), 0);
 
+  // Filter cost logs based on selected product and type
+  const activeProductLogs = selectedLogProductId === 'all' 
+    ? costLogs.flatMap(p => p.logs.map(l => ({ ...l, product_name: p.product_name, product_id: p.product_id, unit: p.unit })))
+    : (costLogs.find(p => String(p.product_id) === selectedLogProductId)?.logs.map(l => ({ 
+        ...l, 
+        product_name: costLogs.find(p => String(p.product_id) === selectedLogProductId)?.product_name || '',
+        product_id: Number(selectedLogProductId),
+        unit: costLogs.find(p => String(p.product_id) === selectedLogProductId)?.unit || 'পিস'
+      })) || []);
+
+  const displayedCostLogs = activeProductLogs.filter(l => {
+    if (filterLogType === 'all') return true;
+    if (filterLogType === 'purchase') return l.transaction_type === 'purchase';
+    if (filterLogType === 'sale') return l.transaction_type === 'sale';
+    if (filterLogType === 'return') return l.transaction_type === 'sale_return' || l.transaction_type === 'purchase_return';
+    if (filterLogType === 'recalculated') return Boolean(l.is_edited);
+    return true;
+  });
+
+  const selectedProductInfo = selectedLogProductId !== 'all' 
+    ? costLogs.find(p => String(p.product_id) === selectedLogProductId)
+    : null;
+
   return (
     <Shell>
       <div className="space-y-6">
@@ -181,6 +246,15 @@ export default function InventoryPage() {
           <div>
             <h2 className="text-2xl font-bold text-slate-900 font-bengali">পণ্য তালিকা ও স্টক</h2>
             <p className="text-slate-500 font-bengali text-sm">রড, সিমেন্ট, রিং ও অন্যান্য পণ্যের বর্তমান মজুদ ও বিবরণ</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => openCostLogModal()}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bengali font-bold text-xs gap-2 rounded-xl shadow-xs cursor-pointer active:scale-95 transition-all py-2.5 px-4"
+            >
+              <History className="w-4 h-4" />
+              ক্রয়মূল্য ও স্টক ইতিহাস লগ
+            </Button>
           </div>
         </div>
 
@@ -303,6 +377,15 @@ export default function InventoryPage() {
                       </TableCell>
                       <TableCell className="text-center font-bengali p-2" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openCostLogModal(product.id)}
+                            className="h-8 w-8 p-0 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                            title="ক্রয়মূল্য ও স্টক পরিবর্তনের ইতিহাস দেখুন"
+                          >
+                            <History className="w-4 h-4" />
+                          </Button>
                           {product.needsPriceReview && (
                             <Button
                               variant="ghost"
@@ -634,6 +717,317 @@ export default function InventoryPage() {
               className="font-bengali rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs"
             >
               {isDeleting ? 'মুছে ফেলা হচ্ছে...' : 'মুছে ফেলুন'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stock & Purchase Cost History Log Dialog */}
+      <Dialog open={isCostLogOpen} onOpenChange={setIsCostLogOpen}>
+        <DialogContent className="w-[95vw] max-w-5xl max-h-[90vh] flex flex-col p-0 rounded-2xl overflow-hidden font-bengali bg-slate-50">
+          <DialogHeader className="p-5 bg-white border-b border-slate-200 shrink-0">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
+                  <History className="w-6 h-6" />
+                </div>
+                <div>
+                  <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                    ক্রয়মূল্য ও স্টক ইতিহাস লগ (Audit Trail)
+                  </DialogTitle>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    প্রতিটি চালানের কারণে পণ্যের কেনা দাম ও স্টকের পরিবর্তন ও স্বয়ংক্রিয় রিক্যালকুলেশন সূত্র
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRefreshCostLogs}
+                  disabled={costLogLoading}
+                  className="rounded-xl border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 gap-1.5"
+                >
+                  <RefreshCw className={cn("w-3.5 h-3.5", costLogLoading && "animate-spin text-indigo-600")} />
+                  রিফ্রেশ
+                </Button>
+              </div>
+            </div>
+
+            {/* Filter Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-3 border-t border-slate-100">
+              {/* Product Selector */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-slate-600 whitespace-nowrap">পণ্য নির্বাচন:</label>
+                <select
+                  value={selectedLogProductId}
+                  onChange={(e) => setSelectedLogProductId(e.target.value)}
+                  className="text-xs font-bold font-bengali bg-slate-100 border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                >
+                  <option value="all">সব পণ্য ({costLogs.length}টি)</option>
+                  {costLogs.map((p) => (
+                    <option key={p.product_id} value={String(p.product_id)}>
+                      {p.product_name} (স্টক: {p.current_stock} {p.unit} | দর: ৳{p.current_purchase_price})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Type Filter */}
+              <div className="flex items-center gap-1 overflow-x-auto">
+                {[
+                  { id: 'all', label: 'সব লেনদেন' },
+                  { id: 'purchase', label: 'ক্রয় (Purchase)' },
+                  { id: 'sale', label: 'বিক্রয় (Sale)' },
+                  { id: 'return', label: 'রিটার্ন (Returns)' },
+                  { id: 'recalculated', label: '🔄 এডিট ও রিক্যালকুলেটেড' },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setFilterLogType(t.id)}
+                    className={cn(
+                      "px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap",
+                      filterLogType === t.id
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </DialogHeader>
+
+          {/* Product Summary Header Card if specific product selected */}
+          {selectedProductInfo && (
+            <div className="px-5 py-3 bg-indigo-50/60 border-b border-indigo-100 space-y-2 shrink-0">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-white p-2.5 rounded-xl border border-indigo-100 shadow-2xs">
+                  <span className="text-[10px] text-slate-400 font-bold block">নির্বাচিত পণ্য</span>
+                  <span className="text-sm font-black text-slate-800 truncate block">{selectedProductInfo.product_name}</span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-indigo-100 shadow-2xs">
+                  <span className="text-[10px] text-slate-400 font-bold block">বর্তমান স্টক</span>
+                  <span className="text-sm font-black text-indigo-700">{selectedProductInfo.current_stock} {selectedProductInfo.unit}</span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-indigo-100 shadow-2xs">
+                  <span className="text-[10px] text-slate-400 font-bold block">বর্তমান গড় ক্রয়মূল্য</span>
+                  <span className="text-sm font-black text-emerald-600">{formatBnCurrency(selectedProductInfo.current_purchase_price)}</span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-indigo-100 shadow-2xs">
+                  <span className="text-[10px] text-slate-400 font-bold block">মোট হিসাব পরিবর্তন</span>
+                  <span className="text-sm font-black text-slate-700">{toBnNum(selectedProductInfo.logs.length)} বার</span>
+                </div>
+              </div>
+
+              {selectedProductInfo.has_recalculations && (
+                <div className="bg-amber-100/80 border border-amber-300 rounded-xl px-3 py-2 flex items-center justify-between text-xs text-amber-900 font-bold">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span>এই পণ্যের অতীতে চালান এডিট হওয়ার কারণে টাইমলাইন রিক্যালকুলেট হয়েছে।</span>
+                  </div>
+                  {selectedProductInfo.latest_recalculation_date && (
+                    <span className="text-[11px] bg-white/80 px-2 py-0.5 rounded border border-amber-300">
+                      সর্বশেষ রিক্যালকুলেশন: {selectedProductInfo.latest_recalculation_date}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Body List */}
+          <div className="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-3">
+            {costLogLoading ? (
+              <div className="py-16 text-center text-slate-400">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-600 mb-2" />
+                ইতিহাস লগ লোড হচ্ছে...
+              </div>
+            ) : displayedCostLogs.length === 0 ? (
+              <div className="py-16 text-center text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200">
+                <Clock className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                <p className="font-bold text-slate-600">কোনো হিস্ট্রি লগ পাওয়া যায়নি</p>
+                <p className="text-xs text-slate-400 mt-1">ক্রয় বা বিক্রয় চালান তৈরি বা এডিট হলে এখানে স্বয়ংক্রিয়ভাবে বিস্তারিত আসবে</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {displayedCostLogs.map((log, idx) => {
+                  const isPurchase = log.transaction_type === 'purchase';
+                  const isSale = log.transaction_type === 'sale';
+                  const isReturn = log.transaction_type === 'sale_return' || log.transaction_type === 'purchase_return';
+                  const costIncreased = log.cost_change > 0;
+                  const costDecreased = log.cost_change < 0;
+
+                  return (
+                    <div
+                      key={`${log.transaction_id}-${idx}`}
+                      className={cn(
+                        "bg-white rounded-xl border p-4 shadow-2xs hover:shadow-xs transition-all",
+                        log.is_edited ? "border-amber-300 border-l-4 border-l-amber-500 bg-amber-50/20" : "border-slate-200/80"
+                      )}
+                    >
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span
+                            className={cn(
+                              "px-2.5 py-1 rounded-lg text-xs font-black",
+                              isPurchase && "bg-blue-50 text-blue-700 border border-blue-200",
+                              isSale && "bg-emerald-50 text-emerald-700 border border-emerald-200",
+                              isReturn && "bg-purple-50 text-purple-700 border border-purple-200"
+                            )}
+                          >
+                            {log.transaction_type_label}
+                          </span>
+                          <span className="font-mono font-bold text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                            {log.invoice_no || `TX#${log.transaction_id}`}
+                          </span>
+                          {selectedLogProductId === 'all' && (
+                            <span className="text-xs font-bold bg-indigo-50/70 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">
+                              {log.product_name}
+                            </span>
+                          )}
+                          {log.party_name && (
+                            <span className="text-xs text-slate-600 font-medium">
+                              ({log.party_name})
+                            </span>
+                          )}
+
+                          {log.is_edited && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs" title={`এডিট হয়েছে: ${log.edited_at}`}>
+                              <RefreshCw className="w-3 h-3 text-amber-700" />
+                              এডিট ও রিক্যালকুলেটেড
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>চালানের তারিখ: {log.date}</span>
+                          {log.is_edited && log.edited_at && (
+                            <span className="text-amber-700 font-bold bg-amber-100/70 px-1.5 py-0.2 rounded">
+                              এডিট: {log.edited_at}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 text-xs">
+                        <div>
+                          <span className="text-slate-400 font-medium block">পরিমাণ (In/Out)</span>
+                          <span
+                            className={cn(
+                              "font-black text-sm",
+                              (isPurchase || log.transaction_type === 'sale_return') ? "text-emerald-600" : "text-rose-600"
+                            )}
+                          >
+                            {(isPurchase || log.transaction_type === 'sale_return') ? '+' : '-'}{log.quantity} {log.unit}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-slate-400 font-medium block">চালান দর (ভাড়াসহ)</span>
+                          <span className="font-bold text-slate-800 text-sm">
+                            {formatBnCurrency(log.landed_cost)}
+                            {log.extra_per_unit > 0 && (
+                              <span className="text-[10px] text-slate-400 font-normal ml-1">
+                                (মূল: {log.rate} + খরচ: {log.extra_per_unit})
+                              </span>
+                            )}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-slate-400 font-medium block">স্টক পরিবর্তন</span>
+                          <div className="flex items-center gap-1 font-bold text-slate-700 text-xs">
+                            <span>{log.stock_before}</span>
+                            <span className="text-slate-400">➔</span>
+                            <span className="font-black text-slate-900">{log.stock_after} {log.unit}</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-slate-400 font-medium block">গড় ক্রয়মূল্য সমন্বয়</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-slate-500">৳{log.cost_before}</span>
+                            <span className="text-slate-400">➔</span>
+                            <span
+                              className={cn(
+                                "font-black text-sm",
+                                costIncreased && "text-rose-600",
+                                costDecreased && "text-emerald-600",
+                                !costIncreased && !costDecreased && "text-slate-800"
+                              )}
+                            >
+                              ৳{log.cost_after}
+                            </span>
+                            {costIncreased && (
+                              <span className="inline-flex items-center text-[10px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                                <ArrowUpRight className="w-3 h-3" /> +৳{Math.abs(log.cost_change)}
+                              </span>
+                            )}
+                            {costDecreased && (
+                              <span className="inline-flex items-center text-[10px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                <ArrowDownRight className="w-3 h-3" /> -৳{Math.abs(log.cost_change)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Recalculation Note if edited */}
+                      {log.is_edited && (
+                        <div className="mt-3 text-xs text-amber-950 bg-amber-100/90 border border-amber-300 rounded-xl p-3 space-y-1.5 font-bengali">
+                          <div className="flex items-center gap-2 font-black text-amber-900">
+                            <RefreshCw className="w-4 h-4 text-amber-700 shrink-0" />
+                            <span>চালান এডিট ও রিক্যালকুলেশন বিবরণ ({log.edited_at}):</span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
+                            <div className="bg-white/80 p-2 rounded-lg border border-amber-200">
+                              <span className="text-slate-500 font-bold block">কেন রিক্যালকুলেট হলো?</span>
+                              <span className="font-bold text-slate-800">{log.recalculation_reason || 'চালানের পণ্য বা পরিমাণ পরিবর্তনের কারণে'}</span>
+                            </div>
+                            <div className="bg-white/80 p-2 rounded-lg border border-amber-200">
+                              <span className="text-slate-500 font-bold block">পরবর্তী কয়টি ক্রয়মূল্য রিক্যালকুলেট হয়েছে?</span>
+                              <span className="font-black text-indigo-700">
+                                পরবর্তী {toBnNum(log.subsequent_purchases_recalculated || 0)}টি ক্রয় চালান (মোট {toBnNum(log.subsequent_transactions_recalculated || 0)}টি লেনদেন)
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Recalculated due to prior edit */}
+                      {log.was_recomputed_due_to_prior_edit && (
+                        <div className="mt-2 text-[11px] text-indigo-800 bg-indigo-50/80 border border-indigo-200 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 font-bold font-bengali">
+                          <RefreshCw className="w-3 h-3 text-indigo-600 shrink-0" />
+                          <span>পূর্ববর্তী চালান এডিটের প্রভাবে এই চালানের গড় ক্রয়মূল্য স্বয়ংক্রিয়ভাবে নতুন করে রিক্যালকুলেট হয়েছে।</span>
+                        </div>
+                      )}
+
+                      {/* Formula & Note Breakdown */}
+                      {log.formula && (
+                        <div className="mt-3 pt-2 border-t border-slate-50 flex items-center gap-2 bg-slate-50/80 p-2.5 rounded-lg text-xs font-mono text-slate-700">
+                          <Calculator className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                          <span className="text-[11px] font-bold text-slate-500">হিসাব সূত্র:</span>
+                          <span className="text-[11px] font-bold text-indigo-900 select-all">{log.formula}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="p-4 bg-white border-t border-slate-200 flex justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setIsCostLogOpen(false)}
+              className="rounded-xl border-slate-200 text-xs font-bold text-slate-700"
+            >
+              বন্ধ করুন
             </Button>
           </DialogFooter>
         </DialogContent>
