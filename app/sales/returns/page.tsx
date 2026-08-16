@@ -826,17 +826,22 @@ export default function SalesReturnsPage() {
                       </TableCell>
                     </TableRow>
                   ) : filteredReturns.map((r) => (
-                    <TableRow key={r.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-100">
+                    <TableRow 
+                      key={r.id} 
+                      onClick={() => setSelectedReturn(r)}
+                      className="hover:bg-blue-50/60 transition-colors border-b border-slate-100 cursor-pointer group"
+                      title="রিটার্ন চালান বিবরণী দেখতে ক্লিক করুন"
+                    >
                       <TableCell className="py-3 px-4">
-                        <div className="font-bold text-slate-900 text-xs">
+                        <div className="font-bold text-slate-900 text-xs group-hover:text-blue-600 transition-colors">
                           {formatDate(r.createdAt)}
                         </div>
-                        <span className="font-mono text-[10px] text-blue-600 font-bold">
+                        <span className="font-mono text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
                           #{r.id.slice(0, 8).toUpperCase()}
                         </span>
                       </TableCell>
                       <TableCell className="py-3 px-4">
-                        <span className="font-bold text-slate-800 text-xs">{r.customerName}</span>
+                        <span className="font-bold text-slate-800 text-xs group-hover:text-blue-700 transition-colors">{r.customerName}</span>
                       </TableCell>
                       <TableCell className="py-3 px-4">
                         <div className="space-y-0.5">
@@ -876,14 +881,30 @@ export default function SalesReturnsPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-center py-3 px-4">
+                      <TableCell className="text-center py-3 px-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           <Button
                             size="icon"
                             variant="ghost"
-                            title="মেমো ভিউ ও প্রিন্ট"
-                            onClick={() => setSelectedReturn(r)}
-                            className="h-8 w-8 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-md cursor-pointer"
+                            title="চালান বিবরণী দেখুন"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedReturn(r);
+                            }}
+                            className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-100/70 rounded-md cursor-pointer"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="মেমো প্রিন্ট করুন"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedReturn(r);
+                              setIsPrintMemoOpen(true);
+                            }}
+                            className="h-8 w-8 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
                           >
                             <Printer className="w-4 h-4" />
                           </Button>
@@ -891,7 +912,10 @@ export default function SalesReturnsPage() {
                             size="icon"
                             variant="ghost"
                             title="এডিট করুন"
-                            onClick={() => handleEditReturn(r)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditReturn(r);
+                            }}
                             className="h-8 w-8 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-md cursor-pointer"
                           >
                             <Edit2 className="w-4 h-4" />
@@ -900,7 +924,11 @@ export default function SalesReturnsPage() {
                             size="icon"
                             variant="ghost"
                             title="ডিলিট করুন"
-                            onClick={() => { setDeletingReturn(r); setIsDeleteDialogOpen(true); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeletingReturn(r);
+                              setIsDeleteDialogOpen(true);
+                            }}
                             className="h-8 w-8 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
                           >
                             <Trash2 className="w-4 h-4" />

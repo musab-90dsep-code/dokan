@@ -498,7 +498,7 @@ export function CascadingProductSelector({
         <div className={cn("grid gap-2", 
           categoriesToDisplay.length === 1 ? "grid-cols-1 sm:grid-cols-2" :
           categoriesToDisplay.length === 2 ? "grid-cols-2" :
-          "grid-cols-4"
+          "grid-cols-2 sm:grid-cols-4"
         )}>
           {categoriesToDisplay.map((cat) => {
             const isSelected = category === cat;

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { api, TransactionData } from '@/lib/api';
 import { Button } from './ui/button';
-import { HardHat, Truck, Search, Bell, Landmark, CheckCircle2, Calendar, FileText, ShoppingCart, ArrowRight, NotebookPen, Plus, Trash2, X, Info } from 'lucide-react';
+import { HardHat, Truck, Search, Bell, Landmark, CheckCircle2, Calendar, FileText, ShoppingCart, ArrowRight, NotebookPen, Plus, Trash2, X, Info, Menu } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
@@ -102,6 +102,7 @@ export interface LaborChargeItem {
 
 export function Shell({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   // Admin user context
   const [user, setUser] = useState<{ displayName: string; email: string; photoURL?: string } | null>({
     displayName: 'এডমিন ইউজার',
@@ -625,36 +626,46 @@ export function Shell({ children }: { children: ReactNode }) {
       <div className="fixed bottom-0 left-0 w-[700px] h-[700px] bg-gradient-to-tr from-indigo-500/10 via-blue-400/5 to-transparent rounded-full blur-3xl pointer-events-none z-0" />
 
       {/* Sidebar Component */}
-      <Sidebar />
+      <Sidebar mobileOpen={mobileMenuOpen} onCloseMobile={() => setMobileMenuOpen(false)} />
 
       {/* Main Wrapper */}
       <div className="flex-1 flex flex-col min-w-0 z-10 relative">
         {/* Top Navbar Header */}
-        <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 md:px-6 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-sm print:hidden">
-          {/* Left: Search Bar */}
-          <div className="flex items-center gap-3 flex-1 max-w-md">
+        <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-3 sm:px-4 md:px-6 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-sm print:hidden">
+          {/* Left: Mobile Hamburger & Search Bar */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 max-w-[200px] xs:max-w-xs sm:max-w-md">
+            {/* Mobile Hamburger Toggle */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 text-slate-700 hover:text-orange-600 hover:bg-orange-50 rounded-xl transition-colors flex-shrink-0 cursor-pointer"
+              title="মেনু খুলুন"
+              aria-label="Toggle navigation menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
             <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="ইনভয়েস, কাস্টমার, বা পণ্য সার্চ করুন..."
+                placeholder="সার্চ করুন..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-sm bg-slate-100/80 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500 transition-all font-bengali"
+                className="w-full pl-9 pr-3 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-slate-100/80 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500 transition-all font-bengali"
               />
             </div>
           </div>
 
           {/* Right: Quick Triggers & User Profile */}
-          <div className="flex items-center gap-2 md:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3">
             {/* Shipping Charges Drawer Trigger */}
             <button
               onClick={() => setShowShippingDrawer(!showShippingDrawer)}
-              className="relative p-2 px-2.5 text-slate-700 hover:text-slate-900 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl transition-all flex items-center gap-1.5 font-bengali font-semibold text-xs shadow-2xs cursor-pointer"
+              className="relative p-1.5 sm:p-2 sm:px-2.5 text-slate-700 hover:text-slate-900 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl transition-all flex items-center gap-1.5 font-bengali font-semibold text-xs shadow-2xs cursor-pointer"
               title="গাড়ি ভাড়া খাতা (ট্রাক / পরিবহন খরচ)"
             >
               <Truck className="h-4.5 w-4.5 text-blue-600" />
-              <span className="hidden sm:inline text-slate-800 font-bold">গাড়ি ভাড়া</span>
+              <span className="hidden lg:inline text-slate-800 font-bold">গাড়ি ভাড়া</span>
               {pendingShippingItems.length > 0 && (
                 <span className="flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-full min-w-[18px]">
                   {toBnDigits(pendingShippingItems.length)}
@@ -665,11 +676,11 @@ export function Shell({ children }: { children: ReactNode }) {
             {/* Labor Charges Drawer Trigger */}
             <button
               onClick={() => setShowLaborDrawer(!showLaborDrawer)}
-              className="relative p-2 px-2.5 text-slate-700 hover:text-slate-900 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 rounded-xl transition-all flex items-center gap-1.5 font-bengali font-semibold text-xs shadow-2xs cursor-pointer"
+              className="relative p-1.5 sm:p-2 sm:px-2.5 text-slate-700 hover:text-slate-900 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 rounded-xl transition-all flex items-center gap-1.5 font-bengali font-semibold text-xs shadow-2xs cursor-pointer"
               title="লেবার খরচ খাতা (আনলোডিং / শ্রমিক মজুরি)"
             >
               <HardHat className="h-4.5 w-4.5 text-amber-600" />
-              <span className="hidden sm:inline text-slate-800 font-bold">লেবার খরচ</span>
+              <span className="hidden lg:inline text-slate-800 font-bold">লেবার খরচ</span>
               {pendingLaborItems.length > 0 && (
                 <span className="flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-amber-600 text-white rounded-full min-w-[18px]">
                   {toBnDigits(pendingLaborItems.length)}
@@ -680,10 +691,10 @@ export function Shell({ children }: { children: ReactNode }) {
             {/* Pending Orders Drawer Trigger */}
             <button
               onClick={() => setShowOrdersDrawer(!showOrdersDrawer)}
-              className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all flex items-center gap-1.5"
+              className="relative p-1.5 sm:p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all flex items-center gap-1.5"
               title="চালান অপেক্ষমাণ অর্ডারসমূহ"
             >
-              <ShoppingCart className="h-5 w-5 text-orange-600" />
+              <ShoppingCart className="h-4.5 w-4.5 sm:h-5 sm:w-5 text-orange-600" />
               {pendingOrders.length > 0 && (
                 <span className="flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-orange-600 text-white rounded-full min-w-[18px] shadow-xs">
                   {toBnDigits(pendingOrders.length)}
@@ -694,11 +705,11 @@ export function Shell({ children }: { children: ReactNode }) {
             {/* Hawlat Drawer Trigger */}
             <button
               onClick={() => setShowHawlatDrawer(!showHawlatDrawer)}
-              className="relative p-2 px-2.5 text-slate-700 hover:text-slate-900 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-xl transition-all flex items-center gap-1.5 font-bengali font-semibold text-xs shadow-2xs"
+              className="relative p-1.5 sm:p-2 sm:px-2.5 text-slate-700 hover:text-slate-900 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-xl transition-all flex items-center gap-1.5 font-bengali font-semibold text-xs shadow-2xs"
               title="হাওলাত খাতা (নোট মেমো)"
             >
               <NotebookPen className="h-4.5 w-4.5 text-emerald-600" />
-              <span className="hidden sm:inline text-slate-800 font-bold">হাওলাত</span>
+              <span className="hidden lg:inline text-slate-800 font-bold">হাওলাত</span>
               {hawlatItems.length > 0 && (
                 <span className="flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-emerald-600 text-white rounded-full min-w-[18px]">
                   {toBnDigits(hawlatItems.length)}
@@ -709,10 +720,10 @@ export function Shell({ children }: { children: ReactNode }) {
             {/* Cheque Drawer Trigger */}
             <button
               onClick={() => setShowChequeDrawer(!showChequeDrawer)}
-              className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all flex items-center gap-1.5"
+              className="relative p-1.5 sm:p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all flex items-center gap-1.5"
               title="চেক ব্যবস্থাপনা"
             >
-              <Landmark className="h-5 w-5 text-indigo-600" />
+              <Landmark className="h-4.5 w-4.5 sm:h-5 sm:w-5 text-indigo-600" />
               {pendingCheques.length > 0 && (
                 <span className="flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-indigo-600 text-white rounded-full min-w-[18px]">
                   {toBnDigits(pendingCheques.length)}
@@ -721,8 +732,8 @@ export function Shell({ children }: { children: ReactNode }) {
             </button>
 
             {/* User Avatar & Name */}
-            <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center text-white font-bold shadow-md shadow-orange-500/20">
+            <div className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-3 border-l border-slate-200">
+              <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center text-white font-bold text-xs sm:text-sm shadow-md shadow-orange-500/20 flex-shrink-0">
                 {user?.displayName?.charAt(0) || 'D'}
               </div>
               <div className="hidden md:block text-left font-bengali">
@@ -733,8 +744,8 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        {/* Page Content Container - Widescreen Optimized */}
-        <main className="flex-1 p-3 sm:p-5 lg:p-6 w-full max-w-[1700px] mx-auto">
+        {/* Page Content Container - Widescreen Optimized with responsive padding */}
+        <main className="flex-1 p-2 sm:p-4 md:p-6 w-full max-w-[1700px] mx-auto min-w-0">
           {children}
         </main>
       </div>

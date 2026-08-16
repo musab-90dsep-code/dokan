@@ -93,7 +93,12 @@ const menuStructure: MenuItem[] = [
   },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
+}
+
+export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
@@ -103,7 +108,7 @@ export function Sidebar() {
   const [isHovered, setIsHovered] = useState(false);
   const [isPinned, setIsPinned] = useState(false); // Option to pin sidebar if user clicks pin
 
-  const isExpanded = isHovered || isPinned;
+  const isExpanded = isHovered || isPinned || mobileOpen;
 
   const [openMenus, setOpenMenus] = useState<string[]>(() => {
     const active = menuStructure.find(m =>
@@ -127,6 +132,12 @@ export function Sidebar() {
     } catch (e) { console.error(e); }
   };
 
+  const handleNavClick = () => {
+    if (onCloseMobile) {
+      onCloseMobile();
+    }
+  };
+
   const isChildActive = (children: { href: string }[]) =>
     children.some(c => {
       const [baseHref, query] = c.href.split('?');
@@ -141,190 +152,223 @@ export function Sidebar() {
     });
 
   return (
-    <div 
-      className="relative z-[70] flex-shrink-0 print:hidden"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Invisible spacer to maintain main layout width when sidebar expands over */}
-      <div className="w-[72px] h-screen hidden sm:block pointer-events-none" />
+    <>
+      {/* Mobile Drawer Backdrop */}
+      {mobileOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-[65] md:hidden transition-opacity duration-300"
+          onClick={onCloseMobile}
+          aria-hidden="true"
+        />
+      )}
 
-      {/* Actual Animated Sidebar Wrapper */}
-      <aside 
-        className={cn(
-          'fixed top-0 left-0 h-screen flex flex-col bg-white/95 backdrop-blur-xl border-r border-slate-200/80 shadow-[4px_0_24px_rgba(0,0,0,0.06)] transition-all duration-300 ease-in-out overflow-hidden z-[70] font-bengali',
-          isExpanded ? 'w-[260px]' : 'w-[72px]'
-        )}
+      <div 
+        className="relative z-[70] flex-shrink-0 print:hidden"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
-        {/* LOGO HEADER */}
-        <div className="p-3.5 sm:p-4 border-b border-orange-700/20 bg-gradient-to-br from-orange-600 via-orange-500 to-orange-600 relative overflow-hidden flex items-center justify-between min-h-[64px]">
-          <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 bg-white/25 rounded-xl flex items-center justify-center text-white font-black text-lg flex-shrink-0 shadow-inner">
-              ব
-            </div>
-            {isExpanded && (
-              <div className="overflow-hidden whitespace-nowrap transition-all duration-200">
-                <h1 className="text-sm font-black text-white leading-tight">ব্রাদার্স ট্রেডার্স</h1>
-                <p className="text-[10px] text-orange-100 font-semibold">রড ও সিমেন্ট ব্যবসা</p>
+        {/* Responsive spacer for desktop only */}
+        <div 
+          className={cn(
+            "h-screen hidden md:block pointer-events-none transition-all duration-300",
+            isPinned ? "w-[260px]" : "w-[72px]"
+          )} 
+        />
+
+        {/* Animated Sidebar Wrapper */}
+        <aside 
+          className={cn(
+            'fixed top-0 left-0 h-screen flex flex-col bg-white/95 backdrop-blur-xl border-r border-slate-200/80 shadow-[4px_0_24px_rgba(0,0,0,0.06)] transition-all duration-300 ease-in-out overflow-hidden z-[70] font-bengali',
+            // Mobile: translate in/out as 280px drawer; Desktop: 72px or 260px width
+            'w-[280px] max-w-[85vw] md:max-w-none',
+            mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+            !mobileOpen && (isExpanded ? 'md:w-[260px]' : 'md:w-[72px]')
+          )}
+        >
+          {/* LOGO HEADER */}
+          <div className="p-3.5 sm:p-4 border-b border-orange-700/20 bg-gradient-to-br from-orange-600 via-orange-500 to-orange-600 relative overflow-hidden flex items-center justify-between min-h-[64px]">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="w-10 h-10 bg-white/25 rounded-xl flex items-center justify-center text-white font-black text-lg flex-shrink-0 shadow-inner">
+                ব
               </div>
-            )}
+              {(isExpanded || mobileOpen) && (
+                <div className="overflow-hidden whitespace-nowrap transition-all duration-200">
+                  <h1 className="text-sm font-black text-white leading-tight">ব্রাদার্স ট্রেডার্স</h1>
+                  <p className="text-[10px] text-orange-100 font-semibold">রড ও সিমেন্ট ব্যবসা</p>
+                </div>
+              )}
+            </div>
+
+            {/* Desktop Pin Toggle */}
+            <div className="flex items-center gap-1">
+              {isExpanded && !mobileOpen && (
+                <button 
+                  onClick={() => setIsPinned(!isPinned)}
+                  title={isPinned ? 'সাইডবার পিন খুলুন' : 'সাইডবার পিন করুন'}
+                  className="hidden md:flex text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  {isPinned ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+                </button>
+              )}
+
+              {/* Mobile Close Button */}
+              {mobileOpen && (
+                <button
+                  onClick={onCloseMobile}
+                  className="md:hidden text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                  title="মেনু বন্ধ করুন"
+                >
+                  <PanelLeftClose className="w-5 h-5" />
+                </button>
+              )}
+            </div>
           </div>
 
-          {isExpanded && (
-            <button 
-              onClick={() => setIsPinned(!isPinned)}
-              title={isPinned ? 'সাইডবার পিন খুলুন' : 'সাইডবার পিন করুন'}
-              className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
-            >
-              {isPinned ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
-            </button>
-          )}
-        </div>
+          {/* MENU SCROLL AREA */}
+          <ScrollArea className="flex-1 px-2.5 py-3">
+            <nav className="space-y-1">
+              {menuStructure.map((item) => {
+                const isOpen = openMenus.includes(item.name);
+                const hasChildren = !!item.children && item.children.length > 0;
+                const isParentActive = hasChildren
+                  ? isChildActive(item.children!)
+                  : pathname === item.href;
 
-        {/* MENU SCROLL AREA */}
-        <ScrollArea className="flex-1 px-2.5 py-3">
-          <nav className="space-y-1">
-            {menuStructure.map((item) => {
-              const isOpen = openMenus.includes(item.name);
-              const hasChildren = !!item.children && item.children.length > 0;
-              const isParentActive = hasChildren
-                ? isChildActive(item.children!)
-                : pathname === item.href;
+                if (!hasChildren && item.href) {
+                  return (
+                    <Link key={item.name} href={item.href} onClick={handleNavClick}>
+                      <div 
+                        title={!isExpanded && !mobileOpen ? item.name : undefined}
+                        className={cn(
+                          'flex items-center gap-3 px-3 py-3 rounded-xl transition-all cursor-pointer text-sm font-medium relative group',
+                          isParentActive
+                            ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold shadow-md shadow-orange-500/20'
+                            : 'text-slate-600 hover:bg-orange-50/70 hover:text-orange-600'
+                        )}
+                      >
+                        <item.icon className="w-5 h-5 flex-shrink-0" />
+                        {(isExpanded || mobileOpen) && (
+                          <span className="whitespace-nowrap overflow-hidden transition-all duration-200">
+                            {item.name}
+                          </span>
+                        )}
 
-              if (!hasChildren && item.href) {
+                        {/* Tooltip hint when collapsed on desktop */}
+                        {!isExpanded && !mobileOpen && (
+                          <div className="hidden md:block absolute left-full ml-2 px-2.5 py-1 bg-slate-900 text-white text-xs font-medium rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg z-50">
+                            {item.name}
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+                  );
+                }
+
                 return (
-                  <Link key={item.name} href={item.href}>
-                    <div 
-                      title={!isExpanded ? item.name : undefined}
+                  <div key={item.name} className="space-y-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!isExpanded) setIsHovered(true);
+                        toggleMenu(item.name);
+                      }}
+                      title={!isExpanded && !mobileOpen ? item.name : undefined}
                       className={cn(
-                        'flex items-center gap-3 px-3 py-3 rounded-xl transition-all cursor-pointer text-sm font-medium relative group',
+                        'w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all cursor-pointer text-sm font-medium group relative',
                         isParentActive
-                          ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold shadow-md shadow-orange-500/20'
+                          ? 'bg-orange-50 text-orange-700 font-bold'
                           : 'text-slate-600 hover:bg-orange-50/70 hover:text-orange-600'
                       )}
                     >
-                      <item.icon className="w-5 h-5 flex-shrink-0" />
-                      {isExpanded && (
-                        <span className="whitespace-nowrap overflow-hidden transition-all duration-200">
-                          {item.name}
-                        </span>
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <item.icon className={cn('w-5 h-5 flex-shrink-0 transition-colors', isParentActive ? 'text-orange-600' : 'text-slate-500 group-hover:text-orange-600')} />
+                        {(isExpanded || mobileOpen) && (
+                          <span className="flex-1 text-left whitespace-nowrap overflow-hidden">
+                            {item.name}
+                          </span>
+                        )}
+                      </div>
+
+                      {(isExpanded || mobileOpen) && (
+                        <div>
+                          {isOpen
+                            ? <ChevronDown className="w-4 h-4 text-slate-400" />
+                            : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                        </div>
                       )}
 
-                      {/* Tooltip hint when collapsed */}
-                      {!isExpanded && (
-                        <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-900 text-white text-xs font-medium rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg z-50">
+                      {/* Tooltip hint when collapsed on desktop */}
+                      {!isExpanded && !mobileOpen && (
+                        <div className="hidden md:block absolute left-full ml-2 px-2.5 py-1 bg-slate-900 text-white text-xs font-medium rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg z-50">
                           {item.name}
                         </div>
                       )}
-                    </div>
-                  </Link>
-                );
-              }
+                    </button>
 
-              return (
-                <div key={item.name} className="space-y-0.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!isExpanded) setIsHovered(true);
-                      toggleMenu(item.name);
-                    }}
-                    title={!isExpanded ? item.name : undefined}
-                    className={cn(
-                      'w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all cursor-pointer text-sm font-medium group relative',
-                      isParentActive
-                        ? 'bg-orange-50 text-orange-700 font-bold'
-                        : 'text-slate-600 hover:bg-orange-50/70 hover:text-orange-600'
-                    )}
-                  >
-                    <div className="flex items-center gap-3 overflow-hidden">
-                      <item.icon className={cn('w-5 h-5 flex-shrink-0 transition-colors', isParentActive ? 'text-orange-600' : 'text-slate-500 group-hover:text-orange-600')} />
-                      {isExpanded && (
-                        <span className="flex-1 text-left whitespace-nowrap overflow-hidden">
-                          {item.name}
-                        </span>
-                      )}
-                    </div>
-
-                    {isExpanded && (
-                      <div>
-                        {isOpen
-                          ? <ChevronDown className="w-4 h-4 text-slate-400" />
-                          : <ChevronRight className="w-4 h-4 text-slate-400" />}
-                      </div>
-                    )}
-
-                    {/* Tooltip hint when collapsed */}
-                    {!isExpanded && (
-                      <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-900 text-white text-xs font-medium rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg z-50">
-                        {item.name}
-                      </div>
-                    )}
-                  </button>
-
-                  {/* SUBMENU ITEMS */}
-                  {isExpanded && isOpen && item.children && (
-                    <div className="ml-4 mt-1 mb-2 space-y-1 border-l-2 border-orange-100 pl-3 py-1">
-                      {item.children.map(child => {
-                        const [baseHref, query] = child.href.split('?');
-                        let isActive = false;
-                        if (pathname === baseHref) {
-                          if (query) {
-                            const childParams = new URLSearchParams(query);
-                            let matches = true;
-                            childParams.forEach((val, key) => {
-                              if (searchParams.get(key) !== val) matches = false;
-                            });
-                            isActive = matches;
-                          } else {
-                            const currentTab = searchParams.get('tab');
-                            const currentTypeParam = searchParams.get('type');
-                            isActive = !currentTab && !currentTypeParam;
+                    {/* SUBMENU ITEMS */}
+                    {(isExpanded || mobileOpen) && isOpen && item.children && (
+                      <div className="ml-4 mt-1 mb-2 space-y-1 border-l-2 border-orange-100 pl-3 py-1">
+                        {item.children.map(child => {
+                          const [baseHref, query] = child.href.split('?');
+                          let isActive = false;
+                          if (pathname === baseHref) {
+                            if (query) {
+                              const childParams = new URLSearchParams(query);
+                              let matches = true;
+                              childParams.forEach((val, key) => {
+                                if (searchParams.get(key) !== val) matches = false;
+                              });
+                              isActive = matches;
+                            } else {
+                              const currentTab = searchParams.get('tab');
+                              const currentTypeParam = searchParams.get('type');
+                              isActive = !currentTab && !currentTypeParam;
+                            }
+                          } else if (baseHref !== '/' && pathname.startsWith(baseHref + '/')) {
+                            isActive = true;
                           }
-                        } else if (baseHref !== '/' && pathname.startsWith(baseHref + '/')) {
-                          isActive = true;
-                        }
-                        
-                        return (
-                          <Link key={child.name} href={child.href}>
-                            <div className={cn(
-                              'flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all cursor-pointer text-xs font-bold relative',
-                              isActive
-                                ? 'bg-orange-600 text-white shadow-sm'
-                                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                            )}>
-                              {child.icon && <child.icon className={cn("w-4 h-4 flex-shrink-0", isActive ? "text-white" : "text-slate-400")} />}
-                              <span className="whitespace-nowrap">{child.name}</span>
-                            </div>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  )}
+                          
+                          return (
+                            <Link key={child.name} href={child.href} onClick={handleNavClick}>
+                              <div className={cn(
+                                'flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all cursor-pointer text-xs font-bold relative',
+                                isActive
+                                  ? 'bg-orange-600 text-white shadow-sm'
+                                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                              )}>
+                                {child.icon && <child.icon className={cn("w-4 h-4 flex-shrink-0", isActive ? "text-white" : "text-slate-400")} />}
+                                <span className="whitespace-nowrap">{child.name}</span>
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </nav>
+          </ScrollArea>
+
+          {/* FOOTER LOGOUT */}
+          <div className="p-3 border-t border-slate-100 bg-slate-50/50">
+            <button
+              onClick={handleLogout}
+              title={!isExpanded && !mobileOpen ? 'লগ আউট' : undefined}
+              className="w-full flex items-center justify-start gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:text-rose-600 hover:bg-rose-50 transition-colors text-sm font-bold relative group"
+            >
+              <LogOut className="w-5 h-5 flex-shrink-0 text-rose-500" />
+              {(isExpanded || mobileOpen) && <span className="whitespace-nowrap">লগ আউট</span>}
+
+              {!isExpanded && !mobileOpen && (
+                <div className="hidden md:block absolute left-full ml-2 px-2.5 py-1 bg-rose-900 text-white text-xs font-medium rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg z-50">
+                  লগ আউট
                 </div>
-              );
-            })}
-          </nav>
-        </ScrollArea>
-
-        {/* FOOTER LOGOUT */}
-        <div className="p-3 border-t border-slate-100 bg-slate-50/50">
-          <button
-            onClick={handleLogout}
-            title={!isExpanded ? 'লগ আউট' : undefined}
-            className="w-full flex items-center justify-start gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:text-rose-600 hover:bg-rose-50 transition-colors text-sm font-bold relative group"
-          >
-            <LogOut className="w-5 h-5 flex-shrink-0 text-rose-500" />
-            {isExpanded && <span className="whitespace-nowrap">লগ আউট</span>}
-
-            {!isExpanded && (
-              <div className="absolute left-full ml-2 px-2.5 py-1 bg-rose-900 text-white text-xs font-medium rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg z-50">
-                লগ আউট
-              </div>
-            )}
-          </button>
-        </div>
-      </aside>
-    </div>
+              )}
+            </button>
+          </div>
+        </aside>
+      </div>
+    </>
   );
 }
