@@ -238,14 +238,14 @@ export const api = {
         const list: any = await request<ShopSettingsData[]>('/settings/');
         const arr = Array.isArray(list) ? list : (list?.results || []);
         return arr.length > 0 ? arr[0] : {
-          business_name: 'Dokan ERP',
-          phone: '01700000000',
+          business_name: 'মেসার্স দেলোয়ার এন্ড ব্রাদার্স',
+          phone: '০১৭১২-০১৪২২৫',
           currency: '৳'
         };
       } catch (e) {
         return {
-          business_name: 'Dokan ERP',
-          phone: '01700000000',
+          business_name: 'মেসার্স দেলোয়ার এন্ড ব্রাদার্স',
+          phone: '০১৭১২-০১৪২২৫',
           currency: '৳'
         };
       }
@@ -443,6 +443,11 @@ export const api = {
         body: JSON.stringify(data),
       });
     },
+    approve: async (id: string | number): Promise<TransactionData> => {
+      return request<TransactionData>(`/transactions/${id}/approve/`, {
+        method: 'POST',
+      });
+    },
     delete: async (id: string | number): Promise<void> => {
       return request<void>(`/transactions/${id}/`, { method: 'DELETE' });
     }
@@ -489,6 +494,15 @@ export const api = {
       } catch (e) {
         return [];
       }
+    },
+    create: async (data: { name: string }): Promise<{ id: number; name: string }> => {
+      return request<{ id: number; name: string }>('/expense-categories/', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+    delete: async (id: string | number): Promise<void> => {
+      return request<void>(`/expense-categories/${id}/`, { method: 'DELETE' });
     }
   },
 

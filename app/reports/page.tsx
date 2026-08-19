@@ -1115,8 +1115,12 @@ function MasterReportsContent() {
                   <div className="hidden">
                     <div id="printable-topsheet-wrapper" className="p-8 bg-white text-black font-bengali space-y-6">
                       <div className="text-center border-b-2 border-black pb-4">
-                        <h1 className="text-2xl font-black uppercase tracking-wide">মেসার্স ডকান ট্রেডার্স</h1>
-                        <p className="text-xs font-semibold mt-1">রড, সিমেন্ট ও নির্মাণ সামগ্রী বিক্রেতা</p>
+                        <div className="flex items-center justify-center gap-3 mb-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src="/logo.png" alt="মেসার্স দেলোয়ার এন্ড ব্রাদার্স" className="w-10 h-10 object-contain rounded-md border border-slate-300" />
+                          <h1 className="text-2xl font-black uppercase tracking-wide">মেসার্স দেলোয়ার এন্ড ব্রাদার্স</h1>
+                        </div>
+                        <p className="text-xs font-semibold">রড, সিমেন্ট ও নির্মাণ সামগ্রী সরবরাহ কেন্দ্র</p>
                         <h2 className="text-lg font-black mt-2 underline">দৈনিক টপশিট রিপোর্ট (DAILY TOPSHEET)</h2>
                         <p className="text-xs font-bold mt-1">তারিখ: {selectedDateStr}</p>
                       </div>
@@ -1384,8 +1388,12 @@ function MasterReportsContent() {
                   <div className="hidden">
                     <div id="printable-sales-statement-wrapper" className="p-8 bg-white text-black font-bengali space-y-6">
                       <div className="text-center border-b-2 border-black pb-4">
-                        <h1 className="text-2xl font-black uppercase">মেসার্স ডকান ট্রেডার্স</h1>
-                        <p className="text-xs font-semibold mt-1">রড, সিমেন্ট ও নির্মাণ সামগ্রী বিক্রেতা</p>
+                        <div className="flex items-center justify-center gap-3 mb-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src="/logo.png" alt="মেসার্স দেলোয়ার এন্ড ব্রাদার্স" className="w-10 h-10 object-contain rounded-md border border-slate-300" />
+                          <h1 className="text-2xl font-black uppercase tracking-wide">মেসার্স দেলোয়ার এন্ড ব্রাদার্স</h1>
+                        </div>
+                        <p className="text-xs font-semibold">রড, সিমেন্ট ও নির্মাণ সামগ্রী সরবরাহ কেন্দ্র</p>
                         <h2 className="text-lg font-black mt-2 underline">দৈনিক সেলস স্টেটমেন্ট (DAILY SALES STATEMENT)</h2>
                         <p className="text-xs font-bold mt-1">তারিখ: {selectedDateStr}</p>
                       </div>

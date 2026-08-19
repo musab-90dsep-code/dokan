@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Shell } from '@/components/Shell';
 import { api } from '@/lib/api';
@@ -29,6 +29,7 @@ import { SalesInvoiceDetailsView } from '@/components/SalesInvoiceDetailsView';
 import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
 import { printElement } from '@/lib/printUtils';
+import { TableRowActionMenu } from '@/components/TableRowActionMenu';
 
 interface Product { 
   id: string; 
@@ -87,7 +88,9 @@ interface Invoice {
   dueAmount: number;
   paymentStatus: string;
   stage?: 'draft' | 'pending' | 'approved' | 'rejected';
+  status?: string;
   createdAt: any;
+  invoiceNo?: string;
   vehicleNo?: string;
   driverName?: string;
   driverPhone?: string;
@@ -125,12 +128,13 @@ function InvoicesContent() {
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [allOrders, setAllOrders] = useState<Invoice[]>([]);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [printingInvoice, setPrintingInvoice] = useState<Invoice | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('সব');
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [addPayment, setAddPayment] = useState(0);
 
   // Image-Matched Filter States
@@ -144,6 +148,7 @@ function InvoicesContent() {
   const [filterInvoiceType, setFilterInvoiceType] = useState('all');
   const [filterBranch, setFilterBranch] = useState('all');
   const [filterStageStatus, setFilterStageStatus] = useState('all');
+  const [filterApprovalStatus, setFilterApprovalStatus] = useState<'all' | 'approved' | 'pending'>('all');
   const [minBill, setMinBill] = useState('');
   const [maxBill, setMaxBill] = useState('');
   const [minDue, setMinDue] = useState('');
@@ -155,6 +160,7 @@ function InvoicesContent() {
   // Direct / Converted Invoice Creation Form States
   const [isCreateInvoiceOpen, setIsCreateInvoiceOpen] = useState(false);
   const [convertedOrderId, setConvertedOrderId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [deletingInvoice, setDeletingInvoice] = useState<Invoice | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
@@ -184,7 +190,7 @@ function InvoicesContent() {
   const [chequeNo, setChequeNo] = useState<string>('');
   const [chequeDate, setChequeDate] = useState<string>('');
   const [savedBanks, setSavedBanks] = useState<{ id: string; name: string; accNo: string }[]>([]);
-  const [selectedShopBank, setSelectedShopBank] = useState<string>('ডাচ-বাংলা ব্যাংক - 123.456.7890');
+  const [selectedShopBank, setSelectedShopBank] = useState<string>('');
   const [senderBankName, setSenderBankName] = useState<string>('');
   const [senderAccountNo, setSenderAccountNo] = useState<string>('');
   const [senderTxnRef, setSenderTxnRef] = useState<string>('');
@@ -260,21 +266,35 @@ function InvoicesContent() {
     try {
       setLoading(true);
       const sales = await api.transactions.list({ transaction_type: 'sale' });
-      const mappedInvoices: Invoice[] = sales.map(s => {
-        let meta: any = {};
-        let cleanNote = s.notes || '';
-        if (s.notes) {
-          try {
-            if (s.notes.trim().startsWith('{')) {
-              const idx = s.notes.indexOf('\n');
-              const jsonStr = idx !== -1 ? s.notes.substring(0, idx) : s.notes;
-              meta = JSON.parse(jsonStr);
-              cleanNote = meta.userNote !== undefined ? meta.userNote : (idx !== -1 ? s.notes.substring(idx + 1) : '');
-            }
-          } catch {
-            meta = {};
+      const mappedInvoices: Invoice[] = sales
+        .filter(s => {
+          let meta: any = {};
+          if (s.notes && typeof s.notes === 'string' && s.notes.trim().startsWith('{')) {
+            try {
+              meta = JSON.parse(s.notes.split('\n')[0]);
+            } catch {}
           }
-        }
+          // Do not list unconverted sales orders in invoices list until chalan is made
+          if (meta.isOrder === true && !meta.invoiced) {
+            return false;
+          }
+          return true;
+        })
+        .map(s => {
+          let meta: any = {};
+          let cleanNote = s.notes || '';
+          if (s.notes) {
+            try {
+              if (s.notes.trim().startsWith('{')) {
+                const idx = s.notes.indexOf('\n');
+                const jsonStr = idx !== -1 ? s.notes.substring(0, idx) : s.notes;
+                meta = JSON.parse(jsonStr);
+                cleanNote = meta.userNote !== undefined ? meta.userNote : (idx !== -1 ? s.notes.substring(idx + 1) : '');
+              }
+            } catch {
+              meta = {};
+            }
+          }
 
         return {
           id: String(s.id),
@@ -299,7 +319,8 @@ function InvoicesContent() {
           paidAmount: Number(s.paid_amount || 0),
           dueAmount: Number(s.due_amount || 0),
           paymentStatus: s.due_amount <= 0 ? 'পরিশোধিত' : (s.paid_amount || 0) > 0 ? 'আংশিক' : 'বাকি',
-          stage: 'approved',
+          stage: s.status === 'pending' || s.status === 'draft' ? 'pending' : 'approved',
+          status: s.status || 'pending',
           createdAt: s.created_at,
           vehicleNo: meta.vehicleNo || '',
           driverName: meta.driverName || '',
@@ -385,73 +406,94 @@ function InvoicesContent() {
 
   // Handle pre-filling form if arriving from /orders with ?fromOrder={id}
   useEffect(() => {
-    if (fromOrderId && convertedOrderId !== fromOrderId) {
-      let isSubscribed = true;
-      (async () => {
-        try {
-          let targetOrder = allOrders.find(o => o.id === fromOrderId);
-          if (!targetOrder) {
-            const raw = await api.transactions.get(fromOrderId);
-            if (raw && isSubscribed) {
-              targetOrder = {
-                id: String(raw.id),
-                orderId: raw.invoice_no,
-                customerName: raw.party_name || 'গ্রাহক',
-                customerPhone: raw.party_phone || '',
-                customerId: String(raw.party || ''),
-                items: (raw.items || []).map(i => ({
-                  id: String(i.product || ''),
-                  name: i.product_name,
-                  price: i.price,
-                  quantity: i.quantity,
-                  unit: i.unit || 'পিস',
-                  total: i.total
-                })),
-                totalAmount: raw.total_amount,
-                paidAmount: raw.paid_amount,
-                dueAmount: raw.due_amount,
-                paymentStatus: raw.due_amount <= 0 ? 'paid' : raw.paid_amount > 0 ? 'partial' : 'unpaid',
-                createdAt: raw.created_at,
-                note: raw.notes
-              };
-            }
-          }
+    if (!fromOrderId) return;
+    if (convertedOrderId === fromOrderId && isCreateInvoiceOpen) return;
 
-          if (targetOrder && isSubscribed) {
-            setConvertedOrderId(targetOrder.id);
-            
-            // Find matching customer
-            const cust = customers.find(c => c.id === targetOrder!.customerId || c.name === targetOrder!.customerName);
-            if (cust) {
-              setSelectedCustomer(cust);
-              setIsNewCustomer(false);
-            } else {
-              setSelectedCustomer(null);
-              setIsNewCustomer(true);
-              setNewCustomerData({
-                name: targetOrder.customerName || '',
-                phone: targetOrder.customerPhone || '',
-                address: ''
-              });
-            }
+    let isMounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        // Fetch raw order transaction directly by ID
+        const raw = await api.transactions.get(fromOrderId);
+        if (!raw || !isMounted) return;
 
-            // Set cart items
-            setCart(targetOrder.items ? targetOrder.items.map(i => ({ ...i })) : []);
-            setInvoicePaidAmount(targetOrder.paidAmount || targetOrder.totalAmount || 0);
-            setInvoiceNote(targetOrder.note || '');
-            setIsCreateInvoiceOpen(true);
-            toast.info('বিক্রয় অর্ডারের তথ্য নিয়ে চালানের ফর্ম লোড হয়েছে।');
-          }
-        } catch (e) {
-          console.error('Error fetching order for conversion:', e);
+        // Ensure customers are available for matching
+        let currentCustList = customers;
+        if (currentCustList.length === 0) {
+          const partyList = await api.parties.list({ party_type: 'customer' }).catch(() => []);
+          currentCustList = partyList.map(p => {
+            const d = Number(p.total_due !== undefined ? p.total_due : (p.opening_balance || 0));
+            return {
+              id: String(p.id),
+              name: p.name,
+              phone: p.phone,
+              address: p.address || '',
+              businessName: p.business_name || '',
+              totalDue: d,
+              due: d,
+              balance: d,
+              previousDue: d,
+              openingBalance: Number(p.opening_balance || 0)
+            };
+          });
+          setCustomers(currentCustList);
         }
-      })();
 
-      return () => {
-        isSubscribed = false;
-      };
-    }
-  }, [fromOrderId, allOrders, customers, convertedOrderId]);
+        const rawPartyId = raw.party ? String(raw.party) : '';
+        const foundCust = currentCustList.find(c => (rawPartyId && c.id === rawPartyId) || (raw.party_name && c.name?.trim().toLowerCase() === raw.party_name?.trim().toLowerCase()));
+
+        if (foundCust) {
+          setSelectedCustomer(foundCust);
+          setIsNewCustomer(false);
+        } else {
+          setSelectedCustomer(null);
+          setIsNewCustomer(true);
+          setNewCustomerData({
+            name: raw.party_name || 'গ্রাহক',
+            phone: raw.party_phone || '',
+            address: ''
+          });
+        }
+
+        // Map order items to invoice cart items
+        const rawItems: OrderItem[] = (raw.items || []).map(i => ({
+          id: String(i.product || i.id || ''),
+          name: i.product_name,
+          price: Number(i.price || 0),
+          quantity: Number(i.quantity || 1),
+          unit: i.unit || 'পিস',
+          total: Number(i.total || (Number(i.price || 0) * Number(i.quantity || 1)))
+        }));
+
+        setCart(rawItems);
+        setInvoicePaidAmount(Number(raw.paid_amount || 0));
+        
+        let cleanNote = raw.notes || '';
+        if (cleanNote.trim().startsWith('{')) {
+          try {
+            const parsed = JSON.parse(cleanNote.split('\n')[0]);
+            cleanNote = parsed.userNote || '';
+          } catch {}
+        }
+        setInvoiceNote(cleanNote);
+
+        setConvertedOrderId(String(raw.id));
+        setEditingInvoiceId(null);
+        setIsCreateInvoiceOpen(true);
+        toast.info('বিক্রয় অর্ডারের তথ্য নিয়ে চালানের ফর্ম ওপেন হয়েছে।');
+      } catch (err) {
+        console.error('Error opening order for invoice:', err);
+        toast.error('অর্ডারের তথ্য লোড করতে সমস্যা হয়েছে');
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromOrderId]);
 
   const formatDate = (at: any) => {
     if (!at) return '';
@@ -726,8 +768,11 @@ function InvoicesContent() {
   };
 
   // Create, Convert, or Edit Invoice Handler
-  const handleCreateInvoiceSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateInvoiceSubmit = async (e?: React.FormEvent) => {
+    if (e && e.preventDefault) {
+      e.preventDefault();
+    }
+    if (isSubmitting) return;
     if (cart.length === 0) {
       toast.error('অন্তত একটি পণ্য নির্বাচন করুন');
       return;
@@ -737,6 +782,7 @@ function InvoicesContent() {
       return;
     }
 
+    setIsSubmitting(true);
     try {
       let finalCustId = selectedCustomer?.id;
       if (isNewCustomer && newCustomerData.name.trim()) {
@@ -809,6 +855,8 @@ function InvoicesContent() {
         cashPaidAmount: Number(cashPaidAmount || 0),
         chequePaidAmount: Number(chequePaidAmount || 0),
         previousBalance: selectedCustomer ? Number((selectedCustomer as any).totalDue || (selectedCustomer as any).due || (selectedCustomer as any).balance || (selectedCustomer as any).previousDue || (selectedCustomer as any).openingBalance || 0) : 0,
+        invoiced: true,
+        isOrder: false,
         userNote: invoiceNote || ''
       };
 
@@ -844,10 +892,9 @@ function InvoicesContent() {
           notes: finalNotesPayload
         });
         toast.success('চালান সফলভাবে এডিট ও আপডেট করা হয়েছে!');
-      } else {
-        await api.transactions.create({
+      } else if (convertedOrderId) {
+        await api.transactions.update(convertedOrderId, {
           party: finalCustId ? Number(finalCustId) : null,
-          transaction_type: 'sale',
           subtotal: safeSubtotal,
           discount: safeDiscount,
           total_amount: safeTotalAmount,
@@ -868,7 +915,33 @@ function InvoicesContent() {
           }),
           notes: finalNotesPayload
         });
-        toast.success(convertedOrderId ? 'বিক্রয় অর্ডার চালানে রূপান্তর করা হয়েছে!' : 'বিক্রয় চালান সফলভাবে সম্পন্ন হয়েছে!');
+        toast.success('বিক্রয় অর্ডার সফলভাবে চালানে রূপান্তর করা হয়েছে!');
+      } else {
+        await api.transactions.create({
+          party: finalCustId ? Number(finalCustId) : null,
+          transaction_type: 'sale',
+          status: 'pending',
+          subtotal: safeSubtotal,
+          discount: safeDiscount,
+          total_amount: safeTotalAmount,
+          paid_amount: safePaidAmount,
+          due_amount: safeDueAmount,
+          payment_method: effectivePaymentMethod,
+          ...chequePayload,
+          items: cart.map(i => {
+            const prodId = Number(i.id);
+            return {
+              product: !isNaN(prodId) && prodId > 0 ? prodId : undefined,
+              product_name: i.name,
+              quantity: i.quantity,
+              price: round2(i.price),
+              unit: i.unit,
+              total: round2(i.price * i.quantity)
+            };
+          }),
+          notes: finalNotesPayload
+        });
+        toast.success(convertedOrderId ? 'বিক্রয় অর্ডার চালানে রূপান্তর করা হয়েছে!' : 'বিক্রয় চালান অপেক্ষমান (Pending) হিসেবে সংরক্ষিত হয়েছে! অনুমোদন করার পর হিসাব ও স্টকে যুক্ত হবে।');
       }
 
       if (typeof window !== 'undefined') {
@@ -878,10 +951,16 @@ function InvoicesContent() {
       resetCreateForm();
       setIsCreateInvoiceOpen(false);
       loadInvoicesData();
-      router.replace('/invoices');
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.search = '';
+        window.history.replaceState({}, '', url.pathname);
+      }
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || 'চালান তৈরি/এডিট করতে সমস্যা হয়েছে');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -902,6 +981,26 @@ function InvoicesContent() {
     } catch {
       toast.error('বকেয়া পেমেন্ট যোগ করতে সমস্যা হয়েছে');
     }
+  };
+
+  const handleApproveInvoice = async (inv: Invoice) => {
+    try {
+      await api.transactions.approve(inv.id);
+      toast.success(`বিক্রয় চালান (${inv.invoiceNo || inv.id}) সফলভাবে অনুমোদন করা হয়েছে! স্টক ও কাস্টমার একাউন্টে যুক্ত হয়েছে।`);
+      loadInvoicesData();
+      if (selectedInvoice && selectedInvoice.id === inv.id) {
+        setSelectedInvoice({ ...selectedInvoice, status: 'approved' });
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'অনুমোদন করতে সমস্যা হয়েছে');
+    }
+  };
+
+  const handleDirectPrintInvoice = (inv: Invoice) => {
+    setPrintingInvoice(inv);
+    setTimeout(() => {
+      printElement('printable-memo-wrapper');
+    }, 100);
   };
 
   const parseInvoiceDate = (at: any): Date | null => {
@@ -925,6 +1024,7 @@ function InvoicesContent() {
     setFilterInvoiceType('all');
     setFilterBranch('all');
     setFilterStageStatus('all');
+    setFilterApprovalStatus('all');
     setMinBill('');
     setMaxBill('');
     setMinDue('');
@@ -971,21 +1071,28 @@ function InvoicesContent() {
       if (filterPaymentStatus === 'unpaid' && !isUnpaid) return false;
     }
 
-    // 5. Payment Method
+    // 5. Approval Status (Approved vs Pending/Unapproved)
+    if (filterApprovalStatus !== 'all') {
+      const isPending = item.status === 'pending' || item.status === 'draft' || item.status === 'অপেক্ষমান';
+      if (filterApprovalStatus === 'approved' && isPending) return false;
+      if (filterApprovalStatus === 'pending' && !isPending) return false;
+    }
+
+    // 6. Payment Method
     if (filterPaymentMethod !== 'all') {
       const method = (item.paymentMethod || 'cash').toLowerCase();
       if (!method.includes(filterPaymentMethod)) return false;
     }
 
-    // 6. Min/Max Bill
+    // 7. Min/Max Bill
     if (minBill !== '' && Number(minBill) > 0 && item.totalAmount < Number(minBill)) return false;
     if (maxBill !== '' && Number(maxBill) > 0 && item.totalAmount > Number(maxBill)) return false;
 
-    // 7. Min/Max Due
+    // 8. Min/Max Due
     if (minDue !== '' && Number(minDue) > 0 && item.dueAmount < Number(minDue)) return false;
     if (maxDue !== '' && Number(maxDue) > 0 && item.dueAmount > Number(maxDue)) return false;
 
-    // 8. Quick Filter Pills
+    // 9. Quick Filter Pills
     if (quickFilter !== 'all') {
       if (quickFilter === 'today' && itemDate && !isToday(itemDate)) return false;
       if (quickFilter === 'yesterday' && itemDate && !isYesterday(itemDate)) return false;
@@ -1026,22 +1133,37 @@ function InvoicesContent() {
               setSelectedInvoice(null);
               handleEditInvoice(current || inv);
             }}
+            onApprove={(inv) => handleApproveInvoice(inv)}
             onPrint={() => printElement('printable-memo-wrapper')}
           />
 
           {/* Hidden Print Container for iframe printing */}
-          <div className="hidden print:block">
-            <InvoiceMemo
-              invoice={{
-                ...selectedInvoice,
-                transportCost: selectedInvoice.shippingCost || 0
-              } as any}
-              showPrintButton={false}
-            />
-          </div>
+          {(printingInvoice || selectedInvoice) && (
+            <div className="hidden print:block">
+              <InvoiceMemo
+                invoice={{
+                  ...(printingInvoice || selectedInvoice),
+                  transportCost: (printingInvoice || selectedInvoice)?.shippingCost || 0
+                } as any}
+                showPrintButton={false}
+              />
+            </div>
+          )}
         </div>
       ) : !isCreateInvoiceOpen ? (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {/* Always render Hidden Print Container if triggered from list table */}
+          {printingInvoice && !selectedInvoice && (
+            <div className="hidden print:block">
+              <InvoiceMemo
+                invoice={{
+                  ...printingInvoice,
+                  transportCost: printingInvoice.shippingCost || 0
+                } as any}
+                showPrintButton={false}
+              />
+            </div>
+          )}
         {/* Top Title & Header Action */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -1116,6 +1238,20 @@ function InvoicesContent() {
               compact={false}
             />
 
+            {/* Approval Status Filter Dropdown */}
+            <div className="w-full sm:w-[155px] shrink-0">
+              <Select value={filterApprovalStatus} onValueChange={(val) => setFilterApprovalStatus(val || 'all')}>
+                <SelectTrigger className="rounded-md h-10 bg-slate-50/80 border-slate-200 text-xs font-bold text-slate-700">
+                  <SelectValue placeholder="সব অনুমোদন" />
+                </SelectTrigger>
+                <SelectContent className="font-bengali text-xs font-bold">
+                  <SelectItem value="all">সব অনুমোদন</SelectItem>
+                  <SelectItem value="approved">🟢 অনুমোদিত</SelectItem>
+                  <SelectItem value="pending">🟡 অপেক্ষমান</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Quick Status Pills */}
             <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
               {[
@@ -1155,7 +1291,7 @@ function InvoicesContent() {
                 {isFilterExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
               </Button>
 
-              {(search || filterInvoiceNo || filterCustomer !== 'all' || startDate || endDate || filterPaymentStatus !== 'all' || filterPaymentMethod !== 'all' || minBill || maxBill || minDue || maxDue || quickFilter !== 'all') && (
+              {(search || filterInvoiceNo || filterCustomer !== 'all' || startDate || endDate || filterPaymentStatus !== 'all' || filterPaymentMethod !== 'all' || filterApprovalStatus !== 'all' || minBill || maxBill || minDue || maxDue || quickFilter !== 'all') && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1372,25 +1508,25 @@ function InvoicesContent() {
                         </span>
                       </TableCell>
                       <TableCell className="text-center py-4 px-4">
-                        <span className="bg-emerald-50 text-emerald-600 font-bold px-3 py-1 rounded-md text-xs font-bengali inline-block">
-                          সেল
-                        </span>
+                        {inv.status === 'pending' || inv.status === 'draft' || inv.status === 'অপেক্ষমান' ? (
+                          <span className="bg-amber-50 text-amber-700 border border-amber-200 font-bold px-2.5 py-1 rounded-md text-xs font-bengali inline-flex items-center gap-1">
+                            🟡 অপেক্ষমান
+                          </span>
+                        ) : (
+                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold px-2.5 py-1 rounded-md text-xs font-bengali inline-flex items-center gap-1">
+                            🟢 অনুমোদিত
+                          </span>
+                        )}
                       </TableCell>
-                      <TableCell className="text-right py-4 px-6" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-end gap-1.5">
-                          <Button size="icon" variant="ghost" title="ইনভয়েস বিস্তারিত দেখুন" onClick={() => setSelectedInvoice(inv)} className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md">
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" title="ইনভয়েস এডিট করুন" onClick={() => handleEditInvoice(inv)} className="h-8 w-8 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-md">
-                            <Edit2 className="w-4 h-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" title="ইনভয়েস মুছে ফেলুন" onClick={() => { setDeletingInvoice(inv); setIsDeleteDialogOpen(true); }} className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" title="প্রিন্ট করুন" onClick={() => window.print()} className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md">
-                            <Printer className="w-4 h-4" />
-                          </Button>
-                        </div>
+                      <TableCell className="text-right py-3.5 px-6" onClick={e => e.stopPropagation()}>
+                        <TableRowActionMenu
+                          onView={() => setSelectedInvoice(inv)}
+                          onPrint={() => handleDirectPrintInvoice(inv)}
+                          onEdit={() => handleEditInvoice(inv)}
+                          onDelete={() => { setDeletingInvoice(inv); setIsDeleteDialogOpen(true); }}
+                          onApprove={() => handleApproveInvoice(inv)}
+                          isPending={inv.status === 'pending' || inv.status === 'draft' || inv.status === 'অপেক্ষমান'}
+                        />
                       </TableCell>
                     </TableRow>
                   );
@@ -2103,12 +2239,9 @@ function InvoicesContent() {
                                           </SelectItem>
                                         ))
                                       ) : (
-                                        <>
-                                          <SelectItem value="ডাচ-বাংলা ব্যাংক - 123.456.7890">ডাচ-বাংলা ব্যাংক (DBBL) - A/C: 123.456.7890</SelectItem>
-                                          <SelectItem value="ইসলামী ব্যাংক - 2050.1234.5678">ইসলামী ব্যাংক (IBBL) - A/C: 2050.1234.5678</SelectItem>
-                                          <SelectItem value="ব্র্যাক ব্যাংক - 1501.2039.4857">ব্র্যাক ব্যাংক (BRAC Bank) - A/C: 1501.2039.4857</SelectItem>
-                                          <SelectItem value="সিটি ব্যাংক - 3101.9876.5432">সিটি ব্যাংক (City Bank) - A/C: 3101.9876.5432</SelectItem>
-                                        </>
+                                        <SelectItem value="none" disabled>
+                                          ⚠️ কোনো ব্যাংক যুক্ত নেই (আগে ব্যাংক যোগ করুন)
+                                        </SelectItem>
                                       )}
                                     </SelectContent>
                                   </Select>
@@ -2149,12 +2282,9 @@ function InvoicesContent() {
                                           </SelectItem>
                                         ))
                                       ) : (
-                                        <>
-                                          <SelectItem value="ডাচ-বাংলা ব্যাংক - 123.456.7890">ডাচ-বাংলা ব্যাংক (DBBL) - A/C: 123.456.7890</SelectItem>
-                                          <SelectItem value="ইসলামী ব্যাংক - 2050.1234.5678">ইসলামী ব্যাংক (IBBL) - A/C: 2050.1234.5678</SelectItem>
-                                          <SelectItem value="ব্র্যাক ব্যাংক - 1501.2039.4857">ব্র্যাক ব্যাংক (BRAC Bank) - A/C: 1501.2039.4857</SelectItem>
-                                          <SelectItem value="সিটি ব্যাংক - 3101.9876.5432">সিটি ব্যাংক (City Bank) - A/C: 3101.9876.5432</SelectItem>
-                                        </>
+                                        <SelectItem value="none" disabled>
+                                          ⚠️ কোনো ব্যাংক যুক্ত নেই (আগে ব্যাংক যোগ করুন)
+                                        </SelectItem>
                                       )}
                                     </SelectContent>
                                   </Select>
@@ -2462,10 +2592,10 @@ function InvoicesContent() {
               </Button>
               <Button 
                 type="submit" 
-                onClick={handleCreateInvoiceSubmit}
-                className="rounded-md h-11 px-6 font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
+                disabled={isSubmitting}
+                className="rounded-md h-11 px-6 font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 active:scale-95 transition-all disabled:opacity-50"
               >
-                চালান সম্পূর্ণ করুন ✓
+                {isSubmitting ? 'সংরক্ষণ হচ্ছে...' : 'চালান সম্পূর্ণ করুন ✓'}
               </Button>
             </div>
           </div>

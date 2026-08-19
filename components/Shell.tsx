@@ -275,39 +275,92 @@ export function Shell({ children }: { children: ReactNode }) {
       const safeTxs = Array.isArray(txs) ? txs : [];
       const chequeItems: ChequeItem[] = safeTxs
         .filter(t => 
-          t.payment_method === 'cheque' || 
-          t.payment_method === 'check' || 
-          t.payment_method === 'split' || 
-          !!t.cheque_number || 
-          !!t.cheque_bank
+          t.status !== 'pending' && 
+          t.status !== 'draft' && 
+          t.status !== 'cancelled' && 
+          t.status !== 'rejected'
         )
-        .filter(t => t.cheque_status !== 'cleared' && t.cheque_status !== 'bounced')
-        .map(t => ({
-          id: String(t.id || t.invoice_no),
-          invoiceId: t.invoice_no,
-          customerName: t.party_name || 'অজ্ঞাত গ্রাহক',
-          customerPhone: t.party_phone || '',
-          bankName: t.cheque_bank || 'ব্যাংক',
-          chequeNo: t.cheque_number || `CHQ-${t.id}`,
-          chequeDate: t.cheque_due_date || (t.created_at ? format(new Date(t.created_at), 'dd/MM/yyyy') : ''),
-          amount: t.paid_amount || t.total_amount || 0,
-          status: t.cheque_status || 'pending',
-          createdAt: t.created_at
-        }));
+        .filter(t => {
+          if (t.cheque_status === 'cleared' || t.cheque_status === 'bounced') return false;
+          if (t.payment_method === 'cheque' || t.payment_method === 'check' || t.payment_method === 'split' || !!t.cheque_number || !!t.cheque_bank) return true;
+          if (t.notes && typeof t.notes === 'string' && t.notes.trim().startsWith('{')) {
+            try {
+              const meta = JSON.parse(t.notes.split('\n')[0]);
+              if (meta.paymentMethodName === 'Split' || meta.paymentMethodName === 'Cheque' || Number(meta.chequePaidAmount) > 0 || Number(meta.splitChequeAmount) > 0 || !!meta.chequeNo) {
+                return true;
+              }
+            } catch {}
+          }
+          return false;
+        })
+        .map(t => {
+          let chequeAmt = t.paid_amount || t.total_amount || 0;
+          let chqNo = t.cheque_number;
+          let chqBank = t.cheque_bank;
+          let chqDate = t.cheque_due_date || (t.created_at ? format(new Date(t.created_at), 'dd/MM/yyyy') : '');
+
+          if (t.notes && typeof t.notes === 'string' && t.notes.trim().startsWith('{')) {
+            try {
+              const meta = JSON.parse(t.notes.split('\n')[0]);
+              if (meta.chequePaidAmount !== undefined && Number(meta.chequePaidAmount) > 0) {
+                chequeAmt = Number(meta.chequePaidAmount);
+              } else if (meta.splitChequeAmount !== undefined && Number(meta.splitChequeAmount) > 0) {
+                chequeAmt = Number(meta.splitChequeAmount);
+              }
+              if (!chqNo && meta.chequeNo) chqNo = meta.chequeNo;
+              if (!chqBank && (meta.chequeBank || meta.bankName || meta.selectedShopBank)) {
+                chqBank = meta.chequeBank || meta.bankName || meta.selectedShopBank;
+              }
+              if (meta.chequeDate) chqDate = meta.chequeDate;
+            } catch {}
+          }
+          return {
+            id: String(t.id || t.invoice_no),
+            invoiceId: t.invoice_no,
+            customerName: t.party_name || 'অজ্ঞাত গ্রাহক',
+            customerPhone: t.party_phone || '',
+            bankName: chqBank || 'ব্যাংক',
+            chequeNo: chqNo || `CHQ-${t.id}`,
+            chequeDate: chqDate,
+            amount: chequeAmt,
+            status: t.cheque_status || 'pending',
+            createdAt: t.created_at
+          };
+        });
       setCheques(chequeItems);
 
       const orderItems: PendingOrderItem[] = safeTxs
-        .filter(t => t.transaction_type === 'sale')
-        .map(t => ({
-          id: String(t.id || t.invoice_no),
-          customerName: t.party_name || 'গ্রাহক',
-          customerPhone: t.party_phone || '',
-          totalAmount: t.total_amount,
-          items: t.items || [],
-          createdAt: t.created_at,
-          invoiced: t.status === 'completed' || t.status === 'invoiced',
-          stage: t.status || 'pending'
-        }));
+        .filter(t => {
+          if (t.transaction_type !== 'sale') return false;
+          let meta: any = {};
+          if (t.notes && typeof t.notes === 'string' && t.notes.trim().startsWith('{')) {
+            try {
+              meta = JSON.parse(t.notes.split('\n')[0]);
+            } catch {}
+          }
+          if (meta.invoiced === true || meta.isOrder === false) return false;
+          if (t.status === 'completed' || t.status === 'invoiced' || t.status === 'approved') return false;
+          return true;
+        })
+        .map(t => {
+          let meta: any = {};
+          if (t.notes && typeof t.notes === 'string' && t.notes.trim().startsWith('{')) {
+            try {
+              meta = JSON.parse(t.notes.split('\n')[0]);
+            } catch {}
+          }
+          const isInvoiced = meta.invoiced === true || t.status === 'completed' || t.status === 'invoiced' || t.status === 'approved';
+          return {
+            id: String(t.id || t.invoice_no),
+            customerName: t.party_name || 'গ্রাহক',
+            customerPhone: t.party_phone || '',
+            totalAmount: t.total_amount,
+            items: t.items || [],
+            createdAt: t.created_at,
+            invoiced: isInvoiced,
+            stage: t.status || 'pending'
+          };
+        });
       setOrders(orderItems);
 
       // Load shipping & labor charges from purchase transactions
@@ -428,7 +481,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const pendingCheques = cheques.filter(c => c.status === 'pending');
   const pendingTotalAmount = pendingCheques.reduce((sum, c) => sum + (c.amount || 0), 0);
 
-  const pendingOrders = orders.filter(o => !o.invoiced && o.stage !== 'completed' && o.stage !== 'invoiced');
+  const pendingOrders = orders.filter(o => !o.invoiced && o.stage !== 'completed' && o.stage !== 'invoiced' && o.stage !== 'approved');
   const pendingOrdersTotal = pendingOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
 
   const pendingShippingItems = shippingItems.filter(s => (s.dueAmount || 0) > 0 || (s.overpaidAmount || 0) > 0);
@@ -449,17 +502,6 @@ export function Shell({ children }: { children: ReactNode }) {
   const handleSettleShipping = async (item: ShippingChargeItem) => {
     try {
       const payAmount = item.dueAmount !== undefined ? item.dueAmount : item.amount;
-      if (payAmount > 0) {
-        await api.transactions.create({
-          transaction_type: 'payment_out',
-          total_amount: payAmount,
-          paid_amount: payAmount,
-          due_amount: 0,
-          payment_method: 'cash',
-          notes: `গাড়ি ভাড়া পরিশোধ (চালান: #${item.invoiceId}, গাড়ি নং: ${item.vehicleNo || '—'}, ড্রাইভার: ${item.driverName || '—'})${item.paidAmount ? ` [পূর্বে পরিশোধিত: ৳${item.paidAmount}, বাকি পরিশোধ: ৳${payAmount}]` : ''}`
-        });
-      }
-
       const t = item.rawTx;
       let meta: any = {};
       let userNote = t?.notes || '';
@@ -488,17 +530,6 @@ export function Shell({ children }: { children: ReactNode }) {
   const handleAdjustOverpaidShipping = async (item: ShippingChargeItem) => {
     try {
       const refundAmount = item.overpaidAmount || 0;
-      if (refundAmount > 0) {
-        await api.transactions.create({
-          transaction_type: 'payment_in',
-          total_amount: refundAmount,
-          paid_amount: refundAmount,
-          due_amount: 0,
-          payment_method: 'cash',
-          notes: `গাড়ি ভাড়া হ্রাস সমন্বয় / ক্যাশ ফেরত (চালান: #${item.invoiceId}, গাড়ি নং: ${item.vehicleNo || '—'}) [পূর্বে পরিশোধিত: ৳${item.paidAmount}, সংশোধিত খরচ: ৳${item.amount}, অতিরিক্ত ফেরত: ৳${refundAmount}]`
-        });
-      }
-
       const t = item.rawTx;
       let meta: any = {};
       let userNote = t?.notes || '';
@@ -527,17 +558,6 @@ export function Shell({ children }: { children: ReactNode }) {
   const handleSettleLabor = async (item: LaborChargeItem) => {
     try {
       const payAmount = item.dueAmount !== undefined ? item.dueAmount : item.amount;
-      if (payAmount > 0) {
-        await api.transactions.create({
-          transaction_type: 'payment_out',
-          total_amount: payAmount,
-          paid_amount: payAmount,
-          due_amount: 0,
-          payment_method: 'cash',
-          notes: `লেবার খরচ / আনলোডিং ফি পরিশোধ (চালান: #${item.invoiceId}, স্থান: ${item.unloadingSite || '—'})${item.paidAmount ? ` [পূর্বে পরিশোধিত: ৳${item.paidAmount}, বাকি পরিশোধ: ৳${payAmount}]` : ''}`
-        });
-      }
-
       const t = item.rawTx;
       let meta: any = {};
       let userNote = t?.notes || '';
@@ -566,17 +586,6 @@ export function Shell({ children }: { children: ReactNode }) {
   const handleAdjustOverpaidLabor = async (item: LaborChargeItem) => {
     try {
       const refundAmount = item.overpaidAmount || 0;
-      if (refundAmount > 0) {
-        await api.transactions.create({
-          transaction_type: 'payment_in',
-          total_amount: refundAmount,
-          paid_amount: refundAmount,
-          due_amount: 0,
-          payment_method: 'cash',
-          notes: `লেবার খরচ হ্রাস সমন্বয় / ক্যাশ ফেরত (চালান: #${item.invoiceId}, স্থান: ${item.unloadingSite || '—'}) [পূর্বে পরিশোধিত: ৳${item.paidAmount}, সংশোধিত খরচ: ৳${item.amount}, অতিরিক্ত ফেরত: ৳${refundAmount}]`
-        });
-      }
-
       const t = item.rawTx;
       let meta: any = {};
       let userNote = t?.notes || '';
@@ -618,11 +627,11 @@ export function Shell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="relative flex min-h-screen bg-slate-50 text-slate-900 font-sans antialiased selection:bg-orange-500 selection:text-white overflow-x-hidden">
+    <div className="relative flex min-h-screen bg-slate-50 text-slate-900 font-sans antialiased selection:bg-amber-600 selection:text-white overflow-x-hidden">
       {/* Printed Subtle Pattern Background Overlay */}
       <div className="fixed inset-0 pointer-events-none z-0 bg-[radial-gradient(#cbd5e1_1.2px,transparent_1.2px)] [background-size:24px_24px] opacity-70" />
       {/* Soft Printed Ambient Gradient Accents */}
-      <div className="fixed top-0 right-0 w-[600px] h-[600px] bg-gradient-to-br from-orange-400/15 via-amber-300/5 to-transparent rounded-full blur-3xl pointer-events-none z-0" />
+      <div className="fixed top-0 right-0 w-[600px] h-[600px] bg-gradient-to-br from-amber-400/20 via-yellow-300/10 to-transparent rounded-full blur-3xl pointer-events-none z-0" />
       <div className="fixed bottom-0 left-0 w-[700px] h-[700px] bg-gradient-to-tr from-indigo-500/10 via-blue-400/5 to-transparent rounded-full blur-3xl pointer-events-none z-0" />
 
       {/* Sidebar Component */}
@@ -631,13 +640,13 @@ export function Shell({ children }: { children: ReactNode }) {
       {/* Main Wrapper */}
       <div className="flex-1 flex flex-col min-w-0 z-10 relative">
         {/* Top Navbar Header */}
-        <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-3 sm:px-4 md:px-6 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-sm print:hidden">
+        <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-3 sm:px-4 md:px-6 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-xs print:hidden">
           {/* Left: Mobile Hamburger & Search Bar */}
           <div className="flex items-center gap-2 sm:gap-3 flex-1 max-w-[200px] xs:max-w-xs sm:max-w-md">
             {/* Mobile Hamburger Toggle */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 text-slate-700 hover:text-orange-600 hover:bg-orange-50 rounded-xl transition-colors flex-shrink-0 cursor-pointer"
+              className="md:hidden p-2 text-slate-700 hover:text-amber-800 hover:bg-amber-50 rounded-xl transition-colors flex-shrink-0 cursor-pointer"
               title="মেনু খুলুন"
               aria-label="Toggle navigation menu"
             >
@@ -651,7 +660,7 @@ export function Shell({ children }: { children: ReactNode }) {
                 placeholder="সার্চ করুন..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-slate-100/80 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500 transition-all font-bengali"
+                className="w-full pl-9 pr-3 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-slate-100/80 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-600 transition-all font-bengali"
               />
             </div>
           </div>
@@ -691,12 +700,12 @@ export function Shell({ children }: { children: ReactNode }) {
             {/* Pending Orders Drawer Trigger */}
             <button
               onClick={() => setShowOrdersDrawer(!showOrdersDrawer)}
-              className="relative p-1.5 sm:p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all flex items-center gap-1.5"
+              className="relative p-1.5 sm:p-2 text-slate-600 hover:text-amber-800 hover:bg-amber-50 rounded-xl transition-all flex items-center gap-1.5"
               title="চালান অপেক্ষমাণ অর্ডারসমূহ"
             >
-              <ShoppingCart className="h-4.5 w-4.5 sm:h-5 sm:w-5 text-orange-600" />
+              <ShoppingCart className="h-4.5 w-4.5 sm:h-5 sm:w-5 text-amber-700" />
               {pendingOrders.length > 0 && (
-                <span className="flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-orange-600 text-white rounded-full min-w-[18px] shadow-xs">
+                <span className="flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-gradient-to-r from-[#b88e2d] to-[#d4af37] text-white rounded-full min-w-[18px] shadow-xs">
                   {toBnDigits(pendingOrders.length)}
                 </span>
               )}
@@ -733,8 +742,8 @@ export function Shell({ children }: { children: ReactNode }) {
 
             {/* User Avatar & Name */}
             <div className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-3 border-l border-slate-200">
-              <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center text-white font-bold text-xs sm:text-sm shadow-md shadow-orange-500/20 flex-shrink-0">
-                {user?.displayName?.charAt(0) || 'D'}
+              <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-gradient-to-tr from-[#8c6b1c] via-[#b88e2d] to-[#d4af37] flex items-center justify-center text-white font-black text-xs sm:text-sm shadow-md shadow-amber-500/25 flex-shrink-0">
+                {user?.displayName?.charAt(0) || 'দ'}
               </div>
               <div className="hidden md:block text-left font-bengali">
                 <p className="text-xs font-bold text-slate-800">{user?.displayName || 'দোকান এডমিন'}</p>

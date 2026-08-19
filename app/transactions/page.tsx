@@ -215,7 +215,7 @@ function TransactionsContent() {
   const [paymentNote, setPaymentNote] = useState<string>('');
 
   // Bank & Cheque Detailed States (Exact replica of Invoice Register Payment)
-  const [selectedShopBank, setSelectedShopBank] = useState<string>('ডাচ-বাংলা ব্যাংক - 123.456.7890');
+  const [selectedShopBank, setSelectedShopBank] = useState<string>('');
   const [senderBankName, setSenderBankName] = useState<string>('');
   const [senderAccountNo, setSenderAccountNo] = useState<string>('');
   const [senderTxnRef, setSenderTxnRef] = useState<string>('');
@@ -230,25 +230,15 @@ function TransactionsContent() {
 
   const [newBank, setNewBank] = useState({ name: '', accNo: '', initialBalance: 0 });
 
-  const defaultBankOptions = [
-    { value: 'ডাচ-বাংলা ব্যাংক - 123.456.7890', label: 'ডাচ-বাংলা ব্যাংক (DBBL) - A/C: 123.456.7890' },
-    { value: 'ইসলামী ব্যাংক - 2050.1234.5678', label: 'ইসলামী ব্যাংক (IBBL) - A/C: 2050.1234.5678' },
-    { value: 'ব্র্যাক ব্যাংক - 1501.2039.4857', label: 'ব্র্যাক ব্যাংক (BRAC Bank) - A/C: 1501.2039.4857' },
-    { value: 'সিটি ব্যাংক - 3101.9876.5432', label: 'সিটি ব্যাংক (City Bank) - A/C: 3101.9876.5432' },
-    { value: 'সোনালী ব্যাংক - 4402.1122.3344', label: 'সোনালী ব্যাংক (Sonali Bank) - A/C: 4402.1122.3344' }
-  ];
-
-  const dbBankOptions = banks.map(b => {
+  const availableBankOptions = banks.map(b => {
     const name = b.name || 'ব্যাংক অ্যাকাউন্ট';
     const acc = b.accNo || '';
     const val = acc ? `${name} - ${acc}` : name;
     return {
       value: val,
-      label: acc ? `🏦 ${name} - A/C: ${toBengaliDigits(acc)}` : `🏦 ${name}`
+      label: acc ? `🏦 ${name} - A/C: ${toBengaliDigits(acc)} (ব্যালেন্স: ৳ ${Number(b.balance || 0).toLocaleString('bn-BD')})` : `🏦 ${name}`
     };
   });
-
-  const availableBankOptions = dbBankOptions.length > 0 ? dbBankOptions : defaultBankOptions;
 
   const loadAllTransactionsData = useCallback(async () => {
     try {
@@ -395,13 +385,13 @@ function TransactionsContent() {
           businessName: resolvedBusinessName,
           invoiceNo: rawT.invoice_no || meta.invoiceNo || '—',
           referenceNo: rawT.reference_no || meta.referenceNo || userNote || '—',
-          paymentMethod: meta.paymentMethodName || rawT.payment_method || (rawT.account_type === 'bank' ? 'Bank' : 'Cash'),
+          paymentMethod: meta.paymentMethodName || (rawT.payment_method === 'split' ? 'Split' : rawT.payment_method === 'cheque' ? 'Cheque' : rawT.payment_method === 'bank' ? 'Bank' : (rawT.account_type === 'bank' ? 'Bank' : 'Cash')),
           discountAmount: Number(rawT.discount || rawT.discount_amount || meta.discountAmount || 0),
           previousBalance: resolvedPreviousBalance,
-          bankName: (t as any).bank_name || (t as any).bank_account_name || meta.bankName || meta.selectedShopBank || '',
+          bankName: (t as any).bank_name || (t as any).bank_account_name || (t as any).cheque_bank || meta.bankName || meta.selectedShopBank || '',
           accountNo: (t as any).account_number || meta.accountNo || meta.supplierAccountNo || '',
-          chequeNo: (t as any).cheque_no || meta.chequeNo || '',
-          chequeDate: (t as any).cheque_date || meta.chequeDate || '',
+          chequeNo: (t as any).cheque_no || (t as any).cheque_number || meta.chequeNo || '',
+          chequeDate: (t as any).cheque_date || (t as any).cheque_due_date || meta.chequeDate || '',
           transactionRef: (t as any).transaction_ref || meta.transactionRef || meta.supplierTxnRef || '',
           operatorName: (t as any).operator_name || (t as any).prepared_by || meta.preparedBy || meta.operatorName || 'ক্যাশিয়ার',
           status: (t.status === 'completed' || !t.status) ? 'Completed' : t.status === 'pending' ? 'Pending' : t.status === 'bounced' ? 'Bounced' : 'Completed',
@@ -470,7 +460,7 @@ function TransactionsContent() {
     setReferenceNo(`REF-${Math.floor(100 + Math.random() * 900)}`);
     setPaymentNote('');
     if (type === 'income') {
-      const defaultBank = availableBankOptions[0]?.value || 'ডাচ-বাংলা ব্যাংক - 123.456.7890';
+      const defaultBank = availableBankOptions[0]?.value || '';
       setSelectedShopBank(defaultBank);
       setBankName(defaultBank);
     } else {
@@ -507,8 +497,8 @@ function TransactionsContent() {
     setPaymentNote(t.description !== t.category ? (t.description || '') : '');
     setPaymentMethod(t.paymentMethod || (t.accountType === 'bank' ? 'Bank' : 'Cash'));
     if (type === 'income') {
-      setSelectedShopBank(t.bankName || availableBankOptions[0]?.value || 'ডাচ-বাংলা ব্যাংক - 123.456.7890');
-      setBankName(t.bankName || availableBankOptions[0]?.value || 'ডাচ-বাংলা ব্যাংক - 123.456.7890');
+      setSelectedShopBank(t.bankName || availableBankOptions[0]?.value || '');
+      setBankName(t.bankName || availableBankOptions[0]?.value || '');
     } else {
       setSelectedShopBank('');
       setBankName(t.bankName || '');
@@ -632,6 +622,12 @@ function TransactionsContent() {
     }
 
     const partyObj: any = selectedParty;
+    const isSplit = paymentMethod === 'Split';
+    const effPayMethod = isSplit ? 'split' : (paymentMethod.toLowerCase().includes('bank') ? 'bank' : (paymentMethod.toLowerCase().includes('cheque') || paymentMethod.toLowerCase().includes('check')) ? 'cheque' : 'cash');
+
+    const finalCashAmt = isSplit ? (cashPaidAmount || 0) : (effPayMethod === 'cash' ? paidAmount : 0);
+    const finalChequeAmt = isSplit ? (chequePaidAmount || 0) : (effPayMethod === 'cheque' ? paidAmount : 0);
+
     const metaJson = JSON.stringify({
       partyId: partyObj.id,
       partyName: partyObj.name,
@@ -645,44 +641,77 @@ function TransactionsContent() {
       accountNo: senderAccountNo || '',
       chequeNo: chequeNo || '',
       chequeDate: chequeDate || '',
+      cashPaidAmount: finalCashAmt,
+      chequePaidAmount: finalChequeAmt,
+      splitCashAmount: finalCashAmt,
+      splitChequeAmount: finalChequeAmt,
       transactionRef: transactionRef || '',
       discountAmount: discountAmount || 0,
       previousBalance: partyObj.totalDue || partyObj.due || partyObj.balance || 0,
       userNote: paymentNote || ''
     });
 
+    const isSelectedBankCheck = paymentMethod === 'BankToBank' || paymentMethod === 'Cheque' || paymentMethod === 'Check';
+
+    if (paymentType === 'expense' && Number(paidAmount) > 0) {
+      try {
+        const stats = await api.dashboard.getStats();
+        if (isSelectedBankCheck) {
+          const targetAccName = bankName || selectedShopBank;
+          const selectedBankObj = banks.find(b => 
+            `${b.name} (${b.accNo})` === targetAccName || 
+            `${b.name} - ${b.accNo}` === targetAccName || 
+            b.name === targetAccName || 
+            b.id === targetAccName
+          );
+          const availBank = selectedBankObj ? selectedBankObj.balance : (stats.totalBank || 0);
+          const bankTitle = selectedBankObj ? `'${selectedBankObj.name}'` : 'ব্যাংক';
+          if (Number(paidAmount) > availBank) {
+            toast.error(`পর্যাপ্ত ব্যাংক ব্যালেন্স নেই! (নির্বাচিত ${bankTitle} একাউন্ট ব্যালেন্স: ৳ ${availBank.toLocaleString('bn-BD')}, প্রদান করতে চাচ্ছেন: ৳ ${Number(paidAmount).toLocaleString('bn-BD')})। অনুগ্রহ করে আগে এই ব্যাংক একাউন্টে ব্যালেন্স জমা করুন।`);
+            return;
+          }
+        } else {
+          // Cash & Bank Transfer: check Cash balance
+          const availCash = stats.totalCash || 0;
+          if (Number(paidAmount) > availCash) {
+            toast.error(`পর্যাপ্ত নগদ ক্যাশ ব্যালেন্স নেই! (বর্তমান ক্যাশ ব্যালেন্স: ৳ ${availCash.toLocaleString('bn-BD')}, প্রদান করতে চাচ্ছেন: ৳ ${Number(paidAmount).toLocaleString('bn-BD')})। অনুগ্রহ করে আগে ক্যাশে ব্যালেন্স জমা করুন।`);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Balance pre-check failed:', err);
+      }
+    }
+
     try {
+      const payload: any = {
+        party: Number(partyObj.id) || partyObj.id,
+        party_name: partyObj.name,
+        party_phone: partyObj.phone || '',
+        party_address: partyObj.address || '',
+        invoice_no: selectedInvoice?.orderId || selectedInvoice?.purchaseId || selectedInvoice?.id || referenceNo || '',
+        transaction_type: paymentType === 'income' ? 'payment_in' : 'payment_out',
+        total_amount: paidAmount,
+        paid_amount: paidAmount,
+        discount: discountAmount || 0,
+        due_amount: 0,
+        payment_method: effPayMethod,
+        status: 'completed',
+        notes: metaJson + '\n' + (paymentNote || '')
+      };
+
+      if (effPayMethod === 'cheque' || effPayMethod === 'split' || chequeNo || finalChequeAmt > 0) {
+        payload.cheque_number = chequeNo || `CHQ-${Date.now().toString().slice(-6)}`;
+        payload.cheque_bank = (paymentType === 'income' ? (selectedShopBank || bankName) : bankName) || 'ব্যাংক';
+        payload.cheque_due_date = chequeDate || undefined;
+        payload.cheque_status = 'pending';
+      }
+
       if (editingTransactionId) {
-        await api.transactions.update(editingTransactionId, {
-          party: Number(partyObj.id) || partyObj.id,
-          party_name: partyObj.name,
-          party_phone: partyObj.phone || '',
-          party_address: partyObj.address || '',
-          invoice_no: selectedInvoice?.orderId || selectedInvoice?.purchaseId || selectedInvoice?.id || referenceNo || '',
-          transaction_type: paymentType === 'income' ? 'payment_in' : 'payment_out',
-          total_amount: paidAmount,
-          paid_amount: paidAmount,
-          discount: discountAmount || 0,
-          due_amount: 0,
-          payment_method: (paymentMethod.toLowerCase().includes('bank') ? 'bank' : paymentMethod.toLowerCase().includes('cheque') ? 'cheque' : 'cash'),
-          notes: metaJson + '\n' + (paymentNote || '')
-        } as any);
+        await api.transactions.update(editingTransactionId, payload);
         toast.success('পেমেন্ট সফলভাবে আপডেট করা হয়েছে');
       } else {
-        await api.transactions.create({
-          party: Number(partyObj.id) || partyObj.id,
-          party_name: partyObj.name,
-          party_phone: partyObj.phone || '',
-          party_address: partyObj.address || '',
-          invoice_no: selectedInvoice?.orderId || selectedInvoice?.purchaseId || selectedInvoice?.id || referenceNo || '',
-          transaction_type: paymentType === 'income' ? 'payment_in' : 'payment_out',
-          total_amount: paidAmount,
-          paid_amount: paidAmount,
-          discount: discountAmount || 0,
-          due_amount: 0,
-          payment_method: (paymentMethod.toLowerCase().includes('bank') ? 'bank' : paymentMethod.toLowerCase().includes('cheque') ? 'cheque' : 'cash'),
-          notes: metaJson + '\n' + (paymentNote || '')
-        } as any);
+        await api.transactions.create(payload);
         toast.success('পেমেন্ট সফলভাবে সংরক্ষণ করা হয়েছে');
       }
 
@@ -1598,10 +1627,13 @@ function TransactionsContent() {
                             {/* Payment Method */}
                             <div className="space-y-1">
                               <Label className="text-[11px] font-bold text-slate-600">পেমেন্ট মাধ্যম *</Label>
-                              <Select value={paymentMethod} onValueChange={(val: string | null) => setPaymentMethod(val || 'Cash')}>
+                              <Select 
+                                value={paymentType === 'expense' && paymentMethod === 'Split' ? 'Cash' : paymentMethod} 
+                                onValueChange={(val: string | null) => setPaymentMethod(val || 'Cash')}
+                              >
                                 <SelectTrigger className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali">
                                   <SelectValue>
-                                    {paymentMethod === 'Cash' ? '💵 নগদ (Cash)' :
+                                    {(paymentType === 'expense' && paymentMethod === 'Split' ? 'Cash' : paymentMethod) === 'Cash' ? '💵 নগদ (Cash)' :
                                      paymentMethod === 'Split' ? '💵+📄 নগদ ও চেক (স্প্লিট পেমেন্ট)' :
                                      paymentMethod === 'Cheque' || paymentMethod === 'Check' ? '📄 চেক (Cheque)' :
                                      paymentMethod === 'Bank' ? '🏦 ব্যাংক ট্রান্সফার' :
@@ -1610,7 +1642,9 @@ function TransactionsContent() {
                                 </SelectTrigger>
                                 <SelectContent className="font-bengali text-xs font-bold z-[99999]">
                                   <SelectItem value="Cash">💵 নগদ (Cash)</SelectItem>
-                                  <SelectItem value="Split">💵+📄 নগদ ও চেক (স্প্লিট পেমেন্ট)</SelectItem>
+                                  {paymentType === 'income' && (
+                                    <SelectItem value="Split">💵+📄 নগদ ও চেক (স্প্লিট পেমেন্ট)</SelectItem>
+                                  )}
                                   <SelectItem value="Cheque">📄 চেক (Cheque)</SelectItem>
                                   <SelectItem value="Bank">🏦 ব্যাংক ট্রান্সফার</SelectItem>
                                   <SelectItem value="BankToBank">🔄 ব্যাংক-টু-ব্যাংক</SelectItem>
@@ -1778,10 +1812,17 @@ function TransactionsContent() {
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent className="font-bengali text-xs font-bold z-[99999]">
-                                    <SelectItem value="ডাচ-বাংলা ব্যাংক - 123.456.7890">ডাচ-বাংলা ব্যাংক (DBBL) - A/C: 123.456.7890</SelectItem>
-                                    <SelectItem value="ইসলামী ব্যাংক - 2050.1234.5678">ইসলামী ব্যাংক (IBBL) - A/C: 2050.1234.5678</SelectItem>
-                                    <SelectItem value="ব্র্যাক ব্যাংক - 1501.2039.4857">ব্র্যাক ব্যাংক (BRAC Bank) - A/C: 1501.2039.4857</SelectItem>
-                                    <SelectItem value="সিটি ব্যাংক - 3101.9876.5432">সিটি ব্যাংক (City Bank) - A/C: 3101.9876.5432</SelectItem>
+                                    {banks.length > 0 ? (
+                                      banks.map(b => (
+                                        <SelectItem key={b.id} value={`${b.name} (${b.accNo})`}>
+                                          {b.name} - {b.accNo} (ব্যালেন্স: ৳ {Number(b.balance || 0).toLocaleString('bn-BD')})
+                                        </SelectItem>
+                                      ))
+                                    ) : (
+                                      <SelectItem value="none" disabled>
+                                        ⚠️ কোনো ব্যাংক যুক্ত নেই (আগে ব্যাংক যোগ করুন)
+                                      </SelectItem>
+                                    )}
                                   </SelectContent>
                                 </Select>
                               </div>
@@ -1825,19 +1866,51 @@ function TransactionsContent() {
 
                           {/* CHEQUE DETAILS */}
                           {(paymentMethod === 'Cheque' || paymentMethod === 'Check' || paymentMethod === 'Split' || chequePaidAmount > 0) && (
-                            <div className="p-3.5 bg-purple-50/80 border border-purple-200 rounded-md space-y-2 font-bengali text-xs animate-in fade-in-0 shadow-2xs">
+                            <div className="p-3.5 bg-purple-50/80 border border-purple-200 rounded-md space-y-2.5 font-bengali text-xs animate-in fade-in-0 shadow-2xs">
                               <p className="font-bold text-purple-900 flex items-center gap-1.5">
-                                📄 অভাঙানো চেকের বিস্তারিত (পেন্ডিং চেকের তালিকায় যুক্ত হবে)
+                                📄 চেকের বিবরণ {paymentType === 'expense' ? '(দোকানের ব্যাংক একাউন্ট নির্বাচন করুন)' : '(কাস্টমারের চেকের তথ্য)'}
                               </p>
-                              <div className="grid grid-cols-3 gap-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                                 <div>
-                                  <Label className="text-[10px] font-bold text-purple-900">ব্যাংকের নাম</Label>
-                                  <Input 
-                                    placeholder="যেমন: ডাচ বাংলা ব্যাংক" 
-                                    value={bankName} 
-                                    onChange={e => setBankName(e.target.value)}
-                                    className="h-9 rounded-md bg-white text-xs font-bengali"
-                                  />
+                                  {paymentType === 'expense' ? (
+                                    <>
+                                      <Label className="text-[10px] font-bold text-purple-900">দোকানের ব্যাংক অ্যাকাউন্ট</Label>
+                                      <Select 
+                                        value={bankName || selectedShopBank} 
+                                        onValueChange={(val: string | null) => {
+                                          setBankName(val || '');
+                                          setSelectedShopBank(val || '');
+                                        }}
+                                      >
+                                        <SelectTrigger className="h-9 rounded-md bg-white text-xs font-bold border-purple-200">
+                                          <SelectValue placeholder="দোকানের ব্যাংক নির্বাচন করুন" />
+                                        </SelectTrigger>
+                                        <SelectContent className="font-bengali text-xs font-bold">
+                                          {banks.length > 0 ? (
+                                            banks.map(b => (
+                                              <SelectItem key={b.id} value={`${b.name} (${b.accNo})`}>
+                                                {b.name} - {b.accNo} (ব্যালেন্স: ৳ {Number(b.balance || 0).toLocaleString('bn-BD')})
+                                              </SelectItem>
+                                            ))
+                                          ) : (
+                                            <SelectItem value="none" disabled>
+                                              ⚠️ কোনো ব্যাংক যুক্ত নেই (আগে ব্যাংক যোগ করুন)
+                                            </SelectItem>
+                                          )}
+                                        </SelectContent>
+                                      </Select>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Label className="text-[10px] font-bold text-purple-900">কাস্টমারের ব্যাংকের নাম</Label>
+                                      <Input 
+                                        placeholder="যেমন: সোনালী ব্যাংক / ডাচ-বাংলা" 
+                                        value={bankName} 
+                                        onChange={e => setBankName(e.target.value)}
+                                        className="h-9 rounded-md bg-white text-xs font-bengali"
+                                      />
+                                    </>
+                                  )}
                                 </div>
                                 <div>
                                   <Label className="text-[10px] font-bold text-purple-900">চেক নম্বর</Label>
@@ -2003,9 +2076,17 @@ function TransactionsContent() {
             <DialogContent className="max-w-xl rounded-3xl p-6 bg-white font-bengali">
               <div className="p-6 border border-slate-200 rounded-2xl space-y-5 bg-white">
                 <div className="flex justify-between items-start border-b border-slate-200 pb-4">
-                  <div>
-                    <h2 className="text-2xl font-black text-slate-900">ব্রাদার্স ট্রেডার্স</h2>
-                    <p className="text-xs text-slate-500">রড ও সিমেন্ট হোলসেল দোকান, মিরপুর, ঢাকা</p>
+                  <div className="flex items-center gap-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img 
+                      src="/logo.png" 
+                      alt="মেসার্স দেলোয়ার এন্ড ব্রাদার্স" 
+                      className="w-12 h-12 object-contain rounded-lg border border-slate-200 bg-white p-0.5" 
+                    />
+                    <div>
+                      <h2 className="text-xl font-black text-slate-900">মেসার্স দেলোয়ার এন্ড ব্রাদার্স</h2>
+                      <p className="text-xs text-slate-500">রড, সিমেন্ট ও বিল্ডিং সামগ্রী পাইকারী ও খুচরা সরবরাহ কেন্দ্র</p>
+                    </div>
                   </div>
                   <div className="text-right">
                     <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold block mb-1">

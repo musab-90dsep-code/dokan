@@ -7,7 +7,7 @@ import {
   RotateCcw, Search, Plus, Package, User, DollarSign, FileText, X, 
   ShoppingCart, AlertCircle, Trash2, ArrowRight, CheckCircle2, RefreshCw, Calendar,
   Filter, ChevronUp, ChevronDown, ArrowLeft, Lightbulb, Printer, Edit2, Eye, Receipt,
-  Check, ShieldAlert, Sparkles
+  Check, ShieldAlert, Sparkles, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,7 @@ import { ReturnInvoiceMemo } from '@/components/ReturnInvoiceMemo';
 import { SalesReturnDetailsView } from '@/components/SalesReturnDetailsView';
 import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { printElement } from '@/lib/printUtils';
+import { TableRowActionMenu } from '@/components/TableRowActionMenu';
 
 interface ReturnEntry {
   id: string;
@@ -41,6 +42,7 @@ interface ReturnEntry {
   returnedItems: ReturnItem[];
   newTakenItems: ReturnItem[];
   reason: string;
+  status?: string;
   createdAt: any;
 }
 
@@ -89,6 +91,7 @@ export default function SalesReturnsPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [filterType, setFilterType] = useState('সব');
+  const [filterApprovalStatus, setFilterApprovalStatus] = useState<'all' | 'approved' | 'pending'>('all');
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const [minRefund, setMinRefund] = useState('');
   const [maxRefund, setMaxRefund] = useState('');
@@ -98,9 +101,15 @@ export default function SalesReturnsPage() {
     setStartDate('');
     setEndDate('');
     setFilterType('সব');
+    setFilterApprovalStatus('all');
     setMinRefund('');
     setMaxRefund('');
   };
+
+  // Pagination States
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [printingReturn, setPrintingReturn] = useState<ReturnEntry | null>(null);
   
   // New Return Modal States
   const [isOpen, setIsOpen] = useState(false);
@@ -291,6 +300,26 @@ export default function SalesReturnsPage() {
     }
   };
 
+  const handleApproveReturn = async (r: ReturnEntry) => {
+    try {
+      await api.transactions.approve(r.id);
+      toast.success(`বিক্রয় রিটার্ন চালানটি (${r.invoiceNo || r.id}) সফলভাবে অনুমোদন করা হয়েছে! স্টক ও কাস্টমার একাউন্টে সমন্বয় হয়েছে।`);
+      loadReturnsData();
+      if (selectedReturn && selectedReturn.id === r.id) {
+        setSelectedReturn({ ...selectedReturn, status: 'approved' });
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'অনুমোদন করতে সমস্যা হয়েছে');
+    }
+  };
+
+  const handleDirectPrintReturn = (r: ReturnEntry) => {
+    setPrintingReturn(r);
+    setTimeout(() => {
+      printElement('printable-memo-wrapper');
+    }, 100);
+  };
+
   const loadReturnsData = async () => {
     try {
       setLoading(true);
@@ -349,6 +378,7 @@ export default function SalesReturnsPage() {
           netRefundValue: netRefund,
           dueAdjusted: Number(r.due_amount || 0),
           cashRefundPaid: Number(r.paid_amount || 0),
+          status: r.status || 'pending',
           returnedItems: (r.items || []).map(i => ({
             id: String(i.product || ''),
             name: i.product_name,
@@ -508,12 +538,13 @@ export default function SalesReturnsPage() {
       };
 
       const retInvoiceNo = editingReturn ? undefined : `RET-${String(returns.length + 1).padStart(6, '0')}`;
-      const payload: TransactionData = {
+      const payload: any = {
         invoice_no: retInvoiceNo,
-        party: selectedCustomerId ? Number(selectedCustomerId) : null,
+        party: Number(selectedCustomerId),
         party_name: selectedCust?.name || 'সাধারণ গ্রাহক',
         party_phone: selectedCust?.phone || '',
-        transaction_type: 'sale_return' as const,
+        transaction_type: 'sale_return',
+        status: 'pending',
         total_amount: round2(totalReturnedValue),
         paid_amount: round2(cashRefundPaid),
         due_amount: round2(dueAdjusted),
@@ -544,6 +575,7 @@ export default function SalesReturnsPage() {
           await api.transactions.create({
             party: Number(selectedCustomerId),
             transaction_type: 'sale',
+            status: 'pending',
             total_amount: round2(totalNewTakenValue),
             paid_amount: 0,
             due_amount: round2(totalNewTakenValue),
@@ -563,7 +595,7 @@ export default function SalesReturnsPage() {
             notes: `রিটার্ন এক্সচেঞ্জ ক্রয় (রিটার্ন: ${reason || 'পণ্য ফেরত'})`
           });
         }
-        toast.success('বিক্রয় রিটার্ন ও স্টক সমন্বয় সফলভাবে সম্পন্ন হয়েছে!');
+        toast.success('বিক্রয় রিটার্ন অপেক্ষমান (Pending) হিসেবে সংরক্ষিত হয়েছে! অনুমোদন করার পর স্টক ও হিসাবে যুক্ত হবে।');
       }
 
       setIsOpen(false);
@@ -603,13 +635,26 @@ export default function SalesReturnsPage() {
       matchesType = (r.dueAdjusted || 0) > 0;
     }
 
+    let matchesApproval = true;
+    if (filterApprovalStatus !== 'all') {
+      const isPending = r.status === 'pending' || r.status === 'draft' || r.status === 'অপেক্ষমান';
+      if (filterApprovalStatus === 'approved' && isPending) matchesApproval = false;
+      if (filterApprovalStatus === 'pending' && !isPending) matchesApproval = false;
+    }
+
     let matchesAmount = true;
     const val = r.netRefundValue || r.totalReturnValue || 0;
     if (minRefund && val < parseFloat(minRefund)) matchesAmount = false;
     if (maxRefund && val > parseFloat(maxRefund)) matchesAmount = false;
 
-    return Boolean(matchesSearch) && matchesDate && matchesType && matchesAmount;
+    return Boolean(matchesSearch) && matchesDate && matchesType && matchesApproval && matchesAmount;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredReturns.length / pageSize));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (validCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, filteredReturns.length);
+  const paginatedReturns = filteredReturns.slice(startIndex, endIndex);
 
   const totalRefundAmountSum = returns.reduce((sum, r) => sum + (r.netRefundValue || r.totalReturnValue || 0), 0);
 
@@ -626,15 +671,26 @@ export default function SalesReturnsPage() {
           />
 
           {/* Hidden Print Container */}
-          <div className="hidden print:block">
-            <ReturnInvoiceMemo
-              returnEntry={selectedReturn}
-              showPrintButton={false}
-            />
-          </div>
+          {(printingReturn || selectedReturn) && (
+            <div className="hidden print:block">
+              <ReturnInvoiceMemo
+                returnEntry={(printingReturn || selectedReturn) as any}
+                showPrintButton={false}
+              />
+            </div>
+          )}
         </div>
       ) : !isOpen ? (
         <div className="space-y-5 animate-in fade-in duration-300 font-bengali pb-10">
+          {/* Always render Hidden Print Container if triggered from list table */}
+          {printingReturn && !selectedReturn && (
+            <div className="hidden print:block">
+              <ReturnInvoiceMemo
+                returnEntry={printingReturn as any}
+                showPrintButton={false}
+              />
+            </div>
+          )}
           
           {/* Top Title & Header Action */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -722,6 +778,20 @@ export default function SalesReturnsPage() {
                 compact={false}
               />
 
+              {/* Approval Status Filter Dropdown */}
+              <div className="w-full sm:w-[155px] shrink-0">
+                <Select value={filterApprovalStatus} onValueChange={(val) => setFilterApprovalStatus(val || 'all')}>
+                  <SelectTrigger className="rounded-md h-10 bg-slate-50/80 border-slate-200 text-xs font-bold text-slate-700">
+                    <SelectValue placeholder="সব অনুমোদন" />
+                  </SelectTrigger>
+                  <SelectContent className="font-bengali text-xs font-bold">
+                    <SelectItem value="all">সব অনুমোদন</SelectItem>
+                    <SelectItem value="approved">🟢 অনুমোদিত</SelectItem>
+                    <SelectItem value="pending">🟡 অপেক্ষমান</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Status Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
                 {[
@@ -757,7 +827,7 @@ export default function SalesReturnsPage() {
                   {isFilterExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </Button>
 
-                {(search || startDate || endDate || filterType !== 'সব' || minRefund || maxRefund) && (
+                {(search || startDate || endDate || filterType !== 'সব' || filterApprovalStatus !== 'all' || minRefund || maxRefund) && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -808,24 +878,25 @@ export default function SalesReturnsPage() {
                     <TableHead className="font-bold text-slate-700 py-3.5 px-4 text-xs">নতুন নেওয়া পণ্য</TableHead>
                     <TableHead className="font-bold text-slate-700 py-3.5 px-4 text-xs text-right">মোট ফেরত মূল্য</TableHead>
                     <TableHead className="font-bold text-slate-700 py-3.5 px-4 text-xs text-right">হিসাব নিষ্পত্তি</TableHead>
-                    <TableHead className="font-bold text-slate-700 py-3.5 px-4 text-xs text-center w-28">অ্যাকশন</TableHead>
+                    <TableHead className="font-bold text-slate-700 py-3.5 px-4 text-xs text-center">স্ট্যাটাস</TableHead>
+                    <TableHead className="font-bold text-slate-700 py-3.5 px-4 text-xs text-right w-32">অ্যাকশন</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-12 text-slate-500 text-xs font-bold">
+                      <TableCell colSpan={8} className="text-center py-12 text-slate-500 text-xs font-bold">
                         <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-blue-600" />
                         রিটার্ন তালিকা লোড হচ্ছে...
                       </TableCell>
                     </TableRow>
                   ) : filteredReturns.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-12 text-slate-400 text-xs font-bold">
+                      <TableCell colSpan={8} className="text-center py-12 text-slate-400 text-xs font-bold">
                         কোনো বিক্রয় ফেরত রেকর্ড পাওয়া যায়নি।
                       </TableCell>
                     </TableRow>
-                  ) : filteredReturns.map((r) => (
+                  ) : paginatedReturns.map((r) => (
                     <TableRow 
                       key={r.id} 
                       onClick={() => setSelectedReturn(r)}
@@ -881,65 +952,109 @@ export default function SalesReturnsPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-center py-3 px-4" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-center gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            title="চালান বিবরণী দেখুন"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedReturn(r);
-                            }}
-                            className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-100/70 rounded-md cursor-pointer"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            title="মেমো প্রিন্ট করুন"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedReturn(r);
-                              setIsPrintMemoOpen(true);
-                            }}
-                            className="h-8 w-8 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
-                          >
-                            <Printer className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            title="এডিট করুন"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditReturn(r);
-                            }}
-                            className="h-8 w-8 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-md cursor-pointer"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            title="ডিলিট করুন"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeletingReturn(r);
-                              setIsDeleteDialogOpen(true);
-                            }}
-                            className="h-8 w-8 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
+                      <TableCell className="py-3 px-4 text-center">
+                        {r.status === 'pending' || r.status === 'draft' || r.status === 'অপেক্ষমান' ? (
+                          <span className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 inline-flex items-center gap-1">
+                            🟡 অপেক্ষমান
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
+                            🟢 অনুমোদিত
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right py-3.5 px-6" onClick={(e) => e.stopPropagation()}>
+                        <TableRowActionMenu
+                          onView={() => setSelectedReturn(r)}
+                          onPrint={() => handleDirectPrintReturn(r)}
+                          onEdit={() => handleEditReturn(r)}
+                          onDelete={() => { setDeletingReturn(r); setIsDeleteDialogOpen(true); }}
+                          onApprove={() => handleApproveReturn(r)}
+                          isPending={r.status === 'pending' || r.status === 'draft' || r.status === 'অপেক্ষমান'}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </CardContent>
+
+            {/* PAGINATION FOOTER NAVBAR */}
+            {filteredReturns.length > 0 && (
+              <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4 font-bengali text-xs font-semibold">
+                <div className="text-slate-600 flex items-center gap-2">
+                  <span>
+                    মোট <strong className="text-slate-900 font-bold">{toBengaliDigits(filteredReturns.length)}</strong> টি ইনভয়েসের মধ্যে <strong className="text-slate-900 font-bold">{toBengaliDigits(startIndex + 1)}</strong> - <strong className="text-slate-900 font-bold">{toBengaliDigits(endIndex)}</strong> টি দেখানো হচ্ছে
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-1.5 text-slate-500">
+                    <span>প্রতি পেজে:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="h-8 rounded-md bg-white border border-slate-200 px-2 font-bold text-xs text-slate-800 outline-none cursor-pointer"
+                    >
+                      <option value={10}>১০ টি</option>
+                      <option value={20}>২০ টি</option>
+                      <option value={50}>৫০ টি</option>
+                      <option value={100}>১০০ টি</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={validCurrentPage <= 1}
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      className="h-8 px-2.5 rounded-md text-xs font-bold bg-white text-slate-700 border-slate-200 hover:bg-slate-100 disabled:opacity-40"
+                    >
+                      <ChevronLeft className="w-4 h-4 mr-0.5" /> আগের পেজ
+                    </Button>
+
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                        .map((page, idx, arr) => {
+                          const prev = arr[idx - 1];
+                          const showEllipsis = prev && page - prev > 1;
+                          return (
+                            <div key={page} className="flex items-center gap-1">
+                              {showEllipsis && <span className="px-1 text-slate-400">...</span>}
+                              <button
+                                onClick={() => setCurrentPage(page)}
+                                className={cn(
+                                  "w-8 h-8 rounded-md text-xs font-bold transition-all border",
+                                  currentPage === page
+                                    ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                                )}
+                              >
+                                {toBengaliDigits(page)}
+                              </button>
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={validCurrentPage >= totalPages}
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      className="h-8 px-2.5 rounded-md text-xs font-bold bg-white text-slate-700 border-slate-200 hover:bg-slate-100 disabled:opacity-40"
+                    >
+                      পরের পেজ <ChevronRight className="w-4 h-4 ml-0.5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </Card>
         </div>
 

@@ -15,6 +15,9 @@ export function toBnNum(val: number | string | undefined | null): string {
 
 export function formatBnCurrency(amount: number | string): string {
   const num = Number(amount) || 0;
+  if (num < 0) {
+    return `-৳ ${Math.abs(num).toLocaleString('bn-BD')}`;
+  }
   return `৳ ${num.toLocaleString('bn-BD')}`;
 }
 

@@ -7,7 +7,8 @@ import {
   Plus, Search, Edit, Edit2, Trash2, Phone, Building2, DollarSign,
   Receipt, Banknote, Calendar, Lightbulb, AlertCircle, X,
   Truck, Eye, Calculator, CheckCircle2, Package, Filter,
-  ChevronUp, ChevronDown, RotateCcw, ArrowLeft, Printer, ArrowUpDown
+  ChevronUp, ChevronDown, RotateCcw, ArrowLeft, Printer, ArrowUpDown,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -27,6 +28,7 @@ import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
 import { printElement } from '@/lib/printUtils';
 import { parseProductDetails } from '@/lib/bengaliUtils';
+import { TableRowActionMenu } from '@/components/TableRowActionMenu';
 
 const bengaliNumerals = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
 export const toBengaliDigits = (num: number | string | undefined | null): string => {
@@ -87,6 +89,7 @@ export interface PurchaseInvoice {
   dueAmount: number;
   paymentStatus: string;
   createdAt: any;
+  status?: string;
   purchaseType?: 'rod' | 'cement';
   vehicleNo?: string;
   driverName?: string;
@@ -101,6 +104,7 @@ export default function PurchasesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('সব');
+  const [filterApprovalStatus, setFilterApprovalStatus] = useState<'all' | 'approved' | 'pending'>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
@@ -112,10 +116,12 @@ export default function PurchasesPage() {
     setStartDate('');
     setEndDate('');
     setFilterStatus('সব');
+    setFilterApprovalStatus('all');
     setMinBill('');
     setMaxBill('');
   };
   const [selectedPurchase, setSelectedPurchase] = useState<PurchaseInvoice | null>(null);
+  const [printingPurchase, setPrintingPurchase] = useState<PurchaseInvoice | null>(null);
   const [isPrintMemoOpen, setIsPrintMemoOpen] = useState<boolean>(false);
 
   // Form & Modal States
@@ -208,8 +214,8 @@ export default function PurchasesPage() {
   const [transactionRef, setTransactionRef] = useState<string>('');
   const [chequeNo, setChequeNo] = useState<string>('');
   const [chequeDate, setChequeDate] = useState<string>('');
-  const [savedBanks, setSavedBanks] = useState<{ id: string; name: string; accNo: string }[]>([]);
-  const [selectedShopBank, setSelectedShopBank] = useState<string>('ডাচ-বাংলা ব্যাংক - 123.456.7890');
+  const [savedBanks, setSavedBanks] = useState<{ id: string; name: string; accNo: string; balance: number }[]>([]);
+  const [selectedShopBank, setSelectedShopBank] = useState<string>('');
   const [supplierBankName, setSupplierBankName] = useState<string>('');
   const [supplierAccountNo, setSupplierAccountNo] = useState<string>('');
   const [supplierTxnRef, setSupplierTxnRef] = useState<string>('');
@@ -223,6 +229,10 @@ export default function PurchasesPage() {
   const [receivedBy, setReceivedBy] = useState<string>('');
   const [warehouse, setWarehouse] = useState<string>('Main');
   const [purchaseNote, setPurchaseNote] = useState<string>('');
+
+  // Pagination States
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   const loadPurchasesData = async () => {
     try {
@@ -271,6 +281,7 @@ export default function PurchasesPage() {
           paidAmount: p.paid_amount,
           dueAmount: p.due_amount,
           paymentStatus: p.due_amount <= 0 ? 'পরিশোধিত' : (p.paid_amount || 0) > 0 ? 'আংশিক' : 'বকেয়া আছে',
+          status: p.status || 'pending',
           createdAt: p.created_at,
           vehicleNo: pAny.vehicle_no || meta.vehicleNo || '',
           driverName: pAny.driver_name || meta.driverName || '',
@@ -316,7 +327,8 @@ export default function PurchasesPage() {
       setSavedBanks(bankList.map(b => ({
         id: String(b.id),
         name: b.name || b.bank_name || 'ব্যাংক',
-        accNo: b.account_number || ''
+        accNo: b.account_number || '',
+        balance: Number(b.balance || 0)
       })));
     } catch (err) {
       console.error('Error loading purchases page:', err);
@@ -595,8 +607,49 @@ export default function PurchasesPage() {
         finalLaborStatus = laborPaymentStatus;
       }
 
+      // Validate Cash & Bank Balance for goods, shipping, and labor costs
+      try {
+        const stats = await api.dashboard.getStats();
+        const availCash = stats.totalCash || 0;
+        const isSelectedBankCheck = paymentMethod === 'BankToBank' || paymentMethod === 'Cheque';
+        const extraCashCosts = (finalShippingPaid + finalLaborPaid);
+
+        if (paymentOption === 'now' && Number(paidAmount) > 0 && isSelectedBankCheck) {
+          const targetAccName = bankName || selectedShopBank;
+          const selectedBankObj = savedBanks.find(b => 
+            `${b.name} (${b.accNo})` === targetAccName || 
+            `${b.name} - ${b.accNo}` === targetAccName || 
+            b.name === targetAccName || 
+            b.id === targetAccName
+          );
+          const availBank = selectedBankObj ? selectedBankObj.balance : (stats.totalBank || 0);
+          const bankTitle = selectedBankObj ? `'${selectedBankObj.name}'` : 'ব্যাংক';
+          if (Number(paidAmount) > availBank) {
+            toast.error(`পর্যাপ্ত ব্যাংক ব্যালেন্স নেই! (নির্বাচিত ${bankTitle} একাউন্ট ব্যালেন্স: ৳ ${availBank.toLocaleString('bn-BD')}, প্রদান করতে চাচ্ছেন: ৳ ${Number(paidAmount).toLocaleString('bn-BD')})। অনুগ্রহ করে আগে এই ব্যাংক একাউন্টে ব্যালেন্স জমা করুন অথবা 'বাকি চালান' হিসেবে কাটুন।`);
+            return;
+          }
+          if (extraCashCosts > 0 && extraCashCosts > availCash) {
+            toast.error(`পর্যাপ্ত নগদ ক্যাশ ব্যালেন্স নেই! (বর্তমান ক্যাশ ব্যালেন্স: ৳ ${availCash.toLocaleString('bn-BD')}, গাড়ি ভাড়া ও লেবার খরচ বাবদ নগদ পরিশোধ করতে চাচ্ছেন: ৳ ${extraCashCosts.toLocaleString('bn-BD')} [গাড়ি ভাড়া: ৳${finalShippingPaid.toLocaleString('bn-BD')}, লেবার: ৳${finalLaborPaid.toLocaleString('bn-BD')}])। ক্যাশে পর্যাপ্ত ব্যালেন্স না থাকলে গাড়ি ভাড়া/লেবার নগদ পরিশোধ করা যাবে না।`);
+            return;
+          }
+        } else {
+          const totalCashOut = (paymentOption === 'now' ? Number(paidAmount) : 0) + extraCashCosts;
+          if (totalCashOut > 0 && totalCashOut > availCash) {
+            let breakdown = '';
+            if (paymentOption === 'now' && Number(paidAmount) > 0) breakdown += `পণ্য বাবদ: ৳ ${Number(paidAmount).toLocaleString('bn-BD')}`;
+            if (finalShippingPaid > 0) breakdown += `${breakdown ? ' + ' : ''}গাড়ি ভাড়া: ৳ ${finalShippingPaid.toLocaleString('bn-BD')}`;
+            if (finalLaborPaid > 0) breakdown += `${breakdown ? ' + ' : ''}লেবার খরচ: ৳ ${finalLaborPaid.toLocaleString('bn-BD')}`;
+            toast.error(`পর্যাপ্ত নগদ ক্যাশ ব্যালেন্স নেই! (বর্তমান ক্যাশ ব্যালেন্স: ৳ ${availCash.toLocaleString('bn-BD')}, মোট নগদ প্রদান করতে চাচ্ছেন: ৳ ${totalCashOut.toLocaleString('bn-BD')} [${breakdown}])। ক্যাশে পর্যাপ্ত ব্যালেন্স না থাকলে নগদ প্রদান বা গাড়ি ভাড়া/লেবার পরিশোধ করা যাবে না।`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('Balance check failed:', e);
+      }
+
       const purchaseMeta = {
         purchaseType: purchaseType || 'rod',
+        isLandedCostAuto: Boolean(isLandedCostAuto),
         paymentMethodName: paymentMethod,
         bankName: bankName || supplierBankName || selectedShopBank || '',
         accountNo: accountNo || supplierAccountNo || '',
@@ -663,6 +716,7 @@ export default function PurchasesPage() {
         await api.transactions.create({
           party: finalSuppId ? Number(finalSuppId) : null,
           transaction_type: 'purchase',
+          status: 'pending',
           total_amount: round2(cartTotalAmount),
           paid_amount: round2(paidAmount),
           due_amount: round2(supplierDueAmount),
@@ -670,7 +724,7 @@ export default function PurchasesPage() {
           items: itemsPayload,
           notes: finalNotesPayload
         });
-        toast.success('ক্রয় ইনভয়েস সফলভাবে সংরক্ষিত হয়েছে!');
+        toast.success('ক্রয় ইনভয়েস অপেক্ষমান (Pending) হিসেবে সংরক্ষিত হয়েছে! অনুমোদন করার পর হিসাব ও স্টকে যুক্ত হবে।');
       }
 
       setIsCreateOpen(false);
@@ -736,6 +790,12 @@ export default function PurchasesPage() {
     setShippingPaymentStatus(meta.shippingStatus || (shipPaid > 0 ? 'paid' : 'pending'));
     setLaborPaymentStatus(meta.laborStatus || (labPaid > 0 ? 'paid' : 'pending'));
 
+    if (meta.isLandedCostAuto !== undefined) {
+      setIsLandedCostAuto(Boolean(meta.isLandedCostAuto));
+    } else {
+      setIsLandedCostAuto(true);
+    }
+
     setDiscountType('flat');
     setDiscountFlat(p.discount || 0);
     setShippingCost(p.shippingCost || pAny.shipping_cost || 0);
@@ -766,6 +826,26 @@ export default function PurchasesPage() {
     }
   };
 
+  const handleApprovePurchase = async (p: PurchaseInvoice) => {
+    try {
+      await api.transactions.approve(p.id);
+      toast.success(`ক্রয় ইনভয়েস (${p.purchaseId || p.id}) সফলভাবে অনুমোদন করা হয়েছে! স্টক ও হিসাব হালনাগাদ হয়েছে।`);
+      loadPurchasesData();
+      if (selectedPurchase && selectedPurchase.id === p.id) {
+        setSelectedPurchase({ ...selectedPurchase, status: 'approved' });
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'অনুমোদন করতে সমস্যা হয়েছে');
+    }
+  };
+
+  const handleDirectPrintPurchase = (p: PurchaseInvoice) => {
+    setPrintingPurchase(p);
+    setTimeout(() => {
+      printElement('printable-memo-wrapper');
+    }, 100);
+  };
+
   const filteredPurchases = purchases.filter(p => {
     const searchLower = search.toLowerCase();
     const matchesSearch = !search ||
@@ -788,13 +868,26 @@ export default function PurchasesPage() {
       matchesStatus = p.dueAmount > 0;
     }
 
+    let matchesApproval = true;
+    if (filterApprovalStatus !== 'all') {
+      const isPending = p.status === 'pending' || p.status === 'draft' || p.status === 'অপেক্ষমান';
+      if (filterApprovalStatus === 'approved' && isPending) matchesApproval = false;
+      if (filterApprovalStatus === 'pending' && !isPending) matchesApproval = false;
+    }
+
     let matchesAmount = true;
     const bill = p.totalAmount || 0;
     if (minBill && bill < parseFloat(minBill)) matchesAmount = false;
     if (maxBill && bill > parseFloat(maxBill)) matchesAmount = false;
 
-    return Boolean(matchesSearch) && matchesDate && matchesStatus && matchesAmount;
+    return Boolean(matchesSearch) && matchesDate && matchesStatus && matchesApproval && matchesAmount;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredPurchases.length / pageSize));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (validCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, filteredPurchases.length);
+  const paginatedPurchases = filteredPurchases.slice(startIndex, endIndex);
 
   const totalPurchaseAmount = purchases.reduce((a, p) => a + (p.totalAmount || 0), 0);
   const totalPaidAmount = purchases.reduce((a, p) => a + (p.paidAmount || 0), 0);
@@ -816,20 +909,34 @@ export default function PurchasesPage() {
             invoice={selectedPurchase}
             onBack={() => setSelectedPurchase(null)}
             onPrint={() => printElement('printable-memo-wrapper')}
+            onEdit={(p) => handleEditPurchase(p)}
             onDelete={(p) => handleDeletePurchase(p)}
+            onApprove={(p) => handleApprovePurchase(p)}
           />
 
           {/* Hidden Print Container for iframe printing */}
-          <div className="hidden print:block">
-            <PurchaseInvoiceMemo
-              invoice={selectedPurchase as any}
-              type="purchase"
-              showPrintButton={false}
-            />
-          </div>
+          {(printingPurchase || selectedPurchase) && (
+            <div className="hidden print:block">
+              <PurchaseInvoiceMemo
+                invoice={(printingPurchase || selectedPurchase) as any}
+                type="purchase"
+                showPrintButton={false}
+              />
+            </div>
+          )}
         </div>
       ) : !isCreateOpen ? (
         <div className="space-y-6 font-bengali pb-10">
+          {/* Always render Hidden Print Container if triggered from list table */}
+          {printingPurchase && !selectedPurchase && (
+            <div className="hidden print:block">
+              <PurchaseInvoiceMemo
+                invoice={printingPurchase as any}
+                type="purchase"
+                showPrintButton={false}
+              />
+            </div>
+          )}
           
           {/* HEADER TOOLBAR MATCHING SALES INVOICES PAGE */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -907,6 +1014,20 @@ export default function PurchasesPage() {
                 compact={false}
               />
 
+              {/* Approval Status Filter Dropdown */}
+              <div className="w-full sm:w-[155px] shrink-0">
+                <Select value={filterApprovalStatus} onValueChange={(val) => setFilterApprovalStatus(val || 'all')}>
+                  <SelectTrigger className="rounded-md h-10 bg-slate-50/80 border-slate-200 text-xs font-bold text-slate-700">
+                    <SelectValue placeholder="সব অনুমোদন" />
+                  </SelectTrigger>
+                  <SelectContent className="font-bengali text-xs font-bold">
+                    <SelectItem value="all">সব অনুমোদন</SelectItem>
+                    <SelectItem value="approved">🟢 অনুমোদিত</SelectItem>
+                    <SelectItem value="pending">🟡 অপেক্ষমান</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Quick Status Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
                 {[
@@ -942,7 +1063,7 @@ export default function PurchasesPage() {
                   {isFilterExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </Button>
 
-                {(search || startDate || endDate || filterStatus !== 'সব' || minBill || maxBill) && (
+                {(search || startDate || endDate || filterStatus !== 'সব' || filterApprovalStatus !== 'all' || minBill || maxBill) && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1049,7 +1170,7 @@ export default function PurchasesPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ) : filteredPurchases.map((p) => {
+                  ) : paginatedPurchases.map((p) => {
                     const invNo = p.purchaseId || p.id ? (p.id.startsWith('PUR') ? p.id : `PUR-${p.id.slice(-6).toUpperCase()}`) : 'PUR-000101';
                     return (
                       <TableRow 
@@ -1091,34 +1212,25 @@ export default function PurchasesPage() {
                           </span>
                         </TableCell>
                         <TableCell className="py-3.5 px-4 text-center">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                            সম্পন্ন
-                          </span>
+                          {p.status === 'pending' || p.status === 'draft' || p.status === 'অপেক্ষমান' ? (
+                            <span className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 inline-flex items-center gap-1">
+                              🟡 অপেক্ষমান
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
+                              🟢 অনুমোদিত
+                            </span>
+                          )}
                         </TableCell>
-                        <TableCell className="py-3.5 px-6 text-center">
-                          <div className="flex items-center justify-center gap-1.5" onClick={e => e.stopPropagation()}>
-                            <button 
-                              onClick={() => setSelectedPurchase(p)} 
-                              className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
-                              title="ইনভয়েস বিবরণী ও মেমো দেখুন"
-                            >
-                              <Eye className="w-4 h-4 text-indigo-600" />
-                            </button>
-                            <button 
-                              onClick={() => handleEditPurchase(p)} 
-                              className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
-                              title="সম্পাদনা করুন"
-                            >
-                              <Edit className="w-4 h-4 text-amber-600" />
-                            </button>
-                            <button 
-                              onClick={() => handleDeletePurchase(p)} 
-                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-md transition-colors"
-                              title="মুছে ফেলুন"
-                            >
-                              <Trash2 className="w-4 h-4 text-rose-600" />
-                            </button>
-                          </div>
+                        <TableCell className="py-3.5 px-6 text-right" onClick={e => e.stopPropagation()}>
+                          <TableRowActionMenu
+                            onView={() => setSelectedPurchase(p)}
+                            onPrint={() => handleDirectPrintPurchase(p)}
+                            onEdit={() => handleEditPurchase(p)}
+                            onDelete={() => handleDeletePurchase(p)}
+                            onApprove={() => handleApprovePurchase(p)}
+                            isPending={p.status === 'pending' || p.status === 'draft' || p.status === 'অপেক্ষমান'}
+                          />
                         </TableCell>
                       </TableRow>
                     );
@@ -1126,6 +1238,83 @@ export default function PurchasesPage() {
                 </TableBody>
               </Table>
             </CardContent>
+
+            {/* PAGINATION FOOTER NAVBAR */}
+            {filteredPurchases.length > 0 && (
+              <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4 font-bengali text-xs font-semibold">
+                <div className="text-slate-600 flex items-center gap-2">
+                  <span>
+                    মোট <strong className="text-slate-900 font-bold">{toBengaliDigits(filteredPurchases.length)}</strong> টি ইনভয়েসের মধ্যে <strong className="text-slate-900 font-bold">{toBengaliDigits(startIndex + 1)}</strong> - <strong className="text-slate-900 font-bold">{toBengaliDigits(endIndex)}</strong> টি দেখানো হচ্ছে
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-1.5 text-slate-500">
+                    <span>প্রতি পেজে:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="h-8 rounded-md bg-white border border-slate-200 px-2 font-bold text-xs text-slate-800 outline-none cursor-pointer"
+                    >
+                      <option value={10}>১০ টি</option>
+                      <option value={20}>২০ টি</option>
+                      <option value={50}>৫০ টি</option>
+                      <option value={100}>১০০ টি</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={validCurrentPage <= 1}
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      className="h-8 px-2.5 rounded-md text-xs font-bold bg-white text-slate-700 border-slate-200 hover:bg-slate-100 disabled:opacity-40"
+                    >
+                      <ChevronLeft className="w-4 h-4 mr-0.5" /> আগের পেজ
+                    </Button>
+
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                        .map((page, idx, arr) => {
+                          const prev = arr[idx - 1];
+                          const showEllipsis = prev && page - prev > 1;
+                          return (
+                            <div key={page} className="flex items-center gap-1">
+                              {showEllipsis && <span className="px-1 text-slate-400">...</span>}
+                              <button
+                                onClick={() => setCurrentPage(page)}
+                                className={cn(
+                                  "w-8 h-8 rounded-md text-xs font-bold transition-all border",
+                                  currentPage === page
+                                    ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                                )}
+                              >
+                                {toBengaliDigits(page)}
+                              </button>
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={validCurrentPage >= totalPages}
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      className="h-8 px-2.5 rounded-md text-xs font-bold bg-white text-slate-700 border-slate-200 hover:bg-slate-100 disabled:opacity-40"
+                    >
+                      পরের পেজ <ChevronRight className="w-4 h-4 ml-0.5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </Card>
         </div>
       ) : (
@@ -1726,16 +1915,13 @@ export default function PurchasesPage() {
                                     {savedBanks.length > 0 ? (
                                       savedBanks.map(b => (
                                         <SelectItem key={b.id} value={`${b.name} (${b.accNo})`}>
-                                          {b.name} - {b.accNo}
+                                          {b.name} - {b.accNo} (ব্যালেন্স: ৳ {b.balance.toLocaleString('bn-BD')})
                                         </SelectItem>
                                       ))
                                     ) : (
-                                      <>
-                                        <SelectItem value="ডাচ-বাংলা ব্যাংক - 123.456.7890">ডাচ-বাংলা ব্যাংক (DBBL) - A/C: 123.456.7890</SelectItem>
-                                        <SelectItem value="ইসলামী ব্যাংক - 2050.1234.5678">ইসলামী ব্যাংক (IBBL) - A/C: 2050.1234.5678</SelectItem>
-                                        <SelectItem value="ব্র্যাক ব্যাংক - 1501.2039.4857">ব্র্যাক ব্যাংক (BRAC Bank) - A/C: 1501.2039.4857</SelectItem>
-                                        <SelectItem value="সিটি ব্যাংক - 3101.9876.5432">সিটি ব্যাংক (City Bank) - A/C: 3101.9876.5432</SelectItem>
-                                      </>
+                                      <SelectItem value="none" disabled>
+                                        ⚠️ কোনো ব্যাংক যুক্ত নেই (আগে ব্যাংক যোগ করুন)
+                                      </SelectItem>
                                     )}
                                   </SelectContent>
                                 </Select>
@@ -1781,22 +1967,40 @@ export default function PurchasesPage() {
 
                           {/* CHEQUE DETAILS */}
                           {paymentMethod === 'Cheque' && (
-                            <div className="p-3 bg-purple-50/60 border border-purple-100 rounded-xl space-y-2 font-bengali text-xs animate-in fade-in-0">
-                              <p className="font-bold text-purple-900 flex items-center gap-1">
-                                📄 চেকের বিবরণ
+                            <div className="p-3.5 bg-purple-50/70 border border-purple-200 rounded-xl space-y-2.5 font-bengali text-xs animate-in fade-in-0">
+                              <p className="font-bold text-purple-900 flex items-center gap-1.5">
+                                📄 চেকের বিবরণ (দোকানের ব্যাংক একাউন্ট নির্বাচন করুন)
                               </p>
-                              <div className="grid grid-cols-3 gap-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                                 <div>
-                                  <Label className="text-[10px] font-bold text-slate-600">ব্যাংকের নাম</Label>
-                                  <Input 
-                                    placeholder="ব্যাংকের নাম" 
-                                    value={bankName} 
-                                    onChange={e => setBankName(e.target.value)}
-                                    className="h-8 rounded-lg bg-white text-xs"
-                                  />
+                                  <Label className="text-[10px] font-bold text-slate-700">দোকানের ব্যাংক অ্যাকাউন্ট</Label>
+                                  <Select 
+                                    value={bankName || selectedShopBank} 
+                                    onValueChange={(val: string | null) => {
+                                      setBankName(val || '');
+                                      setSelectedShopBank(val || '');
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8 rounded-lg bg-white text-xs font-bold border-purple-200">
+                                      <SelectValue placeholder="দোকানের ব্যাংক নির্বাচন করুন" />
+                                    </SelectTrigger>
+                                    <SelectContent className="font-bengali text-xs font-bold">
+                                      {savedBanks.length > 0 ? (
+                                        savedBanks.map(b => (
+                                          <SelectItem key={b.id} value={`${b.name} (${b.accNo})`}>
+                                            {b.name} - {b.accNo} (ব্যালেন্স: ৳ {b.balance.toLocaleString('bn-BD')})
+                                          </SelectItem>
+                                        ))
+                                      ) : (
+                                        <SelectItem value="none" disabled>
+                                          ⚠️ কোনো ব্যাংক যুক্ত নেই (আগে ব্যাংক যোগ করুন)
+                                        </SelectItem>
+                                      )}
+                                    </SelectContent>
+                                  </Select>
                                 </div>
                                 <div>
-                                  <Label className="text-[10px] font-bold text-slate-600">চেক নম্বর</Label>
+                                  <Label className="text-[10px] font-bold text-slate-700">চেক নম্বর</Label>
                                   <Input 
                                     placeholder="CQ-10023" 
                                     value={chequeNo} 
@@ -1805,7 +2009,7 @@ export default function PurchasesPage() {
                                   />
                                 </div>
                                 <div>
-                                  <Label className="text-[10px] font-bold text-slate-600">চেকের তারিখ</Label>
+                                  <Label className="text-[10px] font-bold text-slate-700">চেকের তারিখ</Label>
                                   <BengaliDatePicker
                                     value={chequeDate}
                                     onChange={val => setChequeDate(val)}

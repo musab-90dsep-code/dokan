@@ -16,8 +16,13 @@ const hindSiliguri = Hind_Siliguri({
 });
 
 export const metadata: Metadata = {
-  title: 'ব্রাদার্স ট্রেডার্স - রড ও সিমেন্ট ইআরপি',
-  description: 'রড ও সিমেন্টের দোকানের সম্পূর্ণ ডিজিটাল ব্যবসা পরিচালনা ব্যবস্থা',
+  title: 'মেসার্স দেলোয়ার এন্ড ব্রাদার্স - রড ও সিমেন্ট ইআরপি',
+  description: 'মেসার্স দেলোয়ার এন্ড ব্রাদার্স - রড ও সিমেন্টের দোকানের সম্পূর্ণ ডিজিটাল ব্যবসা পরিচালনা ব্যবস্থা',
+  icons: {
+    icon: '/logo.png',
+    shortcut: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

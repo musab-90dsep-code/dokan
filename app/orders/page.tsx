@@ -137,8 +137,8 @@ export default function OrdersPage() {
   const [siteContact, setSiteContact] = useState('');
 
   // Bank & Payment Details
-  const [savedBanks, setSavedBanks] = useState<{ id: string; name: string; accNo: string }[]>([]);
-  const [selectedShopBank, setSelectedShopBank] = useState('ডাচ-বাংলা ব্যাংক - 123.456.7890');
+  const [savedBanks, setSavedBanks] = useState<{ id: string; name: string; accNo: string; balance?: number }[]>([]);
+  const [selectedShopBank, setSelectedShopBank] = useState('');
   const [transactionRef, setTransactionRef] = useState('');
   const [senderBankName, setSenderBankName] = useState('');
   const [senderAccountNo, setSenderAccountNo] = useState('');
@@ -190,28 +190,37 @@ export default function OrdersPage() {
     try {
       setLoading(true);
       const sales = await api.transactions.list({ transaction_type: 'sale' });
-      setOrders(sales.map(s => ({
-        id: String(s.id),
-        orderId: s.invoice_no,
-        customerName: s.party_name || 'গ্রাহক',
-        customerPhone: s.party_phone || '',
-        customerId: String(s.party || ''),
-        totalAmount: s.total_amount,
-        paidAmount: s.paid_amount,
-        dueAmount: s.due_amount,
-        stage: s.status === 'completed' ? 'approved' : 'pending',
-        invoiced: s.status === 'completed',
-        paymentStatus: s.due_amount <= 0 ? 'paid' : 'unpaid',
-        items: (s.items || []).map(i => ({
-          id: String(i.product || i.id || ''),
-          name: fixMiliName(i.product_name),
-          price: i.price,
-          quantity: i.quantity,
-          unit: i.unit || 'পিস',
-          discount: 0
-        })),
-        createdAt: s.created_at
-      })));
+      setOrders(sales.map(s => {
+        let meta: any = {};
+        if (s.notes && typeof s.notes === 'string' && s.notes.trim().startsWith('{')) {
+          try {
+            meta = JSON.parse(s.notes.split('\n')[0]);
+          } catch {}
+        }
+        const isInvoiced = meta.invoiced === true || s.status === 'completed' || s.status === 'invoiced' || s.status === 'approved';
+        return {
+          id: String(s.id),
+          orderId: s.invoice_no,
+          customerName: s.party_name || 'গ্রাহক',
+          customerPhone: s.party_phone || '',
+          customerId: String(s.party || ''),
+          totalAmount: s.total_amount,
+          paidAmount: s.paid_amount,
+          dueAmount: s.due_amount,
+          stage: isInvoiced ? 'approved' : 'pending',
+          invoiced: isInvoiced,
+          paymentStatus: s.due_amount <= 0 ? 'paid' : 'unpaid',
+          items: (s.items || []).map(i => ({
+            id: String(i.product || i.id || ''),
+            name: fixMiliName(i.product_name),
+            price: i.price,
+            quantity: i.quantity,
+            unit: i.unit || 'পিস',
+            discount: 0
+          })),
+          createdAt: s.created_at
+        };
+      }));
 
       const prodList = await api.inventory.list();
       setProducts(prodList.map(p => ({
@@ -471,6 +480,16 @@ export default function OrdersPage() {
         finalCustId = String(createdParty.id);
       }
 
+      const orderMetadata = {
+        isOrder: true,
+        invoiced: false,
+        orderStatus: orderStatus || 'পেন্ডিং',
+        deliveryDate,
+        requiredDelivery,
+        userNote: orderNote || ''
+      };
+      const finalNotesPayload = JSON.stringify(orderMetadata) + (orderNote ? `\n${orderNote}` : '');
+
       if (editingOrderId) {
         await api.transactions.update(editingOrderId, {
           party: finalCustId ? Number(finalCustId) : null,
@@ -489,7 +508,7 @@ export default function OrdersPage() {
               total: i.price * i.quantity
             };
           }),
-          notes: orderNote
+          notes: finalNotesPayload
         });
         toast.success('বিক্রয় অর্ডার সফলভাবে আপডেট করা হয়েছে!');
       } else {
@@ -512,7 +531,7 @@ export default function OrdersPage() {
               total: i.price * i.quantity
             };
           }),
-          notes: orderNote
+          notes: finalNotesPayload
         });
         toast.success('নতুন রড ও সিমেন্ট বিক্রয় অর্ডার সফলভাবে সংরক্ষিত হয়েছে!');
       }
@@ -536,11 +555,25 @@ export default function OrdersPage() {
     if (!orderToInvoice) return;
 
     try {
+      let meta: any = {};
+      const raw = await api.transactions.get(orderToInvoice.id).catch(() => null);
+      let userNote = raw?.notes || '';
+      if (userNote && typeof userNote === 'string' && userNote.trim().startsWith('{')) {
+        try {
+          const firstLine = userNote.split('\n')[0];
+          meta = JSON.parse(firstLine);
+          userNote = userNote.substring(firstLine.length).trim();
+        } catch {}
+      }
+      meta.invoiced = true;
+      meta.isOrder = false;
+
       await api.transactions.update(orderToInvoice.id, {
         status: 'completed',
         paid_amount: invoicePaid,
         due_amount: Math.max(0, orderToInvoice.totalAmount - invoicePaid),
-        payment_method: (invoiceMethod.toLowerCase().includes('bank') ? 'bank' : invoiceMethod.toLowerCase().includes('cheque') ? 'cheque' : invoiceMethod.toLowerCase())
+        payment_method: (invoiceMethod.toLowerCase().includes('bank') ? 'bank' : invoiceMethod.toLowerCase().includes('cheque') ? 'cheque' : invoiceMethod.toLowerCase()),
+        notes: JSON.stringify(meta) + (userNote ? `\n${userNote}` : '')
       });
 
       if (typeof window !== 'undefined') {
@@ -1454,12 +1487,9 @@ export default function OrdersPage() {
                               </SelectItem>
                             ))
                           ) : (
-                            <>
-                              <SelectItem value="ডাচ-বাংলা ব্যাংক - 123.456.7890">ডাচ-বাংলা ব্যাংক (DBBL) - A/C: 123.456.7890</SelectItem>
-                              <SelectItem value="ইসলামী ব্যাংক - 2050.1234.5678">ইসলামী ব্যাংক (IBBL) - A/C: 2050.1234.5678</SelectItem>
-                              <SelectItem value="ব্র্যাক ব্যাংক - 1501.2039.4857">ব্র্যাক ব্যাংক (BRAC Bank) - A/C: 1501.2039.4857</SelectItem>
-                              <SelectItem value="সিটি ব্যাংক - 3101.9876.5432">সিটি ব্যাংক (City Bank) - A/C: 3101.9876.5432</SelectItem>
-                            </>
+                            <SelectItem value="none" disabled>
+                              ⚠️ কোনো ব্যাংক যুক্ত নেই (আগে ব্যাংক যোগ করুন)
+                            </SelectItem>
                           )}
                         </SelectContent>
                       </Select>
@@ -1501,12 +1531,9 @@ export default function OrdersPage() {
                               </SelectItem>
                             ))
                           ) : (
-                            <>
-                              <SelectItem value="ডাচ-বাংলা ব্যাংক - 123.456.7890">ডাচ-বাংলা ব্যাংক (DBBL) - A/C: 123.456.7890</SelectItem>
-                              <SelectItem value="ইসলামী ব্যাংক - 2050.1234.5678">ইসলামী ব্যাংক (IBBL) - A/C: 2050.1234.5678</SelectItem>
-                              <SelectItem value="ব্র্যাক ব্যাংক - 1501.2039.4857">ব্র্যাক ব্যাংক (BRAC Bank) - A/C: 1501.2039.4857</SelectItem>
-                              <SelectItem value="সিটি ব্যাংক - 3101.9876.5432">সিটি ব্যাংক (City Bank) - A/C: 3101.9876.5432</SelectItem>
-                            </>
+                            <SelectItem value="none" disabled>
+                              ⚠️ কোনো ব্যাংক যুক্ত নেই (আগে ব্যাংক যোগ করুন)
+                            </SelectItem>
                           )}
                         </SelectContent>
                       </Select>

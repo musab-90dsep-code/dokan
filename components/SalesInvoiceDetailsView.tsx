@@ -6,7 +6,7 @@ import { bn } from 'date-fns/locale';
 import { 
   ArrowLeft, Printer, Download, Mail, Edit, 
   Receipt, User, Truck, ClipboardList, CreditCard, 
-  FileText, Settings, Building2, MapPin
+  FileText, Settings, Building2, MapPin, CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toBengaliDigits, parseProductDetails } from '@/lib/bengaliUtils';
@@ -19,6 +19,7 @@ export interface SalesInvoiceDetailsViewProps {
   onPrint?: (invoice: any) => void;
   onDownloadPdf?: (invoice: any) => void;
   onSendEmail?: (invoice: any) => void;
+  onApprove?: (invoice: any) => void;
 }
 
 export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = ({
@@ -27,7 +28,8 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
   onEdit,
   onPrint,
   onDownloadPdf,
-  onSendEmail
+  onSendEmail,
+  onApprove
 }) => {
   if (!invoice) return null;
 
@@ -253,6 +255,27 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
         </div>
 
       </div>
+
+      {/* APPROVAL STATUS BANNER */}
+      {(invoice.status === 'pending' || invoice.status === 'draft' || invoice.status === 'অপেক্ষমান') && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-xs animate-in fade-in-0">
+          <div className="flex items-center gap-2.5 text-amber-950 font-bold">
+            <span className="text-xl">⚠️</span>
+            <div>
+              <p className="text-sm font-black text-amber-900">এই বিক্রয় চালানটি এখনো অনুমোদিত হয়নি (অপেক্ষমান / Pending)</p>
+              <p className="text-amber-700 font-medium text-[11px]">অনুমোদন করার আগ পর্যন্ত এটি গ্রাহকের খতিয়ান (Ledger), নগদ ক্যাশ/ব্যাংক এবং পণ্যের স্টকে কোনো পরিবর্তন করবে না।</p>
+            </div>
+          </div>
+          {onApprove && (
+            <Button 
+              onClick={() => onApprove(invoice)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 px-4 rounded-lg shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer"
+            >
+              <CheckCircle2 className="w-4 h-4" /> অনুমোদন করুন (Approve)
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* --- SECTION 1: 3 CARDS (INVOICE INFO, CUSTOMER INFO, LOGISTICS INFO) --- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

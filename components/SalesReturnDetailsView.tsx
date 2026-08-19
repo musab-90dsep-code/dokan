@@ -23,6 +23,7 @@ export interface SalesReturnDetailsViewProps {
   onPrint?: (entry: any) => void;
   onDownloadPdf?: (entry: any) => void;
   onSendEmail?: (entry: any) => void;
+  onApprove?: (entry: any) => void;
 }
 
 export const SalesReturnDetailsView: React.FC<SalesReturnDetailsViewProps> = ({
@@ -32,7 +33,8 @@ export const SalesReturnDetailsView: React.FC<SalesReturnDetailsViewProps> = ({
   onDelete,
   onPrint,
   onDownloadPdf,
-  onSendEmail
+  onSendEmail,
+  onApprove
 }) => {
   if (!returnEntry) return null;
 
@@ -172,6 +174,27 @@ export const SalesReturnDetailsView: React.FC<SalesReturnDetailsViewProps> = ({
         </div>
 
       </div>
+
+      {/* APPROVAL STATUS BANNER */}
+      {(returnEntry.status === 'pending' || returnEntry.status === 'draft' || returnEntry.status === 'অপেক্ষমান') && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-xs animate-in fade-in-0">
+          <div className="flex items-center gap-2.5 text-amber-950 font-bold">
+            <span className="text-xl">⚠️</span>
+            <div>
+              <p className="text-sm font-black text-amber-900">এই বিক্রয় রিটার্ন চালানটি এখনো অনুমোদিত হয়নি (অপেক্ষমান / Pending)</p>
+              <p className="text-amber-700 font-medium text-[11px]">অনুমোদন করার আগ পর্যন্ত এটি গ্রাহকের খতিয়ান (Ledger), নগদ ক্যাশ/ব্যাংক এবং পণ্যের স্টকে কোনো পরিবর্তন করবে না।</p>
+            </div>
+          </div>
+          {onApprove && (
+            <Button 
+              onClick={() => onApprove(returnEntry)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 px-4 rounded-lg shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer"
+            >
+              <CheckCircle2 className="w-4 h-4" /> অনুমোদন করুন (Approve)
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* --- TOP KPI SUMMARY STATS CARDS --- */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

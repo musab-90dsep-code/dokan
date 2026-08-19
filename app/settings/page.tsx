@@ -12,10 +12,10 @@ import { api, ShopSettingsData } from '@/lib/api';
 
 export default function SettingsPage() {
   const [shopSettings, setShopSettings] = useState<ShopSettingsData>({
-    business_name: 'দোকান ইআরপি (Dokan ERP)',
-    phone: '01700000000',
-    email: 'contact@dokan.com',
-    address: 'ঢাকা, বাংলাদেশ',
+    business_name: 'মেসার্স দেলোয়ার এন্ড ব্রাদার্স',
+    phone: '০১৭১২-০১৪২২৫',
+    email: 'delowarteraders@gmail.com',
+    address: '৩১০, চৌধুরী নিউ সুপার মার্কেট, বঙ্গবন্ধু সড়ক, গোপালগঞ্জ',
     currency: '৳',
     receipt_footer: 'আমাদের সাথে থাকার জন্য ধন্যবাদ!'
   });
@@ -47,7 +47,7 @@ export default function SettingsPage() {
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 font-bengali flex items-center gap-2">
-            <SettingsIcon className="w-6 h-6 text-orange-600" />
+            <SettingsIcon className="w-6 h-6 text-amber-600" />
             দোকান ও সিস্টেম সেটিংস
           </h2>
           <p className="text-slate-500 font-bengali mt-1">আপনার ব্যবসা ও প্রতিষ্ঠানের তথ্য সম্বলিত সেটিংস</p>
@@ -56,7 +56,7 @@ export default function SettingsPage() {
         <Card className="border-slate-200">
           <CardHeader>
             <CardTitle className="font-bengali flex items-center gap-2 text-lg">
-              <Building2 className="w-5 h-5 text-orange-500" />
+              <Building2 className="w-5 h-5 text-amber-600" />
               প্রতিষ্ঠানের তথ্য
             </CardTitle>
           </CardHeader>
@@ -118,7 +118,7 @@ export default function SettingsPage() {
             </div>
 
             <div className="pt-4 flex justify-end">
-              <Button onClick={handleSave} className="bg-orange-600 hover:bg-orange-500 text-white font-bengali px-6">
+              <Button onClick={handleSave} className="bg-gradient-to-r from-[#b88e2d] to-[#d4af37] hover:from-[#a37c22] hover:to-[#be9b2d] text-white font-bengali font-bold px-6 shadow-md shadow-amber-500/20">
                 সেভ করুন
               </Button>
             </div>

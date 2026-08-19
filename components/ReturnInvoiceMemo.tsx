@@ -181,16 +181,24 @@ export const ReturnInvoiceMemo: React.FC<ReturnInvoiceMemoProps> = ({
       >
         {/* --- 1. HEADER --- */}
         <div className="flex justify-between items-start pb-4 border-b border-black">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-black text-black tracking-tight">
-              {shop.name}
-            </h1>
-            <p className="text-xs font-bold text-slate-700">
-              {shop.tagline}
-            </p>
-            <p className="text-xs font-bold text-slate-800 pt-1">
-              📍 {shop.address} • 📞 {shop.phone}
-            </p>
+          <div className="flex items-start gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img 
+              src="/logo.png" 
+              alt="মেসার্স দেলোয়ার এন্ড ব্রাদার্স" 
+              className="w-12 h-12 object-contain rounded-md border border-slate-200 bg-white p-0.5 shadow-2xs shrink-0" 
+            />
+            <div className="space-y-0.5">
+              <h1 className="text-2xl font-black text-black tracking-tight leading-tight">
+                {shop.name}
+              </h1>
+              <p className="text-xs font-bold text-slate-700">
+                {shop.tagline}
+              </p>
+              <p className="text-xs font-bold text-slate-800 pt-0.5">
+                📍 {shop.address} • 📞 {shop.phone}
+              </p>
+            </div>
           </div>
 
           <div className="text-right text-xs font-bold space-y-1 shrink-0">

@@ -186,15 +186,20 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
           )}
         >
           {/* LOGO HEADER */}
-          <div className="p-3.5 sm:p-4 border-b border-orange-700/20 bg-gradient-to-br from-orange-600 via-orange-500 to-orange-600 relative overflow-hidden flex items-center justify-between min-h-[64px]">
+          <div className="p-3.5 sm:p-4 border-b border-amber-800/30 bg-gradient-to-br from-[#8c6b1c] via-[#b88e2d] to-[#d4af37] relative overflow-hidden flex items-center justify-between min-h-[64px] shadow-sm">
             <div className="flex items-center gap-3 overflow-hidden">
-              <div className="w-10 h-10 bg-white/25 rounded-xl flex items-center justify-center text-white font-black text-lg flex-shrink-0 shadow-inner">
-                ব
+              <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-0.5 flex-shrink-0 shadow-md border border-white/40 overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img 
+                  src="/logo.png" 
+                  alt="মেসার্স দেলোয়ার এন্ড ব্রাদার্স" 
+                  className="w-full h-full object-contain rounded-lg"
+                />
               </div>
               {(isExpanded || mobileOpen) && (
                 <div className="overflow-hidden whitespace-nowrap transition-all duration-200">
-                  <h1 className="text-sm font-black text-white leading-tight">ব্রাদার্স ট্রেডার্স</h1>
-                  <p className="text-[10px] text-orange-100 font-semibold">রড ও সিমেন্ট ব্যবসা</p>
+                  <h1 className="text-sm font-black text-white leading-tight drop-shadow-xs">মেসার্স দেলোয়ার এন্ড ব্রাদার্স</h1>
+                  <p className="text-[10px] text-amber-100 font-semibold drop-shadow-2xs">রড ও সিমেন্ট ব্যবসা</p>
                 </div>
               )}
             </div>
@@ -231,8 +236,8 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
                 const isOpen = openMenus.includes(item.name);
                 const hasChildren = !!item.children && item.children.length > 0;
                 const isParentActive = hasChildren
-                  ? isChildActive(item.children!)
-                  : pathname === item.href;
+                    ? isChildActive(item.children!)
+                    : pathname === item.href;
 
                 if (!hasChildren && item.href) {
                   return (
@@ -242,8 +247,8 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
                         className={cn(
                           'flex items-center gap-3 px-3 py-3 rounded-xl transition-all cursor-pointer text-sm font-medium relative group',
                           isParentActive
-                            ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold shadow-md shadow-orange-500/20'
-                            : 'text-slate-600 hover:bg-orange-50/70 hover:text-orange-600'
+                            ? 'bg-gradient-to-r from-[#b88e2d] to-[#d4af37] text-white font-bold shadow-md shadow-amber-500/25'
+                            : 'text-slate-600 hover:bg-amber-50/80 hover:text-amber-800'
                         )}
                       >
                         <item.icon className="w-5 h-5 flex-shrink-0" />
@@ -276,12 +281,12 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
                       className={cn(
                         'w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all cursor-pointer text-sm font-medium group relative',
                         isParentActive
-                          ? 'bg-orange-50 text-orange-700 font-bold'
-                          : 'text-slate-600 hover:bg-orange-50/70 hover:text-orange-600'
+                          ? 'bg-amber-50/90 text-amber-900 font-bold border border-amber-200/60'
+                          : 'text-slate-600 hover:bg-amber-50/80 hover:text-amber-800'
                       )}
                     >
                       <div className="flex items-center gap-3 overflow-hidden">
-                        <item.icon className={cn('w-5 h-5 flex-shrink-0 transition-colors', isParentActive ? 'text-orange-600' : 'text-slate-500 group-hover:text-orange-600')} />
+                        <item.icon className={cn('w-5 h-5 flex-shrink-0 transition-colors', isParentActive ? 'text-amber-600' : 'text-slate-500 group-hover:text-amber-700')} />
                         {(isExpanded || mobileOpen) && (
                           <span className="flex-1 text-left whitespace-nowrap overflow-hidden">
                             {item.name}
@@ -307,7 +312,7 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
 
                     {/* SUBMENU ITEMS */}
                     {(isExpanded || mobileOpen) && isOpen && item.children && (
-                      <div className="ml-4 mt-1 mb-2 space-y-1 border-l-2 border-orange-100 pl-3 py-1">
+                      <div className="ml-4 mt-1 mb-2 space-y-1 border-l-2 border-amber-200/80 pl-3 py-1">
                         {item.children.map(child => {
                           const [baseHref, query] = child.href.split('?');
                           let isActive = false;
@@ -333,7 +338,7 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
                               <div className={cn(
                                 'flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all cursor-pointer text-xs font-bold relative',
                                 isActive
-                                  ? 'bg-orange-600 text-white shadow-sm'
+                                  ? 'bg-gradient-to-r from-[#b88e2d] to-[#d4af37] text-white shadow-xs'
                                   : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                               )}>
                                 {child.icon && <child.icon className={cn("w-4 h-4 flex-shrink-0", isActive ? "text-white" : "text-slate-400")} />}

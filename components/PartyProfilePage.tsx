@@ -95,6 +95,7 @@ export interface TransactionDoc {
   note?: string;
   notes?: string;
   transactionType?: string;
+  status?: string;
   subtotal?: number;
   discount?: number;
   shippingCost?: number;
@@ -157,6 +158,9 @@ export function generateLedgerEntries(
   });
 
   sorted.forEach(tx => {
+    if (tx.status === 'pending' || tx.status === 'draft' || tx.status === 'cancelled' || tx.status === 'rejected') {
+      return;
+    }
     const txDate = tx.createdAt ? new Date(tx.createdAt) : new Date();
     const txType = tx.transactionType;
 
@@ -230,7 +234,18 @@ export function generateLedgerEntries(
           }).join(', ')
         : (isCustomer ? 'পণ্য বিক্রয় (চালান)' : 'পণ্য ক্রয় (চালান)');
 
-      const debitVal = Number(tx.totalAmount || 0);
+      let meta: any = {};
+      if (tx.notes && typeof tx.notes === 'string' && tx.notes.trim().startsWith('{')) {
+        try {
+          meta = JSON.parse(tx.notes.split('\n')[0]);
+        } catch {}
+      }
+
+      const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || 0);
+      const labCost = Number(meta.laborCost || (tx as any).laborCost || (tx as any).labor_cost || 0);
+      const extraCharges = !isCustomer ? (shipCost + labCost) : 0;
+
+      const debitVal = Math.max(0, Number(tx.totalAmount || 0) - extraCharges);
       cumulativeBalance += debitVal;
 
       entries.push({
@@ -396,7 +411,22 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
     if (id) loadData();
   }, [id, isCustomer]);
 
-  const totalBill = transactions.reduce((a, o) => a + Number(o.totalAmount || 0), 0);
+  const totalBill = transactions.reduce((a, o) => {
+    let extraCharges = 0;
+    if (!isCustomer && o.transactionType === 'purchase') {
+      let meta: any = {};
+      if (o.notes && typeof o.notes === 'string' && o.notes.trim().startsWith('{')) {
+        try {
+          meta = JSON.parse(o.notes.split('\n')[0]);
+        } catch {}
+      }
+      const ship = Number(meta.shippingCost || o.shippingCost || 0);
+      const lab = Number(meta.laborCost || o.laborCost || 0);
+      extraCharges = ship + lab;
+    }
+    const effAmount = Math.max(0, Number(o.totalAmount || 0) - extraCharges);
+    return a + effAmount;
+  }, 0);
   const totalPaid = transactions.reduce((a, o) => a + Number(o.paidAmount || 0), 0);
   const totalDue = party?.totalDue !== undefined && party?.totalDue > 0 
     ? party.totalDue 
@@ -525,10 +555,18 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
         
         {/* 1. SHOP BRANDING HEADER */}
         <div className="border-b-2 border-slate-900 pb-3 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">মেসার্স রড & সিমেন্ট স্টোর</h1>
-            <p className="text-xs text-slate-700 font-semibold mt-0.5">রড, সিমেন্ট ও মানসম্পন্ন নির্মাণ সামগ্রী পাইকারী ও খুচরা বিক্রেতা</p>
-            <p className="text-[11px] text-slate-600 font-medium">উত্তর বাড্ডা, প্রগতি সরণি, ঢাকা-১২১২ | মোবাইল: ০১৭০০-০০০০০০, ০১৮০০-০০০০০০</p>
+          <div className="flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img 
+              src="/logo.png" 
+              alt="মেসার্স দেলোয়ার এন্ড ব্রাদার্স" 
+              className="w-12 h-12 object-contain rounded-md border border-slate-300 bg-white p-0.5 shrink-0" 
+            />
+            <div>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">মেসার্স দেলোয়ার এন্ড ব্রাদার্স</h1>
+              <p className="text-xs text-slate-700 font-semibold mt-0.5">রড, সিমেন্ট ও মানসম্পন্ন নির্মাণ সামগ্রী পাইকারী ও খুচরা বিক্রেতা</p>
+              <p className="text-[11px] text-slate-600 font-medium">৩১০, চৌধুরী নিউ সুপার মার্কেট, বঙ্গবন্ধু সড়ক, গোপালগঞ্জ | মোবাইল: ০১৭১২-০১৪২২৫, ০১৭০১-২৯৫৩৩০</p>
+            </div>
           </div>
           <div className="text-right space-y-1">
             <div className="inline-block bg-slate-900 text-white font-bold text-xs px-3 py-1 rounded">
@@ -705,7 +743,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
         </div>
 
         <div className="text-[10px] text-center text-slate-500 font-medium pt-2 border-t border-slate-300">
-          * এটি একটি কম্পিউটার জেনারেটেড ডিজিটাল খতিয়ান বিবরণী | মেসার্স রড & সিমেন্ট স্টোর
+          * এটি একটি কম্পিউটার জেনারেটেড ডিজিটাল খতিয়ান বিবরণী | মেসার্স দেলোয়ার এন্ড ব্রাদার্স
         </div>
 
       </div>

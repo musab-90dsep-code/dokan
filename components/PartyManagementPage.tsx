@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils';
 import { bdLocationData } from '@/lib/bangladeshData';
 import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
+import { TableRowActionMenu } from '@/components/TableRowActionMenu';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -812,35 +813,12 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                             </span>
                           </TableCell>
 
-                          <TableCell className="py-3.5 px-4 text-center" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center justify-center gap-1.5">
-                              {/* View Button */}
-                              <button
-                                onClick={() => router.push(isCustomer ? `/customers/${p.id}` : `/suppliers/${p.id}`)}
-                                className="w-7 h-7 rounded-md border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800 flex items-center justify-center transition-colors"
-                                title="প্রোফাইল দেখুন"
-                              >
-                                👁️
-                              </button>
-
-                              {/* Edit Button */}
-                              <button
-                                onClick={() => openEdit(p)}
-                                className="w-7 h-7 rounded-lg border border-blue-200 bg-blue-50/60 text-blue-600 hover:bg-blue-100 flex items-center justify-center transition-colors"
-                                title="সম্পাদনা"
-                              >
-                                ✏️
-                              </button>
-
-                              {/* Delete Button */}
-                              <button
-                                onClick={() => handleDelete(p.id)}
-                                className="w-7 h-7 rounded-lg border border-rose-200 bg-rose-50/60 text-rose-500 hover:bg-rose-100 flex items-center justify-center transition-colors"
-                                title="মুছুন"
-                              >
-                                🗑️
-                              </button>
-                            </div>
+                          <TableCell className="py-3.5 px-4 text-right" onClick={e => e.stopPropagation()}>
+                            <TableRowActionMenu
+                              onView={() => router.push(isCustomer ? `/customers/${p.id}` : `/suppliers/${p.id}`)}
+                              onEdit={() => openEdit(p)}
+                              onDelete={() => handleDelete(p.id)}
+                            />
                           </TableCell>
                         </TableRow>
                       );

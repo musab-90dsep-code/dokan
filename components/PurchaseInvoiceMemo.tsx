@@ -272,13 +272,13 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
           {/* Shop Logo & Address */}
           <div className="col-span-5 flex items-start gap-3">
             {/* Building Icon Logo */}
-            <div className="shrink-0 pt-1">
-              <svg className="w-12 h-12" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="8" y="20" width="14" height="38" rx="2" fill="#64748B" />
-                <rect x="25" y="10" width="16" height="48" rx="2" fill="#2563EB" />
-                <rect x="44" y="28" width="12" height="30" rx="2" fill="#CBD5E1" />
-                <path d="M25 10L33 2L41 10H25Z" fill="#1D4ED8" />
-              </svg>
+            <div className="shrink-0 pt-0.5">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img 
+                src="/logo.png" 
+                alt="মেসার্স দেলোয়ার এন্ড ব্রাদার্স" 
+                className="w-12 h-12 object-contain rounded-md border border-slate-200 bg-white p-0.5 shadow-2xs" 
+              />
             </div>
 
             <div className="space-y-0.5 text-xs text-slate-700 font-medium">

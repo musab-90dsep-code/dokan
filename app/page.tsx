@@ -592,14 +592,14 @@ export default function Dashboard() {
             title="নগদ ক্যাশ ব্যালেন্স" 
             value={formatBnCurrency(totalCashBalance)} 
             icon={Wallet} 
-            trend="ক্যাশ" 
-            trendUp={true} 
-            description="গাল্লা ক্যাশ ব্যালেন্স"
-            bg="bg-gradient-to-br from-emerald-500 to-teal-500"
-            iconBg="bg-emerald-100 text-emerald-600"
-            badgeBg="bg-emerald-100 text-emerald-700"
+            trend={totalCashBalance < 0 ? 'ঘাটতি' : 'ক্যাশ'} 
+            trendUp={totalCashBalance >= 0} 
+            description={totalCashBalance < 0 ? 'ক্যাশ ব্যালেন্স ঘাটতি' : 'গাল্লা ক্যাশ ব্যালেন্স'}
+            bg={totalCashBalance < 0 ? 'bg-gradient-to-br from-rose-500 to-red-600' : 'bg-gradient-to-br from-emerald-500 to-teal-500'}
+            iconBg={totalCashBalance < 0 ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}
+            badgeBg={totalCashBalance < 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}
             graphType="area"
-            strokeColor="#10b981"
+            strokeColor={totalCashBalance < 0 ? '#ef4444' : '#10b981'}
             gradId="cashGrad"
             graphData={weeklyData.map(d => ({ v: d.বিক্রয় }))}
           />
@@ -609,14 +609,14 @@ export default function Dashboard() {
             title="ব্যাংক ব্যালেন্স" 
             value={formatBnCurrency(totalBankBalance)} 
             icon={Landmark} 
-            trend="ব্যাংক জমা" 
-            trendUp={true} 
-            description="ব্যাংক অ্যাকাউন্টের জমা"
-            bg="bg-gradient-to-br from-blue-600 to-indigo-600"
-            iconBg="bg-blue-100 text-blue-600"
-            badgeBg="bg-blue-100 text-blue-700"
+            trend={totalBankBalance < 0 ? 'ঘাটতি' : 'ব্যাংক জমা'} 
+            trendUp={totalBankBalance >= 0} 
+            description={totalBankBalance < 0 ? 'ব্যাংক ব্যালেন্স মাইনাস' : 'ব্যাংক অ্যাকাউন্টের জমা'}
+            bg={totalBankBalance < 0 ? 'bg-gradient-to-br from-rose-500 to-red-600' : 'bg-gradient-to-br from-blue-600 to-indigo-600'}
+            iconBg={totalBankBalance < 0 ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'}
+            badgeBg={totalBankBalance < 0 ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}
             graphType="step"
-            strokeColor="#3b82f6"
+            strokeColor={totalBankBalance < 0 ? '#ef4444' : '#3b82f6'}
             graphData={weeklyData.map(d => ({ v: d.ক্রয় }))}
           />
 
@@ -673,13 +673,13 @@ export default function Dashboard() {
           {/* Header with Title and Category Filters */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 text-white flex items-center justify-center font-bold shadow-md shadow-orange-500/25">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#8c6b1c] via-[#b88e2d] to-[#d4af37] text-white flex items-center justify-center font-bold shadow-md shadow-amber-500/25">
                 <Zap className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-black text-slate-900 tracking-tight">সরাসরি শর্টকাট নেভিগেশন</h3>
-                  <span className="text-[10px] font-black uppercase tracking-wider bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full border border-orange-200">
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200">
                     {filteredShortcuts.length}টি পেজ
                   </span>
                 </div>
@@ -705,7 +705,7 @@ export default function Dashboard() {
                   className={cn(
                     "text-[11px] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 border",
                     shortcutCategory === cat.id
-                      ? "bg-orange-500 text-white border-orange-600 shadow-sm shadow-orange-500/30 scale-102"
+                      ? "bg-gradient-to-r from-[#b88e2d] to-[#d4af37] text-white border-amber-600 shadow-sm shadow-amber-500/30 scale-102"
                       : "bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200/80 hover:text-slate-900"
                   )}
                 >
