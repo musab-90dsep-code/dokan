@@ -11,6 +11,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { toBengaliDigits, parseProductDetails } from '@/lib/bengaliUtils';
 import { printElement } from '@/lib/printUtils';
+import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/authContext';
 
 export interface SalesInvoiceDetailsViewProps {
   invoice: any;
@@ -31,6 +33,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
   onSendEmail,
   onApprove
 }) => {
+  const { canEditInvoice } = useAuth();
   if (!invoice) return null;
 
   // Format Date & Time
@@ -241,7 +244,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
             </Button>
           )}
 
-          {onEdit && (
+          {onEdit && canEditInvoice && (
             <Button
               onClick={() => onEdit(invoice)}
               variant="outline"
@@ -375,10 +378,44 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
               </div>
             )}
 
-            <div className="flex justify-between items-center pt-1 border-t border-slate-100">
-              <span className="text-slate-500 font-bold">বর্তমান বকেয়া</span>
-              <span className="font-mono font-black text-rose-600 text-sm">৳ {toBengaliDigits(dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
-            </div>
+            {(invoice.engineerName || meta.engineerName) && (
+              <div className="bg-orange-50/90 p-2.5 rounded-lg border border-orange-200 mt-2 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-orange-800 font-black flex items-center gap-1 text-[11px]">
+                    👷‍♂️ দায়িত্বপ্রাপ্ত ইঞ্জিনিয়ার
+                  </span>
+                  <span className="font-black text-orange-950 text-right text-xs">
+                    {invoice.engineerName || meta.engineerName}
+                  </span>
+                </div>
+                {(invoice.engineerPhone || meta.engineerPhone) && (
+                  <div className="text-[11px] text-slate-600 font-mono flex justify-between">
+                    <span>মোবাইল:</span>
+                    <span className="font-bold">{toBengaliDigits(invoice.engineerPhone || meta.engineerPhone)}</span>
+                  </div>
+                )}
+                {((meta.engineerTotalCommission || (invoice as any).engineerTotalCommission) > 0 || meta.engineerRodRate || meta.engineerCementRate) && (
+                  <div className="pt-1.5 border-t border-orange-200 text-[10px] space-y-0.5">
+                    {meta.engineerRodRate > 0 && (
+                      <div className="flex justify-between text-slate-700">
+                        <span>রড কমিশন ({toBengaliDigits(meta.engineerRodKg || rodRingWeight)} কেজি × ৳{toBengaliDigits(meta.engineerRodRate)}):</span>
+                        <span className="font-black text-orange-900">৳ {toBengaliDigits(Number(meta.engineerRodCommission || (meta.engineerRodKg * meta.engineerRodRate)).toLocaleString('en-IN'))}</span>
+                      </div>
+                    )}
+                    {meta.engineerCementRate > 0 && (
+                      <div className="flex justify-between text-slate-700">
+                        <span>সিমেন্ট কমিশন ({toBengaliDigits(meta.engineerCementBags || cementBags)} বস্তা × ৳{toBengaliDigits(meta.engineerCementRate)}):</span>
+                        <span className="font-black text-orange-900">৳ {toBengaliDigits(Number(meta.engineerCementCommission || (meta.engineerCementBags * meta.engineerCementRate)).toLocaleString('en-IN'))}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-black text-orange-950 pt-0.5 border-t border-orange-200 text-xs">
+                      <span>মোট অর্জিত কমিশন:</span>
+                      <span>৳ {toBengaliDigits(Number(meta.engineerTotalCommission || (invoice as any).engineerTotalCommission || 0).toLocaleString('en-IN'))}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -553,15 +590,38 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
             {laborCost > 0 && (
               <div className="flex justify-between items-center">
                 <div className="flex flex-col">
-                  <span className="text-slate-500">আনলোডিং / লেবার চার্জ</span>
-                  {(rodLaborRate > 0 || cementLaborRate > 0) && (
+                  <span className="text-slate-500">আনলোডিং / লেবার চার্জ (রড)</span>
+                  {rodLaborRate > 0 && (
                     <span className="text-[10px] text-slate-400 font-normal">
-                      {rodLaborRate > 0 ? `রড: ৳${toBengaliDigits(rodLaborRate)}/কেজি ` : ''}
-                      {cementLaborRate > 0 ? `সিমেন্ট: ৳${toBengaliDigits(cementLaborRate)}/বস্তা` : ''}
+                      রড: ৳{toBengaliDigits(rodLaborRate)}/কেজি
                     </span>
                   )}
                 </div>
                 <span className="font-mono font-bold text-slate-900">+ ৳ {toBengaliDigits(laborCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+              </div>
+            )}
+
+            {Number(meta.cementLaborCost || meta.cementLoadingCharge || (cementLaborRate > 0 && cementBags > 0 ? cementLaborRate * cementBags : 0)) > 0 && (
+              <div className="flex justify-between items-center p-2 rounded-lg bg-amber-50/80 border border-amber-200 text-xs">
+                <div className="flex flex-col">
+                  <span className="font-bold text-amber-950 flex items-center gap-1">
+                    🚚 সিমেন্ট লোডিং চার্জ (দোকান প্রদেয়)
+                  </span>
+                  <span className="text-[10px] text-amber-800 font-medium">
+                    {toBengaliDigits(cementBags)} বস্তা @ ৳{toBengaliDigits(cementLaborRate)}/বস্তা (কাস্টমারের বিলে যুক্ত নয়)
+                  </span>
+                </div>
+                <div className="text-right space-y-0.5">
+                  <span className="font-mono font-black text-amber-900 block text-xs">
+                    ৳ {toBengaliDigits(Number(meta.cementLaborCost || meta.cementLoadingCharge || (cementLaborRate > 0 && cementBags > 0 ? cementLaborRate * cementBags : 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
+                  </span>
+                  <span className={cn(
+                    "text-[9px] font-black px-1.5 py-0.2 rounded inline-block",
+                    meta.cementLoadingPaid ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-amber-200 text-amber-900 border border-amber-300"
+                  )}>
+                    {meta.cementLoadingPaid ? 'পরিশোধিত' : 'বকেয়া'}
+                  </span>
+                </div>
               </div>
             )}
 

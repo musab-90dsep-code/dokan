@@ -31,6 +31,7 @@ import { PaymentVoucherMemo } from '@/components/PaymentVoucherMemo';
 import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
 import { printElement } from '@/lib/printUtils';
+import { useAuth } from '@/lib/authContext';
 
 interface Transaction {
   id: string;
@@ -60,6 +61,7 @@ interface Transaction {
   operatorName?: string;
   receiverName?: string;
   status?: 'Completed' | 'Pending' | 'Bounced' | 'Recorded';
+  notes?: string;
   createdAt: any;
   raw?: any;
 }
@@ -102,6 +104,7 @@ interface OrderInvoice {
 }
 
 function TransactionsContent() {
+  const { canEditInvoice, canDeleteInvoice, canCreateInvoice } = useAuth();
   const searchParams = useSearchParams();
   const partyParam = searchParams ? searchParams.get('party') : null;
   const filterParam = searchParams ? searchParams.get('filter') : null;
@@ -188,6 +191,17 @@ function TransactionsContent() {
   const [addMoneyNote, setAddMoneyNote] = useState<string>('');
   const [addMoneyDate, setAddMoneyDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
 
+  // Balance Transfer (ব্যাংক / ক্যাশ ট্রান্সফার) State
+  const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [transferMode, setTransferMode] = useState<'bank_to_cash' | 'bank_to_bank' | 'cash_to_bank'>('bank_to_cash');
+  const [transferSourceBankId, setTransferSourceBankId] = useState<string>('');
+  const [transferTargetBankId, setTransferTargetBankId] = useState<string>('');
+  const [transferAmount, setTransferAmount] = useState<number>(0);
+  const [transferDate, setTransferDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [transferRefNo, setTransferRefNo] = useState<string>('');
+  const [transferNote, setTransferNote] = useState<string>('');
+  const [isTransferSubmitting, setIsTransferSubmitting] = useState(false);
+
   // Form States for Direct Add
   const [txnType, setTxnType] = useState<'income' | 'expense' | 'contra'>('income');
   const [paymentType, setPaymentType] = useState<'income' | 'expense'>('income');
@@ -225,7 +239,6 @@ function TransactionsContent() {
   const [selectedBankId, setSelectedBankId] = useState<string>('');
   const [bankTxnType, setBankTxnType] = useState<string>('Bank Transfer');
   const [transactionRef, setTransactionRef] = useState<string>('');
-  const [transferDate, setTransferDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [accountHolderName, setAccountHolderName] = useState<string>('');
 
   const [newBank, setNewBank] = useState({ name: '', accNo: '', initialBalance: 0 });
@@ -302,15 +315,23 @@ function TransactionsContent() {
         }
 
         const rawNoteStr = String(t.notes || '');
-        const isAddMoney = meta.isAddMoney === true || 
+        const isTransfer = meta.isTransfer === true || 
+                           rawNoteStr.includes('[ব্যালেন্স ট্রান্সফার') ||
+                           rawNoteStr.includes('ক্যাশ উত্তোলন') ||
+                           rawNoteStr.includes('ব্যাংক থেকে ক্যাশ') ||
+                           rawNoteStr.includes('ব্যাংক টু ব্যাংক');
+        const isAddMoney = !isTransfer && (meta.isAddMoney === true || 
                            meta.category === 'টাকা যোগ' || 
                            rawNoteStr.includes('[টাকা যোগ') ||
-                           (t.transaction_type as string) === 'contra';
+                           (t.transaction_type as string) === 'contra');
 
         let txnType: 'income' | 'expense' | 'contra' = 'income';
         let categoryName = 'পেমেন্ট গ্রহণ';
         
-        if (isAddMoney) {
+        if (isTransfer) {
+          txnType = 'contra';
+          categoryName = 'ব্যালেন্স ট্রান্সফার';
+        } else if (isAddMoney) {
           txnType = 'contra';
           categoryName = 'টাকা যোগ';
         } else if (t.transaction_type === 'payment_out') {
@@ -338,7 +359,9 @@ function TransactionsContent() {
                              (linkedInvoice ? (linkedInvoice.party || linkedInvoice) : null);
 
         let addMoneyPartyName = 'দোকান ক্যাশ / মূলধন';
-        if (isAddMoney) {
+        if (isTransfer) {
+          addMoneyPartyName = rawPartyName || 'ব্যাংক ➔ ক্যাশ ট্রান্সফার';
+        } else if (isAddMoney) {
           if (meta.addMoneyCategory) {
             addMoneyPartyName = meta.addMoneyCategory;
           } else if (rawNoteStr.includes('[টাকা যোগ - ')) {
@@ -349,7 +372,7 @@ function TransactionsContent() {
           }
         }
 
-        const resolvedPartyName = isAddMoney
+        const resolvedPartyName = (isTransfer || isAddMoney)
           ? addMoneyPartyName
           : (rawPartyName && rawPartyName !== 'কাস্টমার' && rawPartyName !== 'সরবরাহকারী')
             ? rawPartyName
@@ -542,6 +565,154 @@ function TransactionsContent() {
       loadAllTransactionsData();
     } catch (err: any) {
       toast.error('টাকা যোগ করতে সমস্যা হয়েছে');
+    }
+  };
+
+  const handleExecuteTransfer = async () => {
+    if (transferAmount <= 0) {
+      toast.error('সঠিক টাকার পরিমাণ প্রদান করুন');
+      return;
+    }
+
+    const sourceBank = banks.find(b => b.id === transferSourceBankId);
+    const targetBank = banks.find(b => b.id === transferTargetBankId);
+
+    if (transferMode === 'bank_to_cash') {
+      if (!sourceBank) {
+        toast.error('উৎস ব্যাংক নির্বাচন করুন');
+        return;
+      }
+      if (Number(sourceBank.balance || 0) < transferAmount) {
+        toast.error(`উৎস ব্যাংকে পর্যাপ্ত ব্যালেন্স নেই! বর্তমান ব্যালেন্স: ৳ ${toBengaliDigits(Number(sourceBank.balance || 0).toLocaleString('bn-BD'))}`);
+        return;
+      }
+    } else if (transferMode === 'bank_to_bank') {
+      if (!sourceBank) {
+        toast.error('উৎস ব্যাংক নির্বাচন করুন');
+        return;
+      }
+      if (!targetBank) {
+        toast.error('গন্তব্য ব্যাংক নির্বাচন করুন');
+        return;
+      }
+      if (sourceBank.id === targetBank.id) {
+        toast.error('উৎস ও গন্তব্য ব্যাংক একই হতে পারবে না');
+        return;
+      }
+      if (Number(sourceBank.balance || 0) < transferAmount) {
+        toast.error(`উৎস ব্যাংকে পর্যাপ্ত ব্যালেন্স নেই! বর্তমান ব্যালেন্স: ৳ ${toBengaliDigits(Number(sourceBank.balance || 0).toLocaleString('bn-BD'))}`);
+        return;
+      }
+    } else if (transferMode === 'cash_to_bank') {
+      if (!targetBank) {
+        toast.error('গন্তব্য ব্যাংক নির্বাচন করুন');
+        return;
+      }
+    }
+
+    setIsTransferSubmitting(true);
+    try {
+      if (transferMode === 'bank_to_cash') {
+        // 1. Update bank balance
+        const newBankBal = Math.max(0, Number(sourceBank!.balance || 0) - transferAmount);
+        await api.banks.update(sourceBank!.id, { balance: newBankBal });
+
+        // 2. Create transaction record
+        const metaJson = JSON.stringify({
+          isTransfer: true,
+          transferType: 'bank_to_cash',
+          sourceBankId: sourceBank!.id,
+          sourceBankName: sourceBank!.name,
+          targetAccount: 'cash',
+          refNo: transferRefNo,
+          userNote: transferNote || ''
+        });
+
+        await api.transactions.create({
+          party_name: `${sourceBank!.name} ➔ ক্যাশ বাক্স`,
+          transaction_type: 'payment_in',
+          total_amount: transferAmount,
+          paid_amount: transferAmount,
+          due_amount: 0,
+          payment_method: 'cash',
+          cheque_bank: sourceBank!.name,
+          cheque_number: transferRefNo,
+          notes: metaJson + '\n' + `[ব্যালেন্স ট্রান্সফার: ${sourceBank!.name} থেকে ক্যাশ উত্তোলন] ${transferNote}`
+        });
+
+      } else if (transferMode === 'bank_to_bank') {
+        // 1. Deduct from source bank
+        const newSourceBal = Math.max(0, Number(sourceBank!.balance || 0) - transferAmount);
+        await api.banks.update(sourceBank!.id, { balance: newSourceBal });
+
+        // 2. Add to target bank
+        const newTargetBal = Number(targetBank!.balance || 0) + transferAmount;
+        await api.banks.update(targetBank!.id, { balance: newTargetBal });
+
+        // 3. Create transaction record
+        const metaJson = JSON.stringify({
+          isTransfer: true,
+          transferType: 'bank_to_bank',
+          sourceBankId: sourceBank!.id,
+          sourceBankName: sourceBank!.name,
+          targetBankId: targetBank!.id,
+          targetBankName: targetBank!.name,
+          refNo: transferRefNo,
+          userNote: transferNote || ''
+        });
+
+        await api.transactions.create({
+          party_name: `${sourceBank!.name} ➔ ${targetBank!.name}`,
+          transaction_type: 'payment_out',
+          total_amount: transferAmount,
+          paid_amount: transferAmount,
+          due_amount: 0,
+          payment_method: 'bank',
+          cheque_bank: `${sourceBank!.name} ➔ ${targetBank!.name}`,
+          cheque_number: transferRefNo,
+          notes: metaJson + '\n' + `[ব্যালেন্স ট্রান্সফার: ${sourceBank!.name} থেকে ${targetBank!.name}] ${transferNote}`
+        });
+
+      } else if (transferMode === 'cash_to_bank') {
+        // 1. Add to target bank
+        const newTargetBal = Number(targetBank!.balance || 0) + transferAmount;
+        await api.banks.update(targetBank!.id, { balance: newTargetBal });
+
+        // 2. Create transaction record
+        const metaJson = JSON.stringify({
+          isTransfer: true,
+          transferType: 'cash_to_bank',
+          sourceAccount: 'cash',
+          targetBankId: targetBank!.id,
+          targetBankName: targetBank!.name,
+          refNo: transferRefNo,
+          userNote: transferNote || ''
+        });
+
+        await api.transactions.create({
+          party_name: `ক্যাশ বাক্স ➔ ${targetBank!.name}`,
+          transaction_type: 'payment_out',
+          total_amount: transferAmount,
+          paid_amount: transferAmount,
+          due_amount: 0,
+          payment_method: 'bank',
+          cheque_bank: targetBank!.name,
+          cheque_number: transferRefNo,
+          notes: metaJson + '\n' + `[ব্যালেন্স ট্রান্সফার: ক্যাশ থেকে ${targetBank!.name} এ জমা] ${transferNote}`
+        });
+      }
+
+      toast.success('ব্যালেন্স ট্রান্সফার সফলভাবে সম্পন্ন হয়েছে!');
+      setIsTransferOpen(false);
+      setTransferAmount(0);
+      setTransferRefNo('');
+      setTransferNote('');
+      loadAllTransactionsData();
+    } catch (err) {
+      console.error(err);
+      toast.error('ব্যালেন্স ট্রান্সফার করতে সমস্যা হয়েছে');
+    } finally {
+      setIsTransferSubmitting(false);
     }
   };
 
@@ -781,14 +952,14 @@ function TransactionsContent() {
       t.referenceNo?.toLowerCase().includes(searchLower) ||
       t.category?.toLowerCase().includes(searchLower);
 
-    // 2. Active Tab / Type Filter (all, income/payment_in, expense/payment_out, contra/taka_jog)
+    // 2. Active Tab / Type Filter (all, income/payment_in, expense/payment_out, contra/transfer)
     let matchesTab = true;
     if (activeTab === 'income') {
-      matchesTab = (t.type === 'income' || t.category === 'পেমেন্ট গ্রহণ') && t.type !== 'contra' && t.category !== 'টাকা যোগ';
+      matchesTab = (t.type === 'income' || t.category === 'পেমেন্ট গ্রহণ') && t.type !== 'contra' && t.category !== 'টাকা যোগ' && t.category !== 'ব্যালেন্স ট্রান্সফার';
     } else if (activeTab === 'expense') {
-      matchesTab = t.type === 'expense' || t.category === 'পেমেন্ট প্রদান';
+      matchesTab = (t.type === 'expense' || t.category === 'পেমেন্ট প্রদান') && t.type !== 'contra' && t.category !== 'ব্যালেন্স ট্রান্সফার';
     } else if (activeTab === 'contra') {
-      matchesTab = t.category === 'টাকা যোগ' || t.type === 'contra';
+      matchesTab = t.category === 'টাকা যোগ' || t.category === 'ব্যালেন্স ট্রান্সফার' || t.type === 'contra';
     }
 
     // 3. Customer / Party Filter
@@ -898,26 +1069,45 @@ function TransactionsContent() {
 
             {/* TOP ACTION BUTTONS */}
             <div className="flex flex-wrap items-center gap-2.5">
-              <Button 
-                onClick={() => setIsAddMoneyOpen(true)} 
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all text-xs"
-              >
-                <PlusCircle className="w-4 h-4 mr-1.5" /> + টাকা যোগ করুন
-              </Button>
+              {canCreateInvoice && (
+                <>
+                  <Button 
+                    onClick={() => {
+                      setIsTransferOpen(true);
+                      if (banks.length > 0) {
+                        setTransferSourceBankId(banks[0].id);
+                        if (banks.length > 1) {
+                          setTransferTargetBankId(banks[1].id);
+                        }
+                      }
+                    }} 
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-indigo-600/20 active:scale-95 transition-all text-xs cursor-pointer"
+                  >
+                    <ArrowLeftRight className="w-4 h-4 mr-1.5" /> ⇄ ব্যালেন্স ট্রান্সফার
+                  </Button>
 
-              <Button 
-                onClick={() => handleOpenAddForm('income')} 
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all text-xs"
-              >
-                <ArrowUpRight className="w-4 h-4 mr-1.5" /> + পেমেন্ট গ্রহণ
-              </Button>
+                  <Button 
+                    onClick={() => setIsAddMoneyOpen(true)} 
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all text-xs cursor-pointer"
+                  >
+                    <PlusCircle className="w-4 h-4 mr-1.5" /> + টাকা যোগ করুন
+                  </Button>
 
-              <Button 
-                onClick={() => handleOpenAddForm('expense')} 
-                className="bg-orange-600 hover:bg-orange-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-orange-600/20 active:scale-95 transition-all text-xs"
-              >
-                <ArrowDownRight className="w-4 h-4 mr-1.5" /> - পেমেন্ট প্রদান
-              </Button>
+                  <Button 
+                    onClick={() => handleOpenAddForm('income')} 
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all text-xs cursor-pointer"
+                  >
+                    <ArrowUpRight className="w-4 h-4 mr-1.5" /> + পেমেন্ট গ্রহণ
+                  </Button>
+
+                  <Button 
+                    onClick={() => handleOpenAddForm('expense')} 
+                    className="bg-[#8c6b1c] hover:bg-[#735615] text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-amber-900/20 active:scale-95 transition-all text-xs cursor-pointer"
+                  >
+                    <ArrowDownRight className="w-4 h-4 mr-1.5" /> - পেমেন্ট প্রদান
+                  </Button>
+                </>
+              )}
 
               <Button variant="outline" className="h-11 px-4 rounded-xl border-slate-200 text-slate-700 bg-white font-bold text-xs">
                 <FileDown className="w-4 h-4 mr-1.5 text-rose-500" /> পিডিএফ ডাউনলোড
@@ -1046,7 +1236,7 @@ function TransactionsContent() {
                         <SelectItem value="all" className="text-xs font-bold">সব লেনদেন</SelectItem>
                         <SelectItem value="income" className="text-xs font-bold text-emerald-600">পেমেন্ট গ্রহণ (জমা)</SelectItem>
                         <SelectItem value="expense" className="text-xs font-bold text-rose-600">পেমেন্ট প্রদান (খরচ)</SelectItem>
-                        <SelectItem value="contra" className="text-xs font-bold text-blue-600">টাকা যোগ</SelectItem>
+                        <SelectItem value="contra" className="text-xs font-bold text-indigo-600">ট্রান্সফার ও টাকা যোগ</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1189,9 +1379,11 @@ function TransactionsContent() {
                         </TableRow>
                       ) : filteredTransactions.map((t, idx) => {
                         const method = t.paymentMethod || (t.accountType === 'bank' ? 'Bank' : 'Cash');
-                        const isContra = t.type === 'contra' || t.category === 'টাকা যোগ';
+                        const isTransfer = t.category === 'ব্যালেন্স ট্রান্সফার' || t.partyName?.includes('➔') || String(t.notes || '').includes('[ব্যালেন্স ট্রান্সফার');
+                        const isAddMoney = !isTransfer && (t.type === 'contra' || t.category === 'টাকা যোগ');
+                        const isContra = isTransfer || isAddMoney || t.type === 'contra';
                         const isIncome = (t.type === 'income' || t.category === 'পেমেন্ট গ্রহণ') && !isContra;
-                        const isExpense = t.type === 'expense' || t.category === 'পেমেন্ট প্রদান';
+                        const isExpense = (t.type === 'expense' || t.category === 'পেমেন্ট প্রদান') && !isContra;
 
                         return (
                           <TableRow 
@@ -1210,12 +1402,14 @@ function TransactionsContent() {
                                 "inline-flex items-center gap-1 font-bold px-2.5 py-0.5 rounded-md text-[11px] border",
                                 isIncome && "bg-emerald-50 text-emerald-700 border-emerald-200",
                                 isExpense && "bg-orange-50 text-orange-700 border-orange-200",
-                                isContra && "bg-blue-50 text-blue-700 border-blue-200"
+                                isTransfer && "bg-indigo-50 text-indigo-700 border-indigo-200",
+                                isAddMoney && "bg-blue-50 text-blue-700 border-blue-200"
                               )}>
                                 {isIncome && <ArrowUpRight className="w-3 h-3 text-emerald-600" />}
                                 {isExpense && <ArrowDownRight className="w-3 h-3 text-orange-600" />}
-                                {isContra && <PlusCircle className="w-3 h-3 text-blue-600" />}
-                                <span>{isContra ? 'টাকা যোগ' : (t.category || (isIncome ? 'পেমেন্ট গ্রহণ' : 'পেমেন্ট প্রদান'))}</span>
+                                {isTransfer && <ArrowLeftRight className="w-3 h-3 text-indigo-600" />}
+                                {isAddMoney && <PlusCircle className="w-3 h-3 text-blue-600" />}
+                                <span>{isTransfer ? 'ব্যালেন্স ট্রান্সফার' : isAddMoney ? 'টাকা যোগ' : (t.category || (isIncome ? 'পেমেন্ট গ্রহণ' : 'পেমেন্ট প্রদান'))}</span>
                               </span>
                             </TableCell>
                             <TableCell className="font-black text-slate-900">
@@ -1312,18 +1506,20 @@ function TransactionsContent() {
                     </button>
 
                     {/* 2. Edit / সম্পাদনা */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpenMenuId(null);
-                        setMenuPos(null);
-                        handleEditTransaction(activeMenuTxn);
-                      }}
-                      className="w-full flex items-center gap-2 px-3.5 py-2 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 font-bold transition-colors text-left"
-                    >
-                      <Edit2 className="w-4 h-4 text-emerald-600" />
-                      <span>সম্পাদনা করুন</span>
-                    </button>
+                    {canEditInvoice && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenMenuId(null);
+                          setMenuPos(null);
+                          handleEditTransaction(activeMenuTxn);
+                        }}
+                        className="w-full flex items-center gap-2 px-3.5 py-2 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 font-bold transition-colors text-left"
+                      >
+                        <Edit2 className="w-4 h-4 text-emerald-600" />
+                        <span>সম্পাদনা করুন</span>
+                      </button>
+                    )}
 
                     {/* 3. Print / প্রিন্ট */}
                     <button
@@ -1342,21 +1538,25 @@ function TransactionsContent() {
                       <span>প্রিন্ট ভাউচার</span>
                     </button>
 
-                    <div className="my-1 border-t border-slate-100" />
+                    {canDeleteInvoice && (
+                      <>
+                        <div className="my-1 border-t border-slate-100" />
 
-                    {/* 4. Delete / মুছে ফেলুন */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpenMenuId(null);
-                        setMenuPos(null);
-                        handleDelete(activeMenuTxn);
-                      }}
-                      className="w-full flex items-center gap-2 px-3.5 py-2 text-rose-600 hover:bg-rose-50 font-bold transition-colors text-left"
-                    >
-                      <Trash2 className="w-4 h-4 text-rose-600" />
-                      <span>মুছে ফেলুন</span>
-                    </button>
+                        {/* 4. Delete / মুছে ফেলুন */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            setMenuPos(null);
+                            handleDelete(activeMenuTxn);
+                          }}
+                          className="w-full flex items-center gap-2 px-3.5 py-2 text-rose-600 hover:bg-rose-50 font-bold transition-colors text-left"
+                        >
+                          <Trash2 className="w-4 h-4 text-rose-600" />
+                          <span>মুছে ফেলুন</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 );
               })()}
@@ -2252,6 +2452,221 @@ function TransactionsContent() {
               </Button>
               <Button onClick={handleCreateAddMoneySubmit} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold h-11 px-6 shadow-md shadow-blue-600/20 text-xs">
                 <Check className="w-4 h-4 mr-1.5" /> টাকা যোগ করুন
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* BALANCE / FUND TRANSFER (ব্যাংক / ক্যাশ ব্যালেন্স ট্রান্সফার) MODAL DIALOG */}
+        <Dialog open={isTransferOpen} onOpenChange={setIsTransferOpen}>
+          <DialogContent className="max-w-lg w-full bg-white rounded-3xl p-6 shadow-2xl font-bengali">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2">
+                <ArrowLeftRight className="w-6 h-6 text-indigo-600" /> ব্যালেন্স ট্রান্সফার (Balance Transfer)
+              </DialogTitle>
+              <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                ব্যাংক থেকে ক্যাশ উত্তোলন অথবা এক ব্যাংক থেকে অন্য ব্যাংকে ফান্ড স্থানান্তর করুন
+              </p>
+            </DialogHeader>
+
+            <div className="space-y-4 pt-2">
+              {/* Transfer Mode Selector Tabs */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">ট্রান্সফারের ধরন *</Label>
+                <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setTransferMode('bank_to_cash')}
+                    className={cn(
+                      "py-2.5 px-2 rounded-xl font-bold text-[11px] flex flex-col items-center justify-center gap-1 transition-all cursor-pointer",
+                      transferMode === 'bank_to_cash'
+                        ? "bg-white text-indigo-700 border-2 border-indigo-500 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                    )}
+                  >
+                    <span className="text-sm">🏦 ➔ 💵</span>
+                    <span className="leading-tight">ব্যাংক ➔ ক্যাশ</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTransferMode('bank_to_bank')}
+                    className={cn(
+                      "py-2.5 px-2 rounded-xl font-bold text-[11px] flex flex-col items-center justify-center gap-1 transition-all cursor-pointer",
+                      transferMode === 'bank_to_bank'
+                        ? "bg-white text-indigo-700 border-2 border-indigo-500 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                    )}
+                  >
+                    <span className="text-sm">🏦 ➔ 🏦</span>
+                    <span className="leading-tight">ব্যাংক ➔ ব্যাংক</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTransferMode('cash_to_bank')}
+                    className={cn(
+                      "py-2.5 px-2 rounded-xl font-bold text-[11px] flex flex-col items-center justify-center gap-1 transition-all cursor-pointer",
+                      transferMode === 'cash_to_bank'
+                        ? "bg-white text-indigo-700 border-2 border-indigo-500 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                    )}
+                  >
+                    <span className="text-sm">💵 ➔ 🏦</span>
+                    <span className="leading-tight">ক্যাশ ➔ ব্যাংক</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Source & Destination Account Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Source Account (From) */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700">
+                    উৎস (যেখান থেকে টাকা যাবে) *
+                  </Label>
+                  {transferMode === 'cash_to_bank' ? (
+                    <div className="h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2 text-xs font-bold text-slate-700">
+                      <span>💵</span>
+                      <span>দোকান ক্যাশ বাক্স (Cash Box)</span>
+                    </div>
+                  ) : (
+                    <Select 
+                      value={transferSourceBankId} 
+                      onValueChange={(val: string | null) => val && setTransferSourceBankId(val)}
+                    >
+                      <SelectTrigger className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold">
+                        <SelectValue placeholder="উৎস ব্যাংক বেছে নিন..." />
+                      </SelectTrigger>
+                      <SelectContent className="font-bengali text-xs font-bold max-h-56">
+                        {banks.map(b => (
+                          <SelectItem key={b.id} value={b.id}>
+                            {b.name} ({b.accNo}) — ৳{toBengaliDigits((b.balance || 0).toLocaleString('bn-BD'))}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {transferMode !== 'cash_to_bank' && transferSourceBankId && (
+                    <p className="text-[10px] font-semibold text-slate-500">
+                      বর্তমান ব্যালেন্স: <strong className="text-indigo-600">৳ {toBengaliDigits((banks.find(b => b.id === transferSourceBankId)?.balance || 0).toLocaleString('bn-BD'))}</strong>
+                    </p>
+                  )}
+                </div>
+
+                {/* Target Account (To) */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700">
+                    গন্তব্য (যেখানে টাকা জমা হবে) *
+                  </Label>
+                  {transferMode === 'bank_to_cash' ? (
+                    <div className="h-11 px-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2 text-xs font-bold text-slate-700">
+                      <span>💵</span>
+                      <span>দোকান ক্যাশ বাক্স (Cash Box)</span>
+                    </div>
+                  ) : (
+                    <Select 
+                      value={transferTargetBankId} 
+                      onValueChange={(val: string | null) => val && setTransferTargetBankId(val)}
+                    >
+                      <SelectTrigger className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold">
+                        <SelectValue placeholder="গন্তব্য ব্যাংক বেছে নিন..." />
+                      </SelectTrigger>
+                      <SelectContent className="font-bengali text-xs font-bold max-h-56">
+                        {banks.filter(b => transferMode !== 'bank_to_bank' || b.id !== transferSourceBankId).map(b => (
+                          <SelectItem key={b.id} value={b.id}>
+                            {b.name} ({b.accNo}) — ৳{toBengaliDigits((b.balance || 0).toLocaleString('bn-BD'))}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {transferMode !== 'bank_to_cash' && transferTargetBankId && (
+                    <p className="text-[10px] font-semibold text-slate-500">
+                      বর্তমান ব্যালেন্স: <strong className="text-emerald-600">৳ {toBengaliDigits((banks.find(b => b.id === transferTargetBankId)?.balance || 0).toLocaleString('bn-BD'))}</strong>
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Transfer Amount */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-700">স্থানান্তরের টাকার পরিমাণ (৳) *</Label>
+                  {transferMode !== 'cash_to_bank' && transferSourceBankId && transferAmount > (banks.find(b => b.id === transferSourceBankId)?.balance || 0) && (
+                    <span className="text-[10px] font-bold text-rose-600 flex items-center gap-0.5">
+                      <AlertCircle className="w-3 h-3" /> ব্যালেন্স অতিক্রম করেছে!
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">৳</span>
+                  <Input 
+                    type="number"
+                    placeholder="0.00"
+                    value={transferAmount || ''}
+                    onChange={e => setTransferAmount(parseFloat(e.target.value) || 0)}
+                    className="rounded-xl h-11 pl-9 bg-slate-50/50 border-slate-200 text-base font-black text-indigo-700 text-right font-bengali"
+                  />
+                </div>
+              </div>
+
+              {/* Date & Cheque/Reference No */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700">তারিখ *</Label>
+                  <BengaliDatePicker
+                    value={transferDate}
+                    onChange={val => setTransferDate(val)}
+                    placeholder="তারিখ নির্বাচন করুন"
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700">চেক / রেফারেন্স / স্লিপ নং</Label>
+                  <Input 
+                    placeholder="যেমন: CQ-8492 বা স্লিপ নং"
+                    value={transferRefNo}
+                    onChange={e => setTransferRefNo(e.target.value)}
+                    className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* Note / Description */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">নোট / বিবরণ (ঐচ্ছিক)</Label>
+                <Input 
+                  placeholder={
+                    transferMode === 'bank_to_cash' 
+                      ? 'যেমন: দোকানের নগদ খরচের জন্য ব্যাংক উত্তোলন'
+                      : transferMode === 'bank_to_bank'
+                        ? 'যেমন: একাউন্ট সমন্বয় / ফান্ড ট্রান্সফার'
+                        : 'যেমন: দিনের অতিরিক্ত ক্যাশ জমা'
+                  }
+                  value={transferNote}
+                  onChange={e => setTransferNote(e.target.value)}
+                  className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="mt-6 flex items-center justify-end gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsTransferOpen(false)} 
+                className="rounded-xl font-bold h-11 text-xs cursor-pointer"
+              >
+                বাতিল
+              </Button>
+              <Button 
+                onClick={handleExecuteTransfer} 
+                disabled={isTransferSubmitting}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold h-11 px-6 shadow-md shadow-indigo-600/20 text-xs cursor-pointer"
+              >
+                <ArrowLeftRight className="w-4 h-4 mr-1.5" />
+                {isTransferSubmitting ? 'ট্রান্সফার হচ্ছে...' : 'ট্রান্সফার সম্পন্ন করুন'}
               </Button>
             </DialogFooter>
           </DialogContent>

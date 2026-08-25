@@ -155,17 +155,17 @@ export const ReturnInvoiceMemo: React.FC<ReturnInvoiceMemoProps> = ({
     <div className="w-full font-bengali">
       {/* Top Action Bar for Web Preview */}
       {showPrintButton && (
-        <div className="flex items-center justify-between bg-black text-white p-3.5 px-6 rounded-t-2xl print:hidden shadow-md">
+        <div className="flex items-center justify-between bg-[#1f1910] text-white p-3.5 px-6 rounded-t-2xl print:hidden shadow-md">
           <div className="flex items-center gap-2 text-xs font-bold">
-            <FileText className="w-4 h-4 text-white" />
+            <FileText className="w-4 h-4 text-[#d4af37]" />
             <span>বিক্রয় ফেরত মেমো প্রিভিউ (A4 Print Copy)</span>
           </div>
           <button
             type="button"
             onClick={handleTriggerPrint}
-            className="bg-white text-black hover:bg-slate-200 text-xs font-black px-5 py-2 rounded-xl flex items-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer border border-slate-300"
+            className="bg-gradient-to-r from-[#b88e2d] to-[#d4af37] hover:from-[#a37c22] hover:to-[#be9b2d] text-white text-xs font-black px-5 py-2 rounded-xl flex items-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer border border-[#c59b27]"
           >
-            <Printer className="w-4 h-4 text-black" />
+            <Printer className="w-4 h-4 text-white" />
             <span>মেমো প্রিন্ট করুন</span>
           </button>
         </div>

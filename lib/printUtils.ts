@@ -58,7 +58,11 @@ export const printElement = (elementId: string) => {
           }
           #printable-memo-wrapper,
           #gate-pass-printable-wrapper,
-          #purchase-memo-wrapper {
+          #purchase-memo-wrapper,
+          #customer-dues-printable-sheet,
+          #stock-sheet-printable-wrapper,
+          #balance-sheet-printable-wrapper,
+          #income-statement-printable-wrapper {
             width: 100% !important;
             max-width: 100% !important;
             margin: 0 !important;

@@ -296,7 +296,7 @@ export function ProductSearchSelect({
                       onClick={() => !isOutOfStock && handleSelect(prod)}
                       className={cn(
                         'px-3.5 py-2.5 text-xs flex items-center justify-between cursor-pointer transition-colors',
-                        isOutOfStock ? 'opacity-50 cursor-not-allowed bg-slate-50/50' : isSelected ? 'bg-orange-50/80 text-orange-900 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                        isOutOfStock ? 'opacity-50 cursor-not-allowed bg-slate-50/50' : isSelected ? 'bg-amber-50/90 text-amber-900 font-bold border-l-2 border-[#b88e2d]' : 'hover:bg-[#faf8f5] text-slate-700'
                       )}
                     >
                       <div className="space-y-0.5">

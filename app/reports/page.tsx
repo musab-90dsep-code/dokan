@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { Shell } from '@/components/Shell';
 import { api } from '@/lib/api';
 import {
@@ -22,8 +23,40 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { cn, fixMiliName, toBnNum, formatBnCurrency, formatDualStock } from '@/lib/utils';
 import { isToday, isSameMonth, isSameYear, format } from 'date-fns';
+import { bn } from 'date-fns/locale';
 import { printElement } from '@/lib/printUtils';
+import { toBengaliDigits } from '@/lib/bengaliUtils';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
+
+const formatBnDate = (dateVal: Date | string | undefined | null, pattern: string = 'dd MMMM - yyyy') => {
+  if (!dateVal) return '—';
+  try {
+    const d = typeof dateVal === 'string' ? new Date(dateVal) : dateVal;
+    if (isNaN(d.getTime())) return String(dateVal);
+    const raw = format(d, pattern, { locale: bn });
+    return toBengaliDigits(raw);
+  } catch {
+    return '—';
+  }
+};
+
+const formatBnNumber = (amount: number | undefined | null): string => {
+  if (amount === undefined || amount === null || isNaN(amount) || amount === 0) return '-';
+  const num = Math.round(amount);
+  return toBengaliDigits(num.toLocaleString('en-IN'));
+};
+
+const formatBnQty = (qty: number | undefined | null): string => {
+  if (qty === undefined || qty === null || isNaN(qty) || qty === 0) return '০';
+  const formatted = qty % 1 === 0 ? qty.toLocaleString('en-IN') : qty.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+  return toBengaliDigits(formatted);
+};
+
+const formatBnCurrencyAmount = (amount: number | undefined | null): string => {
+  if (amount === undefined || amount === null || isNaN(amount)) return '০';
+  const num = Math.round(amount);
+  return toBengaliDigits(num.toLocaleString('en-IN'));
+};
 
 interface OrderItem {
   id?: string;
@@ -79,12 +112,14 @@ interface Transaction {
 interface Customer {
   id: string;
   name: string;
+  businessName?: string;
   totalDue?: number;
 }
 
 interface Supplier {
   id: string;
   name: string;
+  businessName?: string;
   totalDue?: number;
 }
 
@@ -93,6 +128,7 @@ interface Product {
   name: string;
   category: string;
   stock: number;
+  buyPrice: number;
   sellPrice: number;
   unit: string;
 }
@@ -153,6 +189,14 @@ function MasterReportsContent() {
   const [banks, setBanks] = useState<Bank[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [commissions, setCommissions] = useState<Commission[]>([]);
+  const [totalCash, setTotalCash] = useState<number>(0);
+  const [initialCapital, setInitialCapital] = useState<number>(10000000);
+  const [isEditingCapital, setIsEditingCapital] = useState<boolean>(false);
+  const [tempCapitalInput, setTempCapitalInput] = useState<string>('10000000');
+  const [balanceSheetDate, setBalanceSheetDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
+  const [incomeStatementDate, setIncomeStatementDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
+  const [incomePeriodMode, setIncomePeriodMode] = useState<'month' | 'today' | 'all'>('month');
+
   const [filterStartDate, setFilterStartDate] = useState<string>(() => format(new Date(), 'yyyy-MM-01'));
   const [filterEndDate, setFilterEndDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
   const [filterBranch, setFilterBranch] = useState<string>('all');
@@ -308,11 +352,13 @@ function MasterReportsContent() {
         setCustomers(safePartyList.filter(p => p.party_type === 'customer' || p.party_type === 'both').map(p => ({
           id: String(p.id),
           name: p.name,
+          businessName: p.business_name || '',
           totalDue: Number(p.total_due || 0)
         })));
         setSuppliers(safePartyList.filter(p => p.party_type === 'supplier' || p.party_type === 'both').map(p => ({
           id: String(p.id),
           name: p.name,
+          businessName: p.business_name || '',
           totalDue: Number(p.total_due || 0)
         })));
 
@@ -323,6 +369,7 @@ function MasterReportsContent() {
           name: p.name,
           category: p.category_name || 'অন্যান্য',
           stock: Number(p.stock || 0),
+          buyPrice: Number(p.purchase_price || 0),
           sellPrice: Number(p.sell_price || 0),
           unit: p.unit || 'পিস'
         })));
@@ -347,6 +394,18 @@ function MasterReportsContent() {
           status: 'পরিশোধিত',
           createdAt: e.date
         })));
+
+        // Real Cash Balance from dashboard or transactions
+        try {
+          const stats = await api.dashboard.getStats();
+          if (stats && typeof stats.totalCash === 'number') {
+            setTotalCash(stats.totalCash);
+          }
+        } catch {
+          const cashIn = safeTxList.filter(t => (t.payment_method === 'cash' || !t.payment_method) && (String(t.transaction_type) === 'sale' || String(t.transaction_type) === 'payment_in')).reduce((a, b) => a + Number(b.paid_amount || b.total_amount || 0), 0);
+          const cashOut = safeTxList.filter(t => (t.payment_method === 'cash' || !t.payment_method) && (String(t.transaction_type) === 'purchase' || String(t.transaction_type) === 'payment_out')).reduce((a, b) => a + Number(b.paid_amount || b.total_amount || 0), 0);
+          setTotalCash(cashIn - cashOut);
+        }
       } catch (err) {
         console.error('Error loading reports data:', err);
       }
@@ -560,7 +619,7 @@ function MasterReportsContent() {
 
                   <Button
                     onClick={() => toast.success('ফিল্টার প্রয়োগ করা হয়েছে!')}
-                    className="h-10 flex-1 rounded-xl text-xs font-black bg-orange-500 hover:bg-orange-600 text-white shadow-md shadow-orange-500/20"
+                    className="h-10 flex-1 rounded-xl text-xs font-black bg-gradient-to-r from-[#b88e2d] to-[#d4af37] hover:from-[#a37c22] hover:to-[#be9b2d] text-white shadow-md shadow-amber-500/20"
                   >
                     🎯 প্রয়োগ করুন
                   </Button>
@@ -594,13 +653,14 @@ function MasterReportsContent() {
                 </div>
 
                 <div className="pt-6 mt-4 border-t border-slate-100 flex items-center justify-between">
-                  <Button
-                    onClick={() => setActiveTab('due_customers')}
-                    variant="outline"
-                    className="h-9 px-3 rounded-xl text-xs font-bold border-slate-200 text-slate-700 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200"
-                  >
-                    রিপোর্ট দেখুন <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                  </Button>
+                  <Link href="/customers/dues">
+                    <Button
+                      variant="outline"
+                      className="h-9 px-3 rounded-xl text-xs font-bold border-slate-200 text-slate-700 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 cursor-pointer"
+                    >
+                      রিপোর্ট দেখুন <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                    </Button>
+                  </Link>
                 </div>
               </Card>
 
@@ -685,7 +745,7 @@ function MasterReportsContent() {
                 </div>
               </Card>
 
-              {/* CARD 5: প্রফিট এবং লস */}
+              {/* CARD 5: ইনকাম বিবরণী */}
               <Card className="border-slate-200/90 rounded-3xl bg-white p-6 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between group">
                 <div className="space-y-4">
                   <div className="w-12 h-12 rounded-2xl bg-orange-100/80 text-orange-700 flex items-center justify-center font-bold">
@@ -693,10 +753,10 @@ function MasterReportsContent() {
                   </div>
                   <div>
                     <h3 className="font-black text-slate-900 text-lg group-hover:text-orange-600 transition-colors">
-                      ৫. প্রফিট এবং লস
+                      ৫. ইনকাম বিবরণী (Income Statement)
                     </h3>
                     <p className="text-xs text-slate-500 font-semibold mt-1 line-clamp-2">
-                      সব / সিমেন্ট / রড অনুযায়ী প্রফিট এবং লস রিপোর্ট
+                      রড ও সিমেন্ট বিক্রয় আয়, ক্রয় ব্যয় ও পরিচালন ব্যয়ের বিস্তারিত বিবরণী
                     </p>
                   </div>
                 </div>
@@ -822,7 +882,7 @@ function MasterReportsContent() {
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <Card className="p-5 border-orange-200/60 bg-gradient-to-br from-orange-50/80 to-amber-50/30 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-orange-600">মোট কাস্টমার</p><p className="text-2xl font-black text-slate-900">{toBnNum(totalCustCount)} জন</p><p className="text-[11px] font-semibold text-slate-500">সকল নিবন্ধিত কাস্টমার</p></div><div className="w-11 h-11 rounded-2xl bg-orange-500/10 text-orange-600 flex items-center justify-center font-bold"><Users className="w-5 h-5" /></div></div></Card>
+                    <Card className="p-5 border-amber-200/80 bg-gradient-to-br from-amber-50/90 to-yellow-50/40 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-amber-800">মোট কাস্টমার</p><p className="text-2xl font-black text-slate-900">{toBnNum(totalCustCount)} জন</p><p className="text-[11px] font-semibold text-slate-500">সকল নিবন্ধিত কাস্টমার</p></div><div className="w-11 h-11 rounded-2xl bg-amber-500/10 text-amber-700 flex items-center justify-center font-bold"><Users className="w-5 h-5" /></div></div></Card>
                     <Card className="p-5 border-rose-200/60 bg-gradient-to-br from-rose-50/80 to-red-50/30 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-rose-600">মোট বাকী টাকা</p><p className="text-2xl font-black text-rose-600">{formatBnCurrency(totalCustDue)}</p><p className="text-[11px] font-semibold text-slate-500">সকল কাস্টমারের মোট বাকী</p></div><div className="w-11 h-11 rounded-2xl bg-rose-500/10 text-rose-600 flex items-center justify-center font-bold"><Wallet className="w-5 h-5" /></div></div></Card>
                     <Card className="p-5 border-emerald-200/60 bg-gradient-to-br from-emerald-50/80 to-teal-50/30 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-emerald-700">বাকি থাকা কাস্টমার</p><p className="text-2xl font-black text-slate-900">{toBnNum(dueCustomers.length)} জন</p><p className="text-[11px] font-semibold text-emerald-600">বর্তমানে পাওনা বাকি</p></div><div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold"><Clock className="w-5 h-5" /></div></div></Card>
                     <Card className="p-5 border-blue-200/60 bg-gradient-to-br from-blue-50/80 to-indigo-50/30 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-blue-600">গড় কাস্টমার বাকী</p><p className="text-2xl font-black text-slate-900">{formatBnCurrency(dueCustomers.length ? Math.round(totalCustDue / dueCustomers.length) : 0)}</p><p className="text-[11px] font-semibold text-slate-500">প্রতি কাস্টমারে গড়</p></div><div className="w-11 h-11 rounded-2xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold"><TrendingUp className="w-5 h-5" /></div></div></Card>
@@ -833,7 +893,7 @@ function MasterReportsContent() {
                       <div><Label className="text-[11px] font-bold text-slate-500">কাস্টমার নাম / মোবাইল</Label><Input placeholder="নাম / মোবাইল নম্বর" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="h-10 text-xs font-bold rounded-xl mt-1 bg-slate-50/50 border-slate-200" /></div>
                       <div className="flex items-end gap-2">
                         <Button variant="outline" onClick={() => setSearchQuery('')} className="h-10 px-5 rounded-xl text-xs font-bold border-slate-200"><RefreshCcw className="w-3.5 h-3.5 mr-1" /> রিসেট</Button>
-                        <Button onClick={() => toast.success('ফিল্টার প্রয়োগ করা হয়েছে!')} className="h-10 px-6 rounded-xl text-xs font-black bg-orange-500 hover:bg-orange-600 text-white">⚡ ফিল্টার করুন</Button>
+                        <Button onClick={() => toast.success('ফিল্টার প্রয়োগ করা হয়েছে!')} className="h-10 px-6 rounded-xl text-xs font-black bg-gradient-to-r from-[#b88e2d] to-[#d4af37] hover:from-[#a37c22] hover:to-[#be9b2d] text-white shadow-xs">⚡ ফিল্টার করুন</Button>
                       </div>
                       <div className="flex items-end justify-end gap-2">
                         <Button variant="outline" onClick={() => window.print()} className="h-10 px-4 rounded-xl text-xs font-bold border-slate-200 bg-slate-100"><Printer className="w-4 h-4 mr-1.5" /> প্রিন্ট</Button>
@@ -1462,121 +1522,1775 @@ function MasterReportsContent() {
               );
             })()}
 
-            {/* 5. প্রফিট এবং লস স্টেটমেন্ট */}
-            {activeTab === 'profit_loss' && (() => {
-              const salesIncome = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-              const purchasesExp = purchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
-              const operatingExp = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-              const totalExpense = purchasesExp + operatingExp;
-              const netProfit = salesIncome - totalExpense;
-              const profitPercent = salesIncome > 0 ? ((netProfit / salesIncome) * 100).toFixed(1) : '0';
+            {/* 5. ইনকাম বিবরণী (Income Statement / Profit & Loss - Standard UI & PDF Matched) */}
+            {(activeTab === 'profit_loss' || activeTab === 'income_statement') && (() => {
+              // 1. Filter data based on selected period mode and date
+              const filterByPeriod = (createdAt: any) => {
+                if (!createdAt) return true;
+                const d = typeof createdAt === 'string' ? new Date(createdAt) : createdAt;
+                if (isNaN(d.getTime())) return true;
+                const itemDateStr = format(d, 'yyyy-MM-dd');
+                if (incomePeriodMode === 'today') {
+                  return itemDateStr === incomeStatementDate;
+                } else if (incomePeriodMode === 'month') {
+                  return itemDateStr.slice(0, 7) === incomeStatementDate.slice(0, 7);
+                }
+                return true; // 'all'
+              };
+
+              const filteredOrders = orders.filter(o => filterByPeriod(o.createdAt));
+              const filteredPurchases = purchases.filter(p => filterByPeriod(p.createdAt));
+              const filteredExpenses = expenses.filter(e => filterByPeriod(e.createdAt || e.date));
+
+              // 2. Revenue Breakdown (আয়ের খাত)
+              const cementSalesItems = filteredOrders.flatMap(o => (o.items || []).filter(i => 
+                (i.category && i.category.includes('সিমেন্ট')) || 
+                (i.name && i.name.includes('সিমেন্ট')) || 
+                (i.unit && i.unit.includes('ব্যাগ'))
+              ));
+              const cementSalesQty = cementSalesItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+              const cementSalesAmount = cementSalesItems.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 0)), 0);
+
+              const rodSalesItems = filteredOrders.flatMap(o => (o.items || []).filter(i => 
+                (i.category && i.category.includes('রড')) || 
+                (i.name && (i.name.includes('রড') || i.name.includes('মিমি') || i.name.toLowerCase().includes('mm'))) || 
+                (i.unit && (i.unit.includes('কেজি') || i.unit.includes('টন')))
+              ));
+              const rodSalesQty = rodSalesItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+              const rodSalesAmount = rodSalesItems.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 0)), 0);
+
+              const totalOrderSalesAmount = filteredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+              const otherSalesAmount = Math.max(0, totalOrderSalesAmount - (cementSalesAmount + rodSalesAmount));
+              const totalSalesIncome = cementSalesAmount + rodSalesAmount + otherSalesAmount;
+
+              // 3. Cement Direct Costs (সিমেন্ট ক্রয় ও পরিবহন ব্যয়)
+              const cementPurchaseItems = filteredPurchases.flatMap(p => (p.items || []).filter(i => 
+                (i.category && i.category.includes('সিমেন্ট')) || 
+                (i.name && i.name.includes('সিমেন্ট')) || 
+                (i.unit && i.unit.includes('ব্যাগ'))
+              ));
+              const cementPurchaseQty = cementPurchaseItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+              const cementPurchaseAmount = cementPurchaseItems.length > 0 
+                ? cementPurchaseItems.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 0)), 0)
+                : filteredPurchases.filter(p => p.supplierName?.includes('সিমেন্ট') || p.items?.some(i => i.name?.includes('সিমেন্ট'))).reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+
+              const cementTruckFare = filteredExpenses.filter(e => 
+                (e.title?.includes('সিমেন্ট') && (e.title?.includes('গাড়ি') || e.title?.includes('ভাড়া') || e.title?.includes('পরিবহন'))) || 
+                (e.category?.includes('সিমেন্ট গাড়ি') || e.category?.includes('সিমেন্ট পরিবহন'))
+              ).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+              const cementUnloadLabor = filteredExpenses.filter(e => 
+                (e.title?.includes('সিমেন্ট') && (e.title?.includes('লেবার') || e.title?.includes('আনলোড') || e.title?.includes('লেভারি'))) || 
+                (e.category?.includes('সিমেন্ট আনলোড') || e.category?.includes('সিমেন্ট লেবার'))
+              ).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+              const cementTotalDirectCost = cementPurchaseAmount + cementTruckFare + cementUnloadLabor;
+
+              // 4. Rod Direct Costs (রড ক্রয় ও পরিবহন ব্যয়)
+              const rodPurchaseItems = filteredPurchases.flatMap(p => (p.items || []).filter(i => 
+                (i.category && i.category.includes('রড')) || 
+                (i.name && (i.name.includes('রড') || i.name.includes('মিমি') || i.name.toLowerCase().includes('mm'))) || 
+                (i.unit && (i.unit.includes('কেজি') || i.unit.includes('টন')))
+              ));
+              const rodPurchaseQty = rodPurchaseItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+              const rodPurchaseAmount = rodPurchaseItems.length > 0 
+                ? rodPurchaseItems.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 0)), 0)
+                : filteredPurchases.filter(p => p.supplierName?.includes('রড') || p.items?.some(i => i.name?.includes('রড'))).reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+
+              const rodTruckFare = filteredExpenses.filter(e => 
+                (e.title?.includes('রড') && (e.title?.includes('গাড়ি') || e.title?.includes('ভাড়া') || e.title?.includes('পরিবহন'))) || 
+                (e.category?.includes('রড গাড়ি') || e.category?.includes('রড পরিবহন'))
+              ).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+              const rodUnloadLabor = filteredExpenses.filter(e => 
+                (e.title?.includes('রড') && (e.title?.includes('লেবার') || e.title?.includes('আনলোড') || e.title?.includes('লেভারি'))) || 
+                (e.category?.includes('রড আনলোড') || e.category?.includes('রড লেবার'))
+              ).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+              const rodTotalDirectCost = rodPurchaseAmount + rodTruckFare + rodUnloadLabor;
+              const totalDirectCost = cementTotalDirectCost + rodTotalDirectCost;
+
+              // 5. Operating Expenses (ব্যাবসা পরিচালন ব্যয়)
+              const directExpIds = new Set(
+                filteredExpenses.filter(e => 
+                  ((e.title?.includes('সিমেন্ট') || e.title?.includes('রড')) && 
+                   (e.title?.includes('গাড়ি') || e.title?.includes('ভাড়া') || e.title?.includes('লেবার') || e.title?.includes('আনলোড')))
+                ).map(e => e.id)
+              );
+
+              const operatingExpensesList = filteredExpenses.filter(e => !directExpIds.has(e.id));
+              
+              const categoryMap = new Map<string, number>();
+              operatingExpensesList.forEach(e => {
+                const catName = e.category && e.category !== 'general' ? e.category : (e.title || 'বিবিধ খরচ');
+                categoryMap.set(catName, (categoryMap.get(catName) || 0) + (Number(e.amount) || 0));
+              });
+
+              const standardOpexRows: { name: string; amount: number }[] = [];
+              if (categoryMap.size > 0) {
+                Array.from(categoryMap.entries()).forEach(([name, amount]) => {
+                  standardOpexRows.push({ name, amount });
+                });
+              } else {
+                standardOpexRows.push(
+                  { name: 'দোকান ভাড়া', amount: 0 },
+                  { name: 'বিদ্যুৎ বিল', amount: 0 },
+                  { name: 'স্টাফ বেতন', amount: 0 },
+                  { name: 'পরিবহন ভাড়া', amount: 0 },
+                  { name: 'রড লেবারী বাবদ', amount: 0 },
+                  { name: 'সিমেন্ট লেবারী বাবদ', amount: 0 },
+                  { name: 'বিবিধ খরচ', amount: 0 }
+                );
+              }
+
+              const totalOperatingExpense = operatingExpensesList.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+              const grandTotalExpenses = totalDirectCost + totalOperatingExpense;
+              const netProfit = totalSalesIncome - grandTotalExpenses;
+              const profitMargin = totalSalesIncome > 0 ? ((netProfit / totalSalesIncome) * 100).toFixed(1) : '0';
 
               return (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="space-y-6 animate-in fade-in duration-300 font-bengali">
+                  {/* Top Action Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
                     <div>
-                      <h1 className="text-2xl font-black text-slate-900 tracking-tight">প্রফিট এবং লস স্টেটমেন্ট</h1>
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold mt-1">
-                        <span>ড্যাশবোর্ড</span><span>&rsaquo;</span><span>রিপোর্ট</span><span>&rsaquo;</span><span className="text-slate-900 font-bold">প্রফিট এবং লস স্টেটমেন্ট</span>
-                      </div>
+                      <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                        <PieChart className="w-6 h-6 text-orange-600" />
+                        ইনকাম বিবরণী (Income Statement)
+                      </h1>
+                      <p className="text-xs text-slate-500 font-semibold mt-1">
+                        রড ও সিমেন্ট বিক্রয় আয়, ক্রয় ব্যয় ও ব্যবসা পরিচালন ব্যয়ের সমন্বিত লাভ-ক্ষতি বিবরণী
+                      </p>
                     </div>
 
-                    <button onClick={() => setActiveTab('hub')} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1">
-                      <ArrowLeft className="w-4 h-4 text-orange-500" /> সকল রিপোর্ট
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Period Mode Selector */}
+                      <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+                        <button
+                          onClick={() => setIncomePeriodMode('today')}
+                          className={cn(
+                            "px-2.5 py-1 text-xs font-bold rounded-lg transition-all",
+                            incomePeriodMode === 'today' ? "bg-white text-orange-600 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                          )}
+                        >
+                          আজকের দিন
+                        </button>
+                        <button
+                          onClick={() => setIncomePeriodMode('month')}
+                          className={cn(
+                            "px-2.5 py-1 text-xs font-bold rounded-lg transition-all",
+                            incomePeriodMode === 'month' ? "bg-white text-orange-600 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                          )}
+                        >
+                          এই মাস
+                        </button>
+                        <button
+                          onClick={() => setIncomePeriodMode('all')}
+                          className={cn(
+                            "px-2.5 py-1 text-xs font-bold rounded-lg transition-all",
+                            incomePeriodMode === 'all' ? "bg-white text-orange-600 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                          )}
+                        >
+                          সকল সময়
+                        </button>
+                      </div>
+
+                      {/* Date Picker Input */}
+                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+                        <Calendar className="w-4 h-4 text-slate-400" />
+                        <input
+                          type="date"
+                          value={incomeStatementDate}
+                          onChange={(e) => setIncomeStatementDate(e.target.value)}
+                          className="bg-transparent text-xs font-bold text-slate-800 outline-hidden cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Print PDF Button */}
+                      <Button
+                        onClick={() => printElement('income-statement-printable-wrapper')}
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs gap-1.5"
+                      >
+                        <Printer className="w-4 h-4" />
+                        ইনকাম বিবরণী প্রিন্ট (PDF)
+                      </Button>
+
+                      {/* Back Button */}
+                      <button 
+                        onClick={() => setActiveTab('hub')} 
+                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1 transition-colors"
+                      >
+                        <ArrowLeft className="w-4 h-4 text-orange-500" /> সকল রিপোর্ট
+                      </button>
+                    </div>
                   </div>
 
+                  {/* Top KPI Cards */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-center">
-                    <Card className="p-4 border-emerald-200 bg-emerald-50/30 rounded-2xl"><p className="text-xs font-bold text-emerald-800">মোট আয়</p><p className="text-2xl font-black text-emerald-600 mt-1">{formatBnCurrency(salesIncome)}</p></Card>
-                    <Card className="p-4 border-rose-200 bg-rose-50/30 rounded-2xl"><p className="text-xs font-bold text-rose-800">মোট ব্যয়</p><p className="text-2xl font-black text-rose-600 mt-1">{formatBnCurrency(totalExpense)}</p></Card>
-                    <Card className="p-4 border-blue-200 bg-blue-50/30 rounded-2xl"><p className="text-xs font-bold text-blue-800">নিট লাভ</p><p className="text-2xl font-black text-blue-600 mt-1">{formatBnCurrency(netProfit)}</p></Card>
-                    <Card className="p-4 border-amber-200 bg-amber-50/30 rounded-2xl"><p className="text-xs font-bold text-amber-800">লাভের হার</p><p className="text-2xl font-black text-amber-600 mt-1">{toBnNum(profitPercent)}%</p></Card>
+                    <Card className="p-4 border-emerald-200 bg-gradient-to-br from-emerald-50/90 to-teal-50/40 rounded-2xl shadow-xs">
+                      <p className="text-xs font-bold text-emerald-800">মোট বিক্রয় আয় (Total Revenue)</p>
+                      <p className="text-2xl font-black text-emerald-700 mt-1">{formatBnCurrency(totalSalesIncome)}</p>
+                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">সিমেন্ট + রড + অন্যান্য পণ্য</p>
+                    </Card>
+
+                    <Card className="p-4 border-rose-200 bg-gradient-to-br from-rose-50/90 to-red-50/40 rounded-2xl shadow-xs">
+                      <p className="text-xs font-bold text-rose-800">মোট ক্রয় ও প্রত্যক্ষ ব্যয় (COGS)</p>
+                      <p className="text-2xl font-black text-rose-600 mt-1">{formatBnCurrency(totalDirectCost)}</p>
+                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">ক্রয় + গাড়িভাড়া + আনলোড লেবার</p>
+                    </Card>
+
+                    <Card className="p-4 border-amber-200 bg-gradient-to-br from-amber-50/90 to-yellow-50/40 rounded-2xl shadow-xs">
+                      <p className="text-xs font-bold text-amber-800">ব্যাবসা পরিচালন ব্যয় (OPEX)</p>
+                      <p className="text-2xl font-black text-amber-600 mt-1">{formatBnCurrency(totalOperatingExpense)}</p>
+                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">ভাড়া, বেতন, বিল ও বিবিধ খরচ</p>
+                    </Card>
+
+                    <Card className={cn(
+                      "p-4 rounded-2xl shadow-xs border",
+                      netProfit >= 0 ? "border-blue-200 bg-gradient-to-br from-blue-50/90 to-indigo-50/40" : "border-rose-200 bg-gradient-to-br from-rose-50/90 to-red-50/40"
+                    )}>
+                      <p className={cn("text-xs font-bold", netProfit >= 0 ? "text-blue-800" : "text-rose-800")}>
+                        {netProfit >= 0 ? 'নিট লাভ (Net Profit)' : 'নিট ক্ষতি (Net Loss)'}
+                      </p>
+                      <p className={cn("text-2xl font-black mt-1", netProfit >= 0 ? "text-emerald-700" : "text-rose-600")}>
+                        {formatBnCurrency(netProfit)}
+                      </p>
+                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">মুনাফার হার: {toBnNum(profitMargin)}%</p>
+                    </Card>
                   </div>
 
+                  {/* Standard Interactive Breakdown Cards */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Left: আয়ের খাত */}
                     <Card className="border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
-                      <div className="p-4 bg-slate-50/80 border-b border-slate-200"><h3 className="font-black text-emerald-700 text-base">আয় (Income)</h3></div>
+                      <div className="p-4 bg-emerald-50/80 border-b border-emerald-100 flex items-center justify-between">
+                        <h3 className="font-black text-emerald-800 text-base flex items-center gap-1.5">
+                          <TrendingUp className="w-5 h-5 text-emerald-600" />
+                          আয়ের খাত (Revenue Breakdown)
+                        </h3>
+                        <span className="text-xs font-black bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
+                          মোট: {formatBnCurrency(totalSalesIncome)}
+                        </span>
+                      </div>
                       <Table>
-                        <TableHeader className="bg-slate-50"><TableRow><TableHead className="font-black text-xs">খাতের নাম</TableHead><TableHead className="font-black text-xs text-right px-6">পরিমাণ (৳)</TableHead></TableRow></TableHeader>
+                        <TableHeader className="bg-slate-50">
+                          <TableRow>
+                            <TableHead className="font-black text-xs">খাতের নাম</TableHead>
+                            <TableHead className="font-black text-xs text-center">পরিমাণ (ব্যাগ/কেজি)</TableHead>
+                            <TableHead className="font-black text-xs text-right px-4">টাকা (৳)</TableHead>
+                          </TableRow>
+                        </TableHeader>
                         <TableBody>
-                          <TableRow className="border-b border-slate-100 text-xs"><TableCell className="font-bold text-slate-900">মোট পন্য বিক্রয়</TableCell><TableCell className="text-right font-black text-slate-900 px-6">{formatBnCurrency(salesIncome)}</TableCell></TableRow>
-                          <TableRow className="bg-slate-100 font-black text-xs text-slate-900 border-t border-slate-200"><TableCell className="py-3 px-4 font-black">মোট আয়</TableCell><TableCell className="text-right text-emerald-700 text-sm px-6 font-black">{formatBnCurrency(salesIncome)}</TableCell></TableRow>
+                          <TableRow className="border-b border-slate-100 text-xs">
+                            <TableCell className="font-bold text-slate-900">১. সিমেন্ট বিক্রয় বাবদ আয়</TableCell>
+                            <TableCell className="text-center font-bold text-slate-700">{formatBnQty(cementSalesQty)} ব্যাগ</TableCell>
+                            <TableCell className="text-right font-black text-slate-900 px-4">{formatBnCurrency(cementSalesAmount)}</TableCell>
+                          </TableRow>
+                          <TableRow className="border-b border-slate-100 text-xs">
+                            <TableCell className="font-bold text-slate-900">২. রড বিক্রয় বাবদ আয়</TableCell>
+                            <TableCell className="text-center font-bold text-slate-700">{formatBnQty(rodSalesQty)} কেজি</TableCell>
+                            <TableCell className="text-right font-black text-slate-900 px-4">{formatBnCurrency(rodSalesAmount)}</TableCell>
+                          </TableRow>
+                          {otherSalesAmount > 0 && (
+                            <TableRow className="border-b border-slate-100 text-xs">
+                              <TableCell className="font-bold text-slate-900">৩. অন্যান্য পণ্য বিক্রয় আয়</TableCell>
+                              <TableCell className="text-center font-bold text-slate-500">—</TableCell>
+                              <TableCell className="text-right font-black text-slate-900 px-4">{formatBnCurrency(otherSalesAmount)}</TableCell>
+                            </TableRow>
+                          )}
+                          <TableRow className="bg-emerald-50/50 font-black text-xs text-slate-900 border-t border-emerald-200">
+                            <TableCell colSpan={2} className="py-3 px-4 font-black text-emerald-900">মোট আয়</TableCell>
+                            <TableCell className="text-right text-emerald-700 text-sm px-4 font-black">{formatBnCurrency(totalSalesIncome)}</TableCell>
+                          </TableRow>
                         </TableBody>
                       </Table>
                     </Card>
 
+                    {/* Right: ব্যয়ের খাত (ক্রয় ও পরিচালনা ব্যয়) */}
                     <Card className="border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
-                      <div className="p-4 bg-slate-50/80 border-b border-slate-200"><h3 className="font-black text-rose-700 text-base">ব্যয় (Expense)</h3></div>
+                      <div className="p-4 bg-rose-50/80 border-b border-rose-100 flex items-center justify-between">
+                        <h3 className="font-black text-rose-800 text-base flex items-center gap-1.5">
+                          <Wallet className="w-5 h-5 text-rose-600" />
+                          ব্যয়ের খাত (Expenses Breakdown)
+                        </h3>
+                        <span className="text-xs font-black bg-rose-100 text-rose-800 px-2.5 py-0.5 rounded-full">
+                          সর্বমোট: {formatBnCurrency(grandTotalExpenses)}
+                        </span>
+                      </div>
                       <Table>
-                        <TableHeader className="bg-slate-50"><TableRow><TableHead className="font-black text-xs">খাতের নাম</TableHead><TableHead className="font-black text-xs text-right px-6">পরিমাণ (৳)</TableHead></TableRow></TableHeader>
+                        <TableHeader className="bg-slate-50">
+                          <TableRow>
+                            <TableHead className="font-black text-xs">খাত / বিবরণ</TableHead>
+                            <TableHead className="font-black text-xs text-center">পরিমাণ</TableHead>
+                            <TableHead className="font-black text-xs text-right px-4">টাকা (৳)</TableHead>
+                          </TableRow>
+                        </TableHeader>
                         <TableBody>
-                          <TableRow className="border-b border-slate-100 text-xs"><TableCell className="font-bold text-slate-900">পণ্য ক্রয় ব্যয়</TableCell><TableCell className="text-right font-black text-slate-900 px-6">{formatBnCurrency(purchasesExp)}</TableCell></TableRow>
-                          <TableRow className="border-b border-slate-100 text-xs"><TableCell className="font-bold text-slate-900">অন্যান্য পরিচালনা খরচ</TableCell><TableCell className="text-right font-black text-slate-900 px-6">{formatBnCurrency(operatingExp)}</TableCell></TableRow>
-                          <TableRow className="bg-slate-100 font-black text-xs text-slate-900 border-t border-slate-200"><TableCell className="py-3 px-4 font-black">মোট ব্যয়</TableCell><TableCell className="text-right text-rose-700 text-sm px-6 font-black">{formatBnCurrency(totalExpense)}</TableCell></TableRow>
+                          <TableRow className="border-b border-slate-100 text-xs bg-slate-50/50">
+                            <TableCell className="font-bold text-slate-900">সিমেন্ট ক্রয় ও আনুষঙ্গিক</TableCell>
+                            <TableCell className="text-center font-bold text-slate-700">{formatBnQty(cementPurchaseQty)} ব্যাগ</TableCell>
+                            <TableCell className="text-right font-black text-slate-900 px-4">{formatBnCurrency(cementTotalDirectCost)}</TableCell>
+                          </TableRow>
+                          <TableRow className="border-b border-slate-100 text-xs bg-slate-50/50">
+                            <TableCell className="font-bold text-slate-900">রড ক্রয় ও আনুষঙ্গিক</TableCell>
+                            <TableCell className="text-center font-bold text-slate-700">{formatBnQty(rodPurchaseQty)} কেজি</TableCell>
+                            <TableCell className="text-right font-black text-slate-900 px-4">{formatBnCurrency(rodTotalDirectCost)}</TableCell>
+                          </TableRow>
+                          <TableRow className="border-b border-slate-100 text-xs bg-amber-50/30">
+                            <TableCell className="font-bold text-amber-900">ব্যাবসা পরিচালন ব্যয় (OPEX)</TableCell>
+                            <TableCell className="text-center font-bold text-slate-500">—</TableCell>
+                            <TableCell className="text-right font-black text-amber-700 px-4">{formatBnCurrency(totalOperatingExpense)}</TableCell>
+                          </TableRow>
+                          <TableRow className="bg-rose-50/50 font-black text-xs text-slate-900 border-t border-rose-200">
+                            <TableCell colSpan={2} className="py-3 px-4 font-black text-rose-900">সর্বমোট খরচ</TableCell>
+                            <TableCell className="text-right text-rose-700 text-sm px-4 font-black">{formatBnCurrency(grandTotalExpenses)}</TableCell>
+                          </TableRow>
                         </TableBody>
                       </Table>
                     </Card>
+                  </div>
+
+                  {/* Main Printable / Live Sheet Box (Exact 1-to-1 Match with User's PDF) */}
+                  <div className="bg-slate-100 p-4 sm:p-8 rounded-2xl border border-slate-200 flex justify-center">
+                    <div className="bg-white text-black p-6 sm:p-8 shadow-md rounded border border-black/20 w-full max-w-[650px] text-[13px] leading-tight">
+                      <table 
+                        style={{ 
+                          width: '100%', 
+                          borderCollapse: 'collapse', 
+                          border: '2px solid #000000',
+                          fontFamily: "'Hind Siliguri', 'SolaimanLipi', 'Kalpurush', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+                        }}
+                      >
+                        <thead>
+                          {/* Row 1: মেসার্স দেলোয়ার এন্ড ব্রাদার্স */}
+                          <tr>
+                            <th 
+                              colSpan={4} 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '8px 4px', 
+                                textAlign: 'center', 
+                                fontSize: '18px', 
+                                fontWeight: 900,
+                                color: '#000000'
+                              }}
+                            >
+                              মেসার্স দেলোয়ার এন্ড ব্রাদার্স
+                            </th>
+                          </tr>
+
+                          {/* Row 2: ইনকাম বিবরণী */}
+                          <tr>
+                            <th 
+                              colSpan={4} 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '5px 4px', 
+                                textAlign: 'center', 
+                                fontSize: '16px', 
+                                fontWeight: 800,
+                                color: '#000000'
+                              }}
+                            >
+                              ইনকাম বিবরণী
+                            </th>
+                          </tr>
+
+                          {/* Row 3: তারিখ */}
+                          <tr>
+                            <th 
+                              colSpan={4} 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '5px 4px', 
+                                textAlign: 'center', 
+                                fontSize: '15px', 
+                                fontWeight: 700,
+                                color: '#000000'
+                              }}
+                            >
+                              {formatBnDate(incomeStatementDate, 'dd MMMM - yyyy')}
+                            </th>
+                          </tr>
+
+                          {/* Table Column Headers */}
+                          <tr style={{ backgroundColor: '#ffffff' }}>
+                            <th style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 800, fontSize: '13px', width: '38px' }}>
+                              ক্রঃ
+                            </th>
+                            <th style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'center', fontWeight: 800, fontSize: '14px' }}>
+                              নাম
+                            </th>
+                            <th style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center', fontWeight: 800, fontSize: '14px', width: '100px' }}>
+                              ব্যাগ/কেজি
+                            </th>
+                            <th style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'center', fontWeight: 800, fontSize: '14px', width: '130px' }}>
+                              টাকা
+                            </th>
+                          </tr>
+
+                          {/* Section Title: আয়ের খাত */}
+                          <tr>
+                            <th 
+                              colSpan={4} 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '6px 4px', 
+                                textAlign: 'center', 
+                                fontSize: '15px', 
+                                fontWeight: 900,
+                                color: '#000000'
+                              }}
+                            >
+                              আয়ের খাত
+                            </th>
+                          </tr>
+                        </thead>
+
+                        <tbody>
+                          {/* আয়ের খাত: ১. সিমেন্ট বিক্রয় বাবদ আয় */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>১</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>সিমেন্ট বিক্রয় বাবদ আয়</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnQty(cementSalesQty)}</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(cementSalesAmount)}</td>
+                          </tr>
+
+                          {/* আয়ের খাত: ২. রড বিক্রয় বাবদ আয় */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>২</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>রড বিক্রয় বাবদ আয়</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnQty(rodSalesQty)}</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(rodSalesAmount)}</td>
+                          </tr>
+
+                          {/* মোট আয় */}
+                          <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                            <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                              মোট আয়
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                              {formatBnNumber(totalSalesIncome)}
+                            </td>
+                          </tr>
+
+                          {/* ফাঁকা স্পেসিং রো */}
+                          <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
+                            <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
+                          </tr>
+
+                          {/* Section Title: ব্যয়ের খাত */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '6px 4px', textAlign: 'center', fontSize: '15px', fontWeight: 900, color: '#000000' }}>
+                              ব্যয়ের খাত
+                            </td>
+                          </tr>
+
+                          {/* Sub Section: সিমেন্ট */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontSize: '14px', fontWeight: 800, color: '#000000' }}>
+                              সিমেন্ট
+                            </td>
+                          </tr>
+
+                          {/* ১. সিমেন্ট ক্রয় বাবদ ব্যয় */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>১</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>সিমেন্ট ক্রয় বাবদ ব্যয়</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnQty(cementPurchaseQty)}</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(cementPurchaseAmount)}</td>
+                          </tr>
+
+                          {/* ২. সিমেন্ট গাড়ী ভাড়া বাবদ ব্যয় */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>২</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>সিমেন্ট গাড়ী ভাড়া বাবদ ব্যয়</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center' }}></td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(cementTruckFare)}</td>
+                          </tr>
+
+                          {/* ৩. সিমেন্ট আনলোড লেবার */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>৩</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>সিমেন্ট আনলোড লেবার</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center' }}></td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(cementUnloadLabor)}</td>
+                          </tr>
+
+                          {/* মোট সিমেন্ট বাবদ ব্যয় */}
+                          <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                            <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                              মোট সিমেন্ট বাবদ ব্যয়
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                              {formatBnNumber(cementTotalDirectCost)}
+                            </td>
+                          </tr>
+
+                          {/* ফাঁকা স্পেসিং রো */}
+                          <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
+                            <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
+                          </tr>
+
+                          {/* Sub Section: রড */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontSize: '14px', fontWeight: 800, color: '#000000' }}>
+                              রড
+                            </td>
+                          </tr>
+
+                          {/* ১. রড ক্রয় বাবদ ব্যয় */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>১</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>রড ক্রয় বাবদ ব্যয়</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnQty(rodPurchaseQty)}</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(rodPurchaseAmount)}</td>
+                          </tr>
+
+                          {/* ২. রডের গাড়ী ভাড়া বাবদ ব্যয় */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>২</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>রডের গাড়ী ভাড়া বাবদ ব্যয়</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center' }}></td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(rodTruckFare)}</td>
+                          </tr>
+
+                          {/* ৩. রডের আনলোড লেবার */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>৩</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>রডের আনলোড লেবার</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center' }}></td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(rodUnloadLabor)}</td>
+                          </tr>
+
+                          {/* মোট রড বাবদ ব্যয় */}
+                          <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                            <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                              মোট রড বাবদ ব্যয়
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                              {formatBnNumber(rodTotalDirectCost)}
+                            </td>
+                          </tr>
+
+                          {/* ফাঁকা স্পেসিং রো */}
+                          <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
+                            <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
+                          </tr>
+
+                          {/* মোট ক্রয় ব্যয় */}
+                          <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                            <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                              মোট ক্রয় ব্যয়
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                              {formatBnNumber(totalDirectCost)}
+                            </td>
+                          </tr>
+
+                          {/* ফাঁকা স্পেসিং রো */}
+                          <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
+                            <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
+                          </tr>
+
+                          {/* Sub Section: ব্যাবসা পরিচালন ব্যয় */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '6px 4px', textAlign: 'center', fontSize: '15px', fontWeight: 900, color: '#000000' }}>
+                              ব্যাবসা পরিচালন ব্যয়
+                            </td>
+                          </tr>
+
+                          {/* পরিচালন ব্যয় তালিকা */}
+                          {standardOpexRows.map((item, idx) => (
+                            <tr key={idx} style={{ pageBreakInside: 'avoid' }}>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>
+                                {toBengaliDigits(idx + 1)}
+                              </td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                {item.name}
+                              </td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center' }}></td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                {formatBnNumber(item.amount)}
+                              </td>
+                            </tr>
+                          ))}
+
+                          {/* মোট পরিচালন ব্যয় */}
+                          <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                            <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                              মোট
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                              {formatBnNumber(totalOperatingExpense)}
+                            </td>
+                          </tr>
+
+                          {/* সর্বমোট খরচ */}
+                          <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                            <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                              সর্বমোট খরচ
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                              {formatBnNumber(grandTotalExpenses)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* 🖨️ A4 PRINTABLE INCOME STATEMENT WRAPPER (FOR printElement targeting) */}
+                  <div 
+                    id="income-statement-printable-wrapper" 
+                    className="hidden print:block font-bengali text-black text-[13px] leading-tight p-2"
+                    style={{ color: '#000000', backgroundColor: '#ffffff', width: '100%', maxWidth: '650px', margin: '0 auto' }}
+                  >
+                    <table 
+                      style={{ 
+                        width: '100%', 
+                        borderCollapse: 'collapse', 
+                        border: '2px solid #000000',
+                        fontFamily: "'Hind Siliguri', 'SolaimanLipi', 'Kalpurush', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+                      }}
+                    >
+                      <thead>
+                        {/* Row 1: মেসার্স দেলোয়ার এন্ড ব্রাদার্স */}
+                        <tr>
+                          <th 
+                            colSpan={4} 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '8px 4px', 
+                              textAlign: 'center', 
+                              fontSize: '18px', 
+                              fontWeight: 900,
+                              color: '#000000'
+                            }}
+                          >
+                            মেসার্স দেলোয়ার এন্ড ব্রাদার্স
+                          </th>
+                        </tr>
+
+                        {/* Row 2: ইনকাম বিবরণী */}
+                        <tr>
+                          <th 
+                            colSpan={4} 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '5px 4px', 
+                              textAlign: 'center', 
+                              fontSize: '16px', 
+                              fontWeight: 800,
+                              color: '#000000'
+                            }}
+                          >
+                            ইনকাম বিবরণী
+                          </th>
+                        </tr>
+
+                        {/* Row 3: তারিখ */}
+                        <tr>
+                          <th 
+                            colSpan={4} 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '5px 4px', 
+                              textAlign: 'center', 
+                              fontSize: '15px', 
+                              fontWeight: 700,
+                              color: '#000000'
+                            }}
+                          >
+                            {formatBnDate(incomeStatementDate, 'dd MMMM - yyyy')}
+                          </th>
+                        </tr>
+
+                        {/* Table Column Headers */}
+                        <tr style={{ backgroundColor: '#ffffff' }}>
+                          <th style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 800, fontSize: '13px', width: '38px' }}>
+                            ক্রঃ
+                          </th>
+                          <th style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'center', fontWeight: 800, fontSize: '14px' }}>
+                            নাম
+                          </th>
+                          <th style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center', fontWeight: 800, fontSize: '14px', width: '100px' }}>
+                            ব্যাগ/কেজি
+                          </th>
+                          <th style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'center', fontWeight: 800, fontSize: '14px', width: '130px' }}>
+                            টাকা
+                          </th>
+                        </tr>
+
+                        {/* Section Title: আয়ের খাত */}
+                        <tr>
+                          <th 
+                            colSpan={4} 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '6px 4px', 
+                              textAlign: 'center', 
+                              fontSize: '15px', 
+                              fontWeight: 900,
+                              color: '#000000'
+                            }}
+                          >
+                            আয়ের খাত
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {/* আয়ের খাত: ১. সিমেন্ট বিক্রয় বাবদ আয় */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>১</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>সিমেন্ট বিক্রয় বাবদ আয়</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnQty(cementSalesQty)}</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(cementSalesAmount)}</td>
+                        </tr>
+
+                        {/* আয়ের খাত: ২. রড বিক্রয় বাবদ আয় */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>২</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>রড বিক্রয় বাবদ আয়</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnQty(rodSalesQty)}</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(rodSalesAmount)}</td>
+                        </tr>
+
+                        {/* মোট আয় */}
+                        <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                          <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                            মোট আয়
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                            {formatBnNumber(totalSalesIncome)}
+                          </td>
+                        </tr>
+
+                        {/* ফাঁকা স্পেসিং রো */}
+                        <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
+                          <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
+                        </tr>
+
+                        {/* Section Title: ব্যয়ের খাত */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '6px 4px', textAlign: 'center', fontSize: '15px', fontWeight: 900, color: '#000000' }}>
+                            ব্যয়ের খাত
+                          </td>
+                        </tr>
+
+                        {/* Sub Section: সিমেন্ট */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontSize: '14px', fontWeight: 800, color: '#000000' }}>
+                            সিমেন্ট
+                          </td>
+                        </tr>
+
+                        {/* ১. সিমেন্ট ক্রয় বাবদ ব্যয় */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>১</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>সিমেন্ট ক্রয় বাবদ ব্যয়</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnQty(cementPurchaseQty)}</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(cementPurchaseAmount)}</td>
+                        </tr>
+
+                        {/* ২. সিমেন্ট গাড়ী ভাড়া বাবদ ব্যয় */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>২</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>সিমেন্ট গাড়ী ভাড়া বাবদ ব্যয়</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center' }}></td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(cementTruckFare)}</td>
+                        </tr>
+
+                        {/* ৩. সিমেন্ট আনলোড লেবার */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>৩</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>সিমেন্ট আনলোড লেবার</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center' }}></td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(cementUnloadLabor)}</td>
+                        </tr>
+
+                        {/* মোট সিমেন্ট বাবদ ব্যয় */}
+                        <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                          <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                            মোট সিমেন্ট বাবদ ব্যয়
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                            {formatBnNumber(cementTotalDirectCost)}
+                          </td>
+                        </tr>
+
+                        {/* ফাঁকা স্পেসিং রো */}
+                        <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
+                          <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
+                        </tr>
+
+                        {/* Sub Section: রড */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontSize: '14px', fontWeight: 800, color: '#000000' }}>
+                            রড
+                          </td>
+                        </tr>
+
+                        {/* ১. রড ক্রয় বাবদ ব্যয় */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>১</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>রড ক্রয় বাবদ ব্যয়</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnQty(rodPurchaseQty)}</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(rodPurchaseAmount)}</td>
+                        </tr>
+
+                        {/* ২. রডের গাড়ী ভাড়া বাবদ ব্যয় */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>২</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>রডের গাড়ী ভাড়া বাবদ ব্যয়</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center' }}></td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(rodTruckFare)}</td>
+                        </tr>
+
+                        {/* ৩. রডের আনলোড লেবার */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>৩</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>রডের আনলোড লেবার</td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center' }}></td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(rodUnloadLabor)}</td>
+                        </tr>
+
+                        {/* মোট রড বাবদ ব্যয় */}
+                        <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                          <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                            মোট রড বাবদ ব্যয়
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                            {formatBnNumber(rodTotalDirectCost)}
+                          </td>
+                        </tr>
+
+                        {/* ফাঁকা স্পেসিং রো */}
+                        <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
+                          <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
+                        </tr>
+
+                        {/* মোট ক্রয় ব্যয় */}
+                        <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                          <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                            মোট ক্রয় ব্যয়
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                            {formatBnNumber(totalDirectCost)}
+                          </td>
+                        </tr>
+
+                        {/* ফাঁকা স্পেসিং রো */}
+                        <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
+                          <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
+                        </tr>
+
+                        {/* Sub Section: ব্যাবসা পরিচালন ব্যয় */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '6px 4px', textAlign: 'center', fontSize: '15px', fontWeight: 900, color: '#000000' }}>
+                            ব্যাবসা পরিচালন ব্যয়
+                          </td>
+                        </tr>
+
+                        {/* পরিচালন ব্যয় তালিকা */}
+                        {standardOpexRows.map((item, idx) => (
+                          <tr key={idx} style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>
+                              {toBengaliDigits(idx + 1)}
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                              {item.name}
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center' }}></td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                              {formatBnNumber(item.amount)}
+                            </td>
+                          </tr>
+                        ))}
+
+                        {/* মোট পরিচালন ব্যয় */}
+                        <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                          <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                            মোট
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                            {formatBnNumber(totalOperatingExpense)}
+                          </td>
+                        </tr>
+
+                        {/* সর্বমোট খরচ */}
+                        <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                          <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                            সর্বমোট খরচ
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                            {formatBnNumber(grandTotalExpenses)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               );
             })()}
 
-            {/* 6. ব্যালেন্স শীট */}
+            {/* 6. ব্যালেন্স শীট (100% Real Data & PDF Matched) */}
             {activeTab === 'balance_sheet' && (() => {
+              // Real data calculations
+              const rodStockVal = products.filter(p => p.category === 'রড').reduce((sum, p) => sum + (p.stock * p.buyPrice), 0);
+              const cementStockVal = products.filter(p => p.category === 'সিমেন্ট').reduce((sum, p) => sum + (p.stock * p.buyPrice), 0);
+              const ringStockVal = products.filter(p => p.category === 'রিং').reduce((sum, p) => sum + (p.stock * p.buyPrice), 0);
+              const otherStockVal = products.filter(p => !['রড', 'সিমেন্ট', 'রিং'].includes(p.category)).reduce((sum, p) => sum + (p.stock * p.buyPrice), 0);
+
               const totalBankBal = banks.reduce((sum, b) => sum + (b.balance || 0), 0);
               const totalCustDue = customers.reduce((sum, c) => sum + (c.totalDue || 0), 0);
-              const totalStockVal = products.reduce((sum, p) => sum + (p.stock * p.sellPrice), 0);
-              const totalAssets = totalBankBal + totalCustDue + totalStockVal;
+              const customersWithDue = customers.filter(c => (c.totalDue || 0) > 0);
+
+              const totalAssets = rodStockVal + cementStockVal + ringStockVal + otherStockVal + totalCash + totalBankBal + totalCustDue;
+
+              const suppliersWithDue = suppliers.filter(s => (s.totalDue || 0) > 0);
               const totalSuppDue = suppliers.reduce((sum, s) => sum + (s.totalDue || 0), 0);
-              const totalEquity = totalAssets - totalSuppDue;
+
+              const currentCapital = totalAssets - totalSuppDue; // বর্তমান চালান (সম্পদ)
+              const initialInvestedCapital = initialCapital; // চালান প্রদান করা হয়েছিলো
+              const netProfit = currentCapital - initialInvestedCapital; // প্রফিট
 
               return (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="space-y-6 animate-in fade-in duration-300 font-bengali">
+                  {/* Top Action Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
                     <div>
-                      <h1 className="text-2xl font-black text-slate-900 tracking-tight">ব্যালেন্স শীট</h1>
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold mt-1">
-                        <span>ড্যাশবোর্ড</span><span>&rsaquo;</span><span>রিপোর্ট</span><span>&rsaquo;</span><span className="text-slate-900 font-bold">ব্যালেন্স শীট</span>
+                      <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                        <Scale className="w-6 h-6 text-orange-600" />
+                        ব্যালেন্স সিট (Balance Sheet)
+                      </h1>
+                      <p className="text-xs text-slate-500 font-semibold mt-1">
+                        রিয়েল ডাটা ভিত্তিক প্রতিষ্ঠানিক সম্পদ, ঋণ ও বর্তমান মূলধনের আর্থিক বিবরণী
+                      </p>
+                    </div>
+                    
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Date Picker Input */}
+                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+                        <Calendar className="w-4 h-4 text-slate-400" />
+                        <input
+                          type="date"
+                          value={balanceSheetDate}
+                          onChange={(e) => setBalanceSheetDate(e.target.value)}
+                          className="bg-transparent text-xs font-bold text-slate-800 outline-hidden cursor-pointer"
+                        />
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" onClick={() => window.print()} className="h-9 px-4 rounded-xl text-xs font-bold border-slate-200 text-slate-700 bg-white"><Printer className="w-4 h-4 mr-1.5 text-emerald-600" /> প্রিন্ট</Button>
-                      <button onClick={() => setActiveTab('hub')} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1"><ArrowLeft className="w-4 h-4 text-orange-500" /> সকল রিপোর্ট</button>
+
+                      {/* Capital Setting Button */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setTempCapitalInput(String(initialCapital));
+                          setIsEditingCapital(true);
+                        }}
+                        className="rounded-xl border-slate-200 text-slate-700 font-bold text-xs gap-1.5"
+                      >
+                        <Settings2 className="w-3.5 h-3.5 text-blue-600" />
+                        মূলধন পরিবর্তন
+                      </Button>
+
+                      {/* Print Button */}
+                      <Button
+                        onClick={() => printElement('balance-sheet-printable-wrapper')}
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs gap-1.5"
+                      >
+                        <Printer className="w-4 h-4" />
+                        প্রিন্ট করুন (Print PDF)
+                      </Button>
+
+                      {/* Back Button */}
+                      <button 
+                        onClick={() => setActiveTab('hub')} 
+                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1 transition-colors"
+                      >
+                        <ArrowLeft className="w-4 h-4 text-orange-500" /> সকল রিপোর্ট
+                      </button>
                     </div>
                   </div>
 
+                  {/* Summary Stat Cards */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-center">
-                    <Card className="p-4 border-emerald-200 bg-emerald-50/30 rounded-2xl"><p className="text-xs font-bold text-emerald-800">মোট সম্পদ (Assets)</p><p className="text-2xl font-black text-emerald-600 mt-1">{formatBnCurrency(totalAssets)}</p></Card>
-                    <Card className="p-4 border-rose-200 bg-rose-50/30 rounded-2xl"><p className="text-xs font-bold text-rose-800">মোট দায় (Liabilities)</p><p className="text-2xl font-black text-rose-600 mt-1">{formatBnCurrency(totalSuppDue)}</p></Card>
-                    <Card className="p-4 border-purple-200 bg-purple-50/30 rounded-2xl"><p className="text-xs font-bold text-purple-800">নিট সম্পত্তি (Equity)</p><p className="text-2xl font-black text-purple-600 mt-1">{formatBnCurrency(totalEquity)}</p></Card>
-                    <Card className="p-4 border-slate-200 bg-slate-50/50 rounded-2xl"><p className="text-xs font-bold text-slate-600">মোট সম্পদ সমতুল্য</p><p className="text-2xl font-black text-slate-900 mt-1">{formatBnCurrency(totalAssets)}</p></Card>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Card className="border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
-                      <div className="p-4 bg-slate-50/80 border-b border-slate-200"><h3 className="font-black text-emerald-700 text-base">সম্পদ (Assets)</h3></div>
-                      <Table>
-                        <TableHeader className="bg-slate-50"><TableRow><TableHead className="font-black text-xs">হিসাবের নাম</TableHead><TableHead className="font-black text-xs text-center">হিসাব কোড</TableHead><TableHead className="font-black text-xs text-right px-6">ব্যালেন্স (৳)</TableHead></TableRow></TableHeader>
-                        <TableBody>
-                          <TableRow className="border-b border-slate-100 text-xs"><TableCell className="font-bold text-slate-900">ব্যাংক একাউন্ট ব্যালেন্স</TableCell><TableCell className="text-center font-bold text-slate-500">1020</TableCell><TableCell className="text-right font-black text-slate-900 px-6">{formatBnCurrency(totalBankBal)}</TableCell></TableRow>
-                          <TableRow className="border-b border-slate-100 text-xs"><TableCell className="font-bold text-slate-900">গ্রাহকের পাওনা (কাস্টমার বাকি)</TableCell><TableCell className="text-center font-bold text-slate-500">1030</TableCell><TableCell className="text-right font-black text-slate-900 px-6">{formatBnCurrency(totalCustDue)}</TableCell></TableRow>
-                          <TableRow className="border-b border-slate-100 text-xs"><TableCell className="font-bold text-slate-900">স্টক পণ্যের মূল্যায়ন</TableCell><TableCell className="text-center font-bold text-slate-500">1050</TableCell><TableCell className="text-right font-black text-slate-900 px-6">{formatBnCurrency(totalStockVal)}</TableCell></TableRow>
-                          <TableRow className="bg-slate-100 font-black text-xs text-slate-900 border-t border-slate-200"><TableCell colSpan={2} className="py-3 px-4 font-black">মোট সম্পদ</TableCell><TableCell className="text-right text-emerald-700 text-sm px-6 font-black">{formatBnCurrency(totalAssets)}</TableCell></TableRow>
-                        </TableBody>
-                      </Table>
+                    <Card className="p-4 border-emerald-200 bg-gradient-to-br from-emerald-50/90 to-teal-50/40 rounded-2xl shadow-xs">
+                      <p className="text-xs font-bold text-emerald-800">মোট সম্পদ (Total Assets)</p>
+                      <p className="text-2xl font-black text-emerald-700 mt-1">{formatBnCurrency(totalAssets)}</p>
+                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">স্টক + ক্যাশ + ব্যাংক + বাকী</p>
                     </Card>
 
-                    <Card className="border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
-                      <div className="p-4 bg-slate-50/80 border-b border-slate-200"><h3 className="font-black text-rose-700 text-base">দায় (Liabilities)</h3></div>
-                      <Table>
-                        <TableHeader className="bg-slate-50"><TableRow><TableHead className="font-black text-xs">হিসাবের নাম</TableHead><TableHead className="font-black text-xs text-center">হিসাব কোড</TableHead><TableHead className="font-black text-xs text-right px-6">পরিমাণ (৳)</TableHead></TableRow></TableHeader>
-                        <TableBody>
-                          <TableRow className="border-b border-slate-100 text-xs"><TableCell className="font-bold text-slate-900">সাপ্লায়ারের পাওনা (দেনাদার)</TableCell><TableCell className="text-center font-bold text-slate-500">2010</TableCell><TableCell className="text-right font-black text-slate-900 px-6">{formatBnCurrency(totalSuppDue)}</TableCell></TableRow>
-                          <TableRow className="bg-slate-100 font-black text-xs text-slate-900 border-t border-slate-200"><TableCell colSpan={2} className="py-3 px-4 font-black">মোট দায়</TableCell><TableCell className="text-right text-rose-700 text-sm px-6 font-black">{formatBnCurrency(totalSuppDue)}</TableCell></TableRow>
-                        </TableBody>
-                      </Table>
+                    <Card className="p-4 border-rose-200 bg-gradient-to-br from-rose-50/90 to-red-50/40 rounded-2xl shadow-xs">
+                      <p className="text-xs font-bold text-rose-800">মোট ঋণ (Total Liabilities)</p>
+                      <p className="text-2xl font-black text-rose-600 mt-1">{formatBnCurrency(totalSuppDue)}</p>
+                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">সাপ্লায়ার ও অন্যান্য দেনা</p>
+                    </Card>
+
+                    <Card className="p-4 border-blue-200 bg-gradient-to-br from-blue-50/90 to-indigo-50/40 rounded-2xl shadow-xs">
+                      <p className="text-xs font-bold text-blue-800">বর্তমান চালান / নিট সম্পদ</p>
+                      <p className="text-2xl font-black text-blue-700 mt-1">{formatBnCurrency(currentCapital)}</p>
+                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">মোট সম্পদ - মোট ঋণ</p>
+                    </Card>
+
+                    <Card className={cn(
+                      "p-4 rounded-2xl shadow-xs border",
+                      netProfit >= 0 ? "border-amber-200 bg-gradient-to-br from-amber-50/90 to-yellow-50/40" : "border-rose-200 bg-gradient-to-br from-rose-50/90 to-red-50/40"
+                    )}>
+                      <p className={cn("text-xs font-bold", netProfit >= 0 ? "text-amber-800" : "text-rose-800")}>
+                        {netProfit >= 0 ? 'প্রফিট (Net Growth/Profit)' : 'ক্ষতি (Loss)'}
+                      </p>
+                      <p className={cn("text-2xl font-black mt-1", netProfit >= 0 ? "text-emerald-600" : "text-rose-600")}>
+                        {formatBnCurrency(netProfit)}
+                      </p>
+                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">বর্তমান চালান - বিনিয়োগ মূলধন</p>
                     </Card>
                   </div>
+
+                  {/* Main Printable / Live Sheet Box (Exact 1-to-1 Match with User's PDF) */}
+                  <div className="bg-slate-100 p-4 sm:p-8 rounded-2xl border border-slate-200 flex justify-center">
+                    <div className="bg-white text-black p-6 sm:p-8 shadow-md rounded border border-black/20 w-full max-w-[650px] text-[13px] leading-tight">
+                      <table 
+                        style={{ 
+                          width: '100%', 
+                          borderCollapse: 'collapse', 
+                          border: '2px solid #000000',
+                          fontFamily: "'Hind Siliguri', 'SolaimanLipi', 'Kalpurush', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+                        }}
+                      >
+                        <thead>
+                          {/* Row 1: মেসার্স দেলোয়ার এন্ড ব্রাদার্স */}
+                          <tr>
+                            <th 
+                              colSpan={2} 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '8px 4px', 
+                                textAlign: 'center', 
+                                fontSize: '18px', 
+                                fontWeight: 900,
+                                color: '#000000'
+                              }}
+                            >
+                              মেসার্স দেলোয়ার এন্ড ব্রাদার্স
+                            </th>
+                          </tr>
+
+                          {/* Row 2: ব্যালেন্স সিট */}
+                          <tr>
+                            <th 
+                              colSpan={2} 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '5px 4px', 
+                                textAlign: 'center', 
+                                fontSize: '16px', 
+                                fontWeight: 800,
+                                color: '#000000'
+                              }}
+                            >
+                              ব্যালেন্স সিট
+                            </th>
+                          </tr>
+
+                          {/* Row 3: তারিখ */}
+                          <tr>
+                            <th 
+                              colSpan={2} 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '5px 4px', 
+                                textAlign: 'center', 
+                                fontSize: '15px', 
+                                fontWeight: 700,
+                                color: '#000000'
+                              }}
+                            >
+                              {formatBnDate(balanceSheetDate, 'dd MMMM - yyyy')}
+                            </th>
+                          </tr>
+
+                          {/* Section 1 Header: সম্পদ */}
+                          <tr>
+                            <th 
+                              colSpan={2} 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '6px 4px', 
+                                textAlign: 'center', 
+                                fontSize: '15px', 
+                                fontWeight: 900,
+                                color: '#000000'
+                              }}
+                            >
+                              সম্পদ
+                            </th>
+                          </tr>
+
+                          {/* Column Headers: নাম | টাকা */}
+                          <tr style={{ backgroundColor: '#ffffff' }}>
+                            <th 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '5px 8px', 
+                                textAlign: 'center', 
+                                fontWeight: 800,
+                                fontSize: '14px',
+                                width: '60%'
+                              }}
+                            >
+                              নাম
+                            </th>
+                            <th 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '5px 8px', 
+                                textAlign: 'center', 
+                                fontWeight: 800,
+                                fontSize: '14px',
+                                width: '40%'
+                              }}
+                            >
+                              টাকা
+                            </th>
+                          </tr>
+                        </thead>
+
+                        <tbody>
+                          {/* 1. রড স্টক */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                              রড স্টক -
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                              {formatBnNumber(rodStockVal)}
+                            </td>
+                          </tr>
+
+                          {/* 2. সিমেন্ট স্টক */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                              সিমেন্ট স্টক -
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                              {formatBnNumber(cementStockVal)}
+                            </td>
+                          </tr>
+
+                          {/* 3. রিং স্টক (if any) */}
+                          {ringStockVal > 0 && (
+                            <tr style={{ pageBreakInside: 'avoid' }}>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                রিং স্টক -
+                              </td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                {formatBnNumber(ringStockVal)}
+                              </td>
+                            </tr>
+                          )}
+
+                          {/* 4. অন্যান্য স্টক (if any) */}
+                          {otherStockVal > 0 && (
+                            <tr style={{ pageBreakInside: 'avoid' }}>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                অন্যান্য স্টক -
+                              </td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                {formatBnNumber(otherStockVal)}
+                              </td>
+                            </tr>
+                          )}
+
+                          {/* 5. মোট নগদ ক্যাশ */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                              মোট নগদ ক্যাশ -
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                              {formatBnNumber(totalCash)}
+                            </td>
+                          </tr>
+
+                          {/* 6. প্রতিটি ব্যাংক একাউন্ট */}
+                          {banks.map((b) => (
+                            <tr key={b.id} style={{ pageBreakInside: 'avoid' }}>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                {b.name} {b.accNo ? `${b.accNo} ` : ''}-
+                              </td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                {b.balance > 0 ? formatBnNumber(b.balance) : '-'}
+                              </td>
+                            </tr>
+                          ))}
+
+                          {/* 7. গ্রাহক / পার্টিদের আলাদা তালিকা (যদি থাকে) */}
+                          {customersWithDue.slice(0, 5).map((c) => (
+                            <tr key={c.id} style={{ pageBreakInside: 'avoid' }}>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                {c.name} {c.businessName ? `(${c.businessName}) ` : ''}-
+                              </td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                {formatBnNumber(c.totalDue)}
+                              </td>
+                            </tr>
+                          ))}
+
+                          {/* 8. মোট বাকী */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                              মোট বাকী -
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                              {formatBnNumber(totalCustDue)}
+                            </td>
+                          </tr>
+
+                          {/* 9. মোট সম্পদ সাবটোটাল */}
+                          <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                              মোট সম্পদ
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                              {formatBnNumber(totalAssets)}
+                            </td>
+                          </tr>
+
+                          {/* ফাঁকা স্পেসিং রো */}
+                          <tr style={{ height: '18px', pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '4px 8px' }}></td>
+                            <td style={{ border: '1.5px solid #000000', padding: '4px 8px' }}></td>
+                          </tr>
+
+                          {/* Section 2 Header: ঋণ */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td 
+                              colSpan={2} 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '6px 4px', 
+                                textAlign: 'center', 
+                                fontSize: '15px', 
+                                fontWeight: 900,
+                                color: '#000000'
+                              }}
+                            >
+                              ঋণ
+                            </td>
+                          </tr>
+
+                          {/* Column Headers: নাম | টাকা */}
+                          <tr style={{ backgroundColor: '#ffffff', pageBreakInside: 'avoid' }}>
+                            <td 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '5px 8px', 
+                                textAlign: 'center', 
+                                fontWeight: 800,
+                                fontSize: '14px'
+                              }}
+                            >
+                              নাম
+                            </td>
+                            <td 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '5px 8px', 
+                                textAlign: 'center', 
+                                fontWeight: 800,
+                                fontSize: '14px'
+                              }}
+                            >
+                              টাকা
+                            </td>
+                          </tr>
+
+                          {/* ঋণ ও সাপ্লায়ার তালিকা */}
+                          {suppliersWithDue.length === 0 ? (
+                            <tr style={{ pageBreakInside: 'avoid' }}>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 600, fontSize: '13px', color: '#666' }}>
+                                বর্তমানে কোনো পাওনাদার বা সাপ্লায়ার ঋণ নেই
+                              </td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                -
+                              </td>
+                            </tr>
+                          ) : (
+                            suppliersWithDue.map((s) => (
+                              <tr key={s.id} style={{ pageBreakInside: 'avoid' }}>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                  {s.name} {s.businessName ? `(${s.businessName})` : ''}
+                                </td>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                  {formatBnNumber(s.totalDue)}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+
+                          {/* মোট ঋণ সাবটোটাল */}
+                          <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                              মোট ঋণ
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                              {formatBnNumber(totalSuppDue)}
+                            </td>
+                          </tr>
+
+                          {/* ফাঁকা স্পেসিং রো */}
+                          <tr style={{ height: '18px', pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '4px 8px' }}></td>
+                            <td style={{ border: '1.5px solid #000000', padding: '4px 8px' }}></td>
+                          </tr>
+
+                          {/* Section 3 Header: বর্তমান চালান (সম্পদ) */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td 
+                              colSpan={2} 
+                              style={{ 
+                                border: '1.5px solid #000000', 
+                                padding: '6px 4px', 
+                                textAlign: 'center', 
+                                fontSize: '15px', 
+                                fontWeight: 900,
+                                color: '#000000'
+                              }}
+                            >
+                              বর্তমান চালান (সম্পদ)
+                            </td>
+                          </tr>
+
+                          {/* বর্তমান চালান (সম্পদ) */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                              বর্তমান চালান (সম্পদ)
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                              {formatBnNumber(currentCapital)}
+                            </td>
+                          </tr>
+
+                          {/* চালান প্রদান করা হয়েছিলো - */}
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                              চালান প্রদান করা হয়েছিলো -
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                              {formatBnNumber(initialInvestedCapital)}
+                            </td>
+                          </tr>
+
+                          {/* প্রফিট */}
+                          <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px', color: '#000000' }}>
+                              প্রফিট
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px', color: netProfit >= 0 ? '#15803d' : '#b91c1c' }}>
+                              {formatBnNumber(netProfit)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* 🖨️ A4 PRINTABLE BALANCE SHEET WRAPPER (FOR printElement targeting) */}
+                  <div 
+                    id="balance-sheet-printable-wrapper" 
+                    className="hidden print:block font-bengali text-black text-[13px] leading-tight p-2"
+                    style={{ color: '#000000', backgroundColor: '#ffffff', width: '100%', maxWidth: '650px', margin: '0 auto' }}
+                  >
+                    <table 
+                      style={{ 
+                        width: '100%', 
+                        borderCollapse: 'collapse', 
+                        border: '2px solid #000000',
+                        fontFamily: "'Hind Siliguri', 'SolaimanLipi', 'Kalpurush', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+                      }}
+                    >
+                      <thead>
+                        {/* Row 1: মেসার্স দেলোয়ার এন্ড ব্রাদার্স */}
+                        <tr>
+                          <th 
+                            colSpan={2} 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '8px 4px', 
+                              textAlign: 'center', 
+                              fontSize: '18px', 
+                              fontWeight: 900,
+                              color: '#000000'
+                            }}
+                          >
+                            মেসার্স দেলোয়ার এন্ড ব্রাদার্স
+                          </th>
+                        </tr>
+
+                        {/* Row 2: ব্যালেন্স সিট */}
+                        <tr>
+                          <th 
+                            colSpan={2} 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '5px 4px', 
+                              textAlign: 'center', 
+                              fontSize: '16px', 
+                              fontWeight: 800,
+                              color: '#000000'
+                            }}
+                          >
+                            ব্যালেন্স সিট
+                          </th>
+                        </tr>
+
+                        {/* Row 3: তারিখ */}
+                        <tr>
+                          <th 
+                            colSpan={2} 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '5px 4px', 
+                              textAlign: 'center', 
+                              fontSize: '15px', 
+                              fontWeight: 700,
+                              color: '#000000'
+                            }}
+                          >
+                            {formatBnDate(balanceSheetDate, 'dd MMMM - yyyy')}
+                          </th>
+                        </tr>
+
+                        {/* Section 1 Header: সম্পদ */}
+                        <tr>
+                          <th 
+                            colSpan={2} 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '6px 4px', 
+                              textAlign: 'center', 
+                              fontSize: '15px', 
+                              fontWeight: 900,
+                              color: '#000000'
+                            }}
+                          >
+                            সম্পদ
+                          </th>
+                        </tr>
+
+                        {/* Column Headers: নাম | টাকা */}
+                        <tr style={{ backgroundColor: '#ffffff' }}>
+                          <th 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '5px 8px', 
+                              textAlign: 'center', 
+                              fontWeight: 800,
+                              fontSize: '14px',
+                              width: '60%'
+                            }}
+                          >
+                            নাম
+                          </th>
+                          <th 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '5px 8px', 
+                              textAlign: 'center', 
+                              fontWeight: 800,
+                              fontSize: '14px',
+                              width: '40%'
+                            }}
+                          >
+                            টাকা
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {/* 1. রড স্টক */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                            রড স্টক -
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                            {formatBnNumber(rodStockVal)}
+                          </td>
+                        </tr>
+
+                        {/* 2. সিমেন্ট স্টক */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                            সিমেন্ট স্টক -
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                            {formatBnNumber(cementStockVal)}
+                          </td>
+                        </tr>
+
+                        {/* 3. রিং স্টক (if any) */}
+                        {ringStockVal > 0 && (
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                              রিং স্টক -
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                              {formatBnNumber(ringStockVal)}
+                            </td>
+                          </tr>
+                        )}
+
+                        {/* 4. অন্যান্য স্টক (if any) */}
+                        {otherStockVal > 0 && (
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                              অন্যান্য স্টক -
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                              {formatBnNumber(otherStockVal)}
+                            </td>
+                          </tr>
+                        )}
+
+                        {/* 5. মোট নগদ ক্যাশ */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                            মোট নগদ ক্যাশ -
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                            {formatBnNumber(totalCash)}
+                          </td>
+                        </tr>
+
+                        {/* 6. প্রতিটি ব্যাংক একাউন্ট */}
+                        {banks.map((b) => (
+                          <tr key={b.id} style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                              {b.name} {b.accNo ? `${b.accNo} ` : ''}-
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                              {b.balance > 0 ? formatBnNumber(b.balance) : '-'}
+                            </td>
+                          </tr>
+                        ))}
+
+                        {/* 7. গ্রাহক / পার্টিদের আলাদা তালিকা (যদি থাকে) */}
+                        {customersWithDue.slice(0, 5).map((c) => (
+                          <tr key={c.id} style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                              {c.name} {c.businessName ? `(${c.businessName}) ` : ''}-
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                              {formatBnNumber(c.totalDue)}
+                            </td>
+                          </tr>
+                        ))}
+
+                        {/* 8. মোট বাকী */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                            মোট বাকী -
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                            {formatBnNumber(totalCustDue)}
+                          </td>
+                        </tr>
+
+                        {/* 9. মোট সম্পদ সাবটোটাল */}
+                        <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                            মোট সম্পদ
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                            {formatBnNumber(totalAssets)}
+                          </td>
+                        </tr>
+
+                        {/* ফাঁকা স্পেসিং রো */}
+                        <tr style={{ height: '18px', pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '4px 8px' }}></td>
+                          <td style={{ border: '1.5px solid #000000', padding: '4px 8px' }}></td>
+                        </tr>
+
+                        {/* Section 2 Header: ঋণ */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td 
+                            colSpan={2} 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '6px 4px', 
+                              textAlign: 'center', 
+                              fontSize: '15px', 
+                              fontWeight: 900,
+                              color: '#000000'
+                            }}
+                          >
+                            ঋণ
+                          </td>
+                        </tr>
+
+                        {/* Column Headers: নাম | টাকা */}
+                        <tr style={{ backgroundColor: '#ffffff', pageBreakInside: 'avoid' }}>
+                          <td 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '5px 8px', 
+                              textAlign: 'center', 
+                              fontWeight: 800,
+                              fontSize: '14px'
+                            }}
+                          >
+                            নাম
+                          </td>
+                          <td 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '5px 8px', 
+                              textAlign: 'center', 
+                              fontWeight: 800,
+                              fontSize: '14px'
+                            }}
+                          >
+                            টাকা
+                          </td>
+                        </tr>
+
+                        {/* ঋণ ও সাপ্লায়ার তালিকা */}
+                        {suppliersWithDue.length === 0 ? (
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 600, fontSize: '13px', color: '#666' }}>
+                              বর্তমানে কোনো পাওনাদার বা সাপ্লায়ার ঋণ নেই
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                              -
+                            </td>
+                          </tr>
+                        ) : (
+                          suppliersWithDue.map((s) => (
+                            <tr key={s.id} style={{ pageBreakInside: 'avoid' }}>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                {s.name} {s.businessName ? `(${s.businessName})` : ''}
+                              </td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                {formatBnNumber(s.totalDue)}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+
+                        {/* মোট ঋণ সাবটোটাল */}
+                        <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                            মোট ঋণ
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                            {formatBnNumber(totalSuppDue)}
+                          </td>
+                        </tr>
+
+                        {/* ফাঁকা স্পেসিং রো */}
+                        <tr style={{ height: '18px', pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '4px 8px' }}></td>
+                          <td style={{ border: '1.5px solid #000000', padding: '4px 8px' }}></td>
+                        </tr>
+
+                        {/* Section 3 Header: বর্তমান চালান (সম্পদ) */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td 
+                            colSpan={2} 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '6px 4px', 
+                              textAlign: 'center', 
+                              fontSize: '15px', 
+                              fontWeight: 900,
+                              color: '#000000'
+                            }}
+                          >
+                            বর্তমান চালান (সম্পদ)
+                          </td>
+                        </tr>
+
+                        {/* বর্তমান চালান (সম্পদ) */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                            বর্তমান চালান (সম্পদ)
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                            {formatBnNumber(currentCapital)}
+                          </td>
+                        </tr>
+
+                        {/* চালান প্রদান করা হয়েছিলো - */}
+                        <tr style={{ pageBreakInside: 'avoid' }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                            চালান প্রদান করা হয়েছিলো -
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                            {formatBnNumber(initialInvestedCapital)}
+                          </td>
+                        </tr>
+
+                        {/* প্রফিট */}
+                        <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px', color: '#000000' }}>
+                            প্রফিট
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px', color: netProfit >= 0 ? '#15803d' : '#b91c1c' }}>
+                            {formatBnNumber(netProfit)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Capital Setting Dialog */}
+                  <Dialog open={isEditingCapital} onOpenChange={setIsEditingCapital}>
+                    <DialogContent className="max-w-md rounded-2xl p-6 font-bengali">
+                      <DialogHeader>
+                        <DialogTitle className="text-lg font-black text-slate-900 flex items-center gap-2">
+                          <Settings2 className="w-5 h-5 text-orange-600" />
+                          প্রদত্ত মূলধন / বিনিয়োগ চালান নির্ধারণ
+                        </DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-2">
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          ব্যালেন্স সিটে প্রফিট গণনার জন্য আপনার দোকানে শুরুতে বা বিনিয়োগকৃত মোট মূলধনের পরিমাণ দিন:
+                        </p>
+                        <div>
+                          <Label className="text-xs font-bold text-slate-700">বিনিয়োগকৃত মূলধনের পরিমাণ (৳)</Label>
+                          <Input
+                            type="number"
+                            value={tempCapitalInput}
+                            onChange={(e) => setTempCapitalInput(e.target.value)}
+                            placeholder="যেমন: 10000000"
+                            className="mt-1 font-bold text-sm bg-slate-50 border-slate-300 rounded-xl"
+                          />
+                          <p className="text-[11px] font-semibold text-slate-400 mt-1">
+                            বর্তমান মান: {formatBnCurrency(Number(tempCapitalInput) || 0)}
+                          </p>
+                        </div>
+                      </div>
+                      <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={() => setIsEditingCapital(false)} className="rounded-xl font-bold text-xs">
+                          বাতিল
+                        </Button>
+                        <Button 
+                          onClick={() => {
+                            const val = Number(tempCapitalInput) || 0;
+                            setInitialCapital(val);
+                            setIsEditingCapital(false);
+                            toast.success('বিনিয়োগ মূলধন সফলভাবে আপডেট করা হয়েছে');
+                          }} 
+                          className="bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold text-xs shadow-xs"
+                        >
+                          সংরক্ষণ করুন
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               );
             })()}

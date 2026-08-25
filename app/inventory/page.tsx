@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Shell } from '@/components/Shell';
 import { api, ProductCostLogData, ProductCostLogEntry } from '@/lib/api';
-import { Search, Package, AlertCircle, AlertTriangle, Trash2, CheckCircle2, Edit3, History, ArrowUpRight, ArrowDownRight, RefreshCw, Calculator, Clock, Layers, Filter } from 'lucide-react';
+import { Search, Package, AlertCircle, AlertTriangle, Trash2, CheckCircle2, Edit3, History, ArrowUpRight, ArrowDownRight, RefreshCw, Calculator, Clock, Layers, Filter, Printer } from 'lucide-react';
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from '@/components/ui/table';
@@ -14,7 +14,12 @@ import {
 } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn, formatDualStock, toBnNum, formatBnCurrency } from '@/lib/utils';
+import { toBengaliDigits } from '@/lib/bengaliUtils';
+import { printElement } from '@/lib/printUtils';
+import { format } from 'date-fns';
+import { bn } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { useAuth } from '@/lib/authContext';
 
 interface Product {
   id: string;
@@ -31,7 +36,67 @@ interface Product {
 
 const categories = ['রড', 'সিমেন্ট', 'রিং', 'অন্যান্য'];
 
+const formatBnDate = (dateVal: Date | string | undefined | null, pattern: string = 'dd MMMM - yyyy') => {
+  if (!dateVal) return '—';
+  try {
+    const d = typeof dateVal === 'string' ? new Date(dateVal) : dateVal;
+    if (isNaN(d.getTime())) return String(dateVal);
+    const raw = format(d, pattern, { locale: bn });
+    return toBengaliDigits(raw);
+  } catch {
+    return '—';
+  }
+};
+
+const formatSheetQty = (stock: number, category: string): string => {
+  if (stock === 0) return '০';
+  const isDecimal = !Number.isInteger(stock) || category === 'রড';
+  const val = isDecimal ? stock.toFixed(1) : String(Math.round(stock));
+  const parts = val.split('.');
+  const intPart = Number(parts[0]).toLocaleString('en-IN');
+  const bnInt = toBengaliDigits(intPart);
+  if (parts.length > 1 && isDecimal) {
+    return `${bnInt}.${toBengaliDigits(parts[1])}`;
+  }
+  return bnInt;
+};
+
+const formatSheetRate = (rate: number, category: string): string => {
+  if (!rate || rate === 0) return '';
+  const isDecimal = !Number.isInteger(rate) || (category === 'রড' && rate % 1 !== 0);
+  const val = isDecimal ? rate.toFixed(1) : String(Math.round(rate));
+  const parts = val.split('.');
+  const intPart = Number(parts[0]).toLocaleString('en-IN');
+  const bnInt = toBengaliDigits(intPart);
+  if (parts.length > 1 && isDecimal) {
+    return `${bnInt}.${toBengaliDigits(parts[1])}`;
+  }
+  return bnInt;
+};
+
+const formatSheetValue = (value: number, category: string): string => {
+  if (!value || value === 0) return '-';
+  const isDecimal = !Number.isInteger(value) || (category === 'রড' && value % 1 !== 0);
+  const val = isDecimal ? value.toFixed(1) : String(Math.round(value));
+  const parts = val.split('.');
+  const intPart = Number(parts[0]).toLocaleString('en-IN');
+  const bnInt = toBengaliDigits(intPart);
+  if (parts.length > 1 && isDecimal) {
+    return `${bnInt}.${toBengaliDigits(parts[1])}`;
+  }
+  return bnInt;
+};
+
+const formatGrandTotal = (value: number): string => {
+  if (!value || value === 0) return '০.০০';
+  const val = value.toFixed(2);
+  const parts = val.split('.');
+  const intPart = Number(parts[0]).toLocaleString('en-IN');
+  return `${toBengaliDigits(intPart)}.${toBengaliDigits(parts[1])}`;
+};
+
 export default function InventoryPage() {
+  const { canModifyData } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -249,6 +314,13 @@ export default function InventoryPage() {
           </div>
           <div className="flex items-center gap-2">
             <Button
+              onClick={() => printElement('stock-sheet-printable-wrapper')}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bengali font-bold text-xs gap-2 rounded-xl shadow-xs cursor-pointer active:scale-95 transition-all py-2.5 px-4"
+            >
+              <Printer className="w-4 h-4" />
+              স্টক শিট প্রিন্ট
+            </Button>
+            <Button
               onClick={() => openCostLogModal()}
               className="bg-indigo-600 hover:bg-indigo-700 text-white font-bengali font-bold text-xs gap-2 rounded-xl shadow-xs cursor-pointer active:scale-95 transition-all py-2.5 px-4"
             >
@@ -305,14 +377,15 @@ export default function InventoryPage() {
                     <TableHead className="font-bengali text-slate-500 text-[10px] tracking-widest font-bold text-right">ক্রয় মূল্য</TableHead>
                     <TableHead className="font-bengali text-slate-500 text-[10px] tracking-widest font-bold text-right">বিক্রয় মূল্য</TableHead>
                     <TableHead className="font-bengali text-slate-500 text-[10px] tracking-widest font-bold text-center">বর্তমান স্টক</TableHead>
+                    <TableHead className="font-bengali text-slate-500 text-[10px] tracking-widest font-bold text-right">মোট মূল্য</TableHead>
                     <TableHead className="font-bengali text-slate-500 text-[10px] tracking-widest font-bold text-center w-24">অ্যাকশন</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow><TableCell colSpan={6} className="text-center py-16 text-slate-400 font-bengali">লোড হচ্ছে...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center py-16 text-slate-400 font-bengali">লোড হচ্ছে...</TableCell></TableRow>
                   ) : filtered.length === 0 ? (
-                    <TableRow><TableCell colSpan={6} className="text-center py-16 text-slate-400 font-bengali">কোনো পণ্য পাওয়া যায়নি</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center py-16 text-slate-400 font-bengali">কোনো পণ্য পাওয়া যায়নি</TableCell></TableRow>
                   ) : filtered.map((product) => (
                     <TableRow key={product.id} onClick={() => setViewingProduct(product)} className={cn("border-b border-slate-50 hover:bg-slate-100/80 cursor-pointer transition-colors", product.needsPriceReview && "bg-amber-50/30")}>
                       <TableCell className="p-3 font-bengali">
@@ -375,6 +448,9 @@ export default function InventoryPage() {
                           );
                         })()}
                       </TableCell>
+                      <TableCell className="text-right font-bengali font-bold text-slate-900 text-sm">
+                        {formatBnCurrency(product.buyPrice * product.stock)}
+                      </TableCell>
                       <TableCell className="text-center font-bengali p-2" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           <Button
@@ -386,7 +462,7 @@ export default function InventoryPage() {
                           >
                             <History className="w-4 h-4" />
                           </Button>
-                          {product.needsPriceReview && (
+                          {product.needsPriceReview && canModifyData && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -397,15 +473,17 @@ export default function InventoryPage() {
                               <Edit3 className="w-4 h-4" />
                             </Button>
                           )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDeletingProduct(product)}
-                            className="h-8 w-8 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                            title="মুছে ফেলুন"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          {canModifyData && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setDeletingProduct(product)}
+                              className="h-8 w-8 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              title="মুছে ফেলুন"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1032,6 +1110,255 @@ export default function InventoryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ========================================================================= */}
+      {/* 🖨️ A4 PRINTABLE STOCK SHEET (EXACT 1-TO-1 MATCH WITH USER REFERENCE IMAGE) */}
+      {/* ========================================================================= */}
+      <div 
+        id="stock-sheet-printable-wrapper" 
+        className="hidden print:block font-bengali text-black text-[13px] leading-tight p-2"
+        style={{ color: '#000000', backgroundColor: '#ffffff', width: '100%', maxWidth: '750px', margin: '0 auto' }}
+      >
+        <table 
+          style={{ 
+            width: '100%', 
+            borderCollapse: 'collapse', 
+            border: '2px solid #000000',
+            fontFamily: "'Hind Siliguri', 'SolaimanLipi', 'Kalpurush', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+          }}
+        >
+          <thead>
+            {/* Header Row 1: মেসার্স দেলোয়ার এন্ড ব্রাদার্স */}
+            <tr>
+              <th 
+                colSpan={4} 
+                style={{ 
+                  border: '1.5px solid #000000', 
+                  padding: '7px 4px', 
+                  textAlign: 'center', 
+                  fontSize: '18px', 
+                  fontWeight: 900,
+                  color: '#000000'
+                }}
+              >
+                মেসার্স দেলোয়ার এন্ড ব্রাদার্স
+              </th>
+            </tr>
+            {/* Header Row 2: স্টক */}
+            <tr>
+              <th 
+                colSpan={4} 
+                style={{ 
+                  border: '1.5px solid #000000', 
+                  padding: '5px 4px', 
+                  textAlign: 'center', 
+                  fontSize: '16px', 
+                  fontWeight: 800,
+                  color: '#000000'
+                }}
+              >
+                স্টক
+              </th>
+            </tr>
+            {/* Header Row 3: তারিখ */}
+            <tr>
+              <th 
+                colSpan={4} 
+                style={{ 
+                  border: '1.5px solid #000000', 
+                  padding: '5px 4px', 
+                  textAlign: 'center', 
+                  fontSize: '15px', 
+                  fontWeight: 700,
+                  color: '#000000'
+                }}
+              >
+                {formatBnDate(new Date(), 'dd MMMM - yyyy')}
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {(() => {
+              const knownOrder = ['রড', 'সিমেন্ট', 'রিং', 'অন্যান্য'];
+              const allCategories = Array.from(new Set(products.map(p => p.category || 'অন্যান্য')));
+              const sortedCats = [
+                ...knownOrder.filter(c => allCategories.includes(c)),
+                ...allCategories.filter(c => !knownOrder.includes(c))
+              ];
+
+              const activeCats = sortedCats.filter(c => products.some(p => p.category === c));
+
+              return activeCats.map((catName, catIdx) => {
+                const catProducts = products.filter(p => p.category === catName);
+                if (catProducts.length === 0) return null;
+
+                const catTotalQty = catProducts.reduce((sum, p) => sum + Number(p.stock || 0), 0);
+                const catTotalVal = catProducts.reduce((sum, p) => sum + (Number(p.buyPrice || 0) * Number(p.stock || 0)), 0);
+                const categoryTitle = catName === 'রড' ? 'রড স্টক' : catName === 'সিমেন্ট' ? 'সিমেন্ট স্টক' : catName === 'রিং' ? 'রিং স্টক' : `${catName} স্টক`;
+
+                return (
+                  <React.Fragment key={catName}>
+                    {/* Category Header Row (Red Text) */}
+                    <tr style={{ pageBreakInside: 'avoid' }}>
+                      <td 
+                        colSpan={4} 
+                        style={{ 
+                          border: '1.5px solid #000000', 
+                          padding: '6px 4px', 
+                          textAlign: 'center', 
+                          fontSize: '15px', 
+                          fontWeight: 900,
+                          color: '#ff0000'
+                        }}
+                      >
+                        {categoryTitle}
+                      </td>
+                    </tr>
+
+                    {/* Product Rows */}
+                    {catProducts.map((prod) => {
+                      const rowVal = prod.stock * prod.buyPrice;
+                      return (
+                        <tr key={prod.id} style={{ pageBreakInside: 'avoid' }}>
+                          <td 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '5px 8px', 
+                              textAlign: 'left', 
+                              fontWeight: 700,
+                              fontSize: '13px',
+                              width: '35%'
+                            }}
+                          >
+                            {prod.name}
+                          </td>
+                          <td 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '5px 8px', 
+                              textAlign: 'right', 
+                              fontWeight: 700,
+                              fontSize: '13px',
+                              width: '22%'
+                            }}
+                          >
+                            {formatSheetQty(prod.stock, catName)}
+                          </td>
+                          <td 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '5px 8px', 
+                              textAlign: 'right', 
+                              fontWeight: 700,
+                              fontSize: '13px',
+                              width: '18%'
+                            }}
+                          >
+                            {formatSheetRate(prod.buyPrice, catName)}
+                          </td>
+                          <td 
+                            style={{ 
+                              border: '1.5px solid #000000', 
+                              padding: '5px 8px', 
+                              textAlign: 'right', 
+                              fontWeight: 700,
+                              fontSize: '13px',
+                              width: '25%'
+                            }}
+                          >
+                            {formatSheetValue(rowVal, catName)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {/* Subtotal Row */}
+                    <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                      <td 
+                        style={{ 
+                          border: '1.5px solid #000000', 
+                          padding: '5px 8px', 
+                          textAlign: 'left', 
+                          fontWeight: 900,
+                          fontSize: '14px'
+                        }}
+                      >
+                        মোট
+                      </td>
+                      <td 
+                        style={{ 
+                          border: '1.5px solid #000000', 
+                          padding: '5px 8px', 
+                          textAlign: 'right', 
+                          fontWeight: 900,
+                          fontSize: '14px'
+                        }}
+                      >
+                        {formatSheetQty(catTotalQty, catName)}
+                      </td>
+                      <td 
+                        style={{ 
+                          border: '1.5px solid #000000', 
+                          padding: '5px 8px' 
+                        }}
+                      ></td>
+                      <td 
+                        style={{ 
+                          border: '1.5px solid #000000', 
+                          padding: '5px 8px', 
+                          textAlign: 'right', 
+                          fontWeight: 900,
+                          fontSize: '14px'
+                        }}
+                      >
+                        {formatSheetValue(catTotalVal, catName)}
+                      </td>
+                    </tr>
+
+                    {/* Spacing empty row between categories */}
+                    {catIdx < activeCats.length - 1 && (
+                      <tr style={{ height: '18px', pageBreakInside: 'avoid' }}>
+                        <td style={{ border: '1.5px solid #000000', padding: '5px 8px' }}></td>
+                        <td style={{ border: '1.5px solid #000000', padding: '5px 8px' }}></td>
+                        <td style={{ border: '1.5px solid #000000', padding: '5px 8px' }}></td>
+                        <td style={{ border: '1.5px solid #000000', padding: '5px 8px' }}></td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              });
+            })()}
+
+            {/* Bottom Grand Total Row: সর্বমোট স্টক */}
+            <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+              <td 
+                colSpan={3} 
+                style={{ 
+                  border: '1.5px solid #000000', 
+                  padding: '7px 8px', 
+                  textAlign: 'center', 
+                  fontSize: '15px', 
+                  fontWeight: 900 
+                }}
+              >
+                সর্বমোট স্টক
+              </td>
+              <td 
+                style={{ 
+                  border: '1.5px solid #000000', 
+                  padding: '7px 8px', 
+                  textAlign: 'right', 
+                  fontSize: '15px', 
+                  fontWeight: 900 
+                }}
+              >
+                {formatGrandTotal(totalStockValue)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </Shell>
   );
 }

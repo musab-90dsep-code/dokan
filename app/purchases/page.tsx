@@ -29,6 +29,7 @@ import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
 import { printElement } from '@/lib/printUtils';
 import { parseProductDetails } from '@/lib/bengaliUtils';
 import { TableRowActionMenu } from '@/components/TableRowActionMenu';
+import { useAuth } from '@/lib/authContext';
 
 const bengaliNumerals = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
 export const toBengaliDigits = (num: number | string | undefined | null): string => {
@@ -98,6 +99,7 @@ export interface PurchaseInvoice {
 }
 
 export default function PurchasesPage() {
+  const { canEditInvoice, canDeleteInvoice, canCreateInvoice } = useAuth();
   const [purchases, setPurchases] = useState<PurchaseInvoice[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -948,12 +950,14 @@ export default function PurchasesPage() {
             </div>
 
             <div className="flex items-center gap-3">
-              <Button 
-                onClick={() => setIsTypeModalOpen(true)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white h-10 px-5 rounded-md font-bold text-xs shadow-md shadow-indigo-600/20 active:scale-95 transition-all"
-              >
-                <Plus className="w-4 h-4 mr-1.5" /> + নতুন ক্রয় ইনভয়েস
-              </Button>
+              {canCreateInvoice && (
+                <Button 
+                  onClick={() => setIsTypeModalOpen(true)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white h-10 px-5 rounded-md font-bold text-xs shadow-md shadow-indigo-600/20 active:scale-95 transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 mr-1.5" /> + নতুন ক্রয় ইনভয়েস
+                </Button>
+              )}
             </div>
           </div>
 
@@ -1230,6 +1234,8 @@ export default function PurchasesPage() {
                             onDelete={() => handleDeletePurchase(p)}
                             onApprove={() => handleApprovePurchase(p)}
                             isPending={p.status === 'pending' || p.status === 'draft' || p.status === 'অপেক্ষমান'}
+                            canEdit={canEditInvoice}
+                            canDelete={canDeleteInvoice}
                           />
                         </TableCell>
                       </TableRow>

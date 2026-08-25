@@ -29,6 +29,7 @@ import { ProductSearchSelect } from '@/components/ProductSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
 import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
+import { useAuth } from '@/lib/authContext';
 
 interface Product { 
   id: string; 
@@ -88,6 +89,7 @@ interface Order {
 
 export default function OrdersPage() {
   const router = useRouter();
+  const { canEditInvoice, canDeleteInvoice, canCreateInvoice, isViewer } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -652,12 +654,14 @@ export default function OrdersPage() {
             <p className="text-slate-500 font-bengali mt-1">দোকানের সকল বিক্রয় অর্ডারের তালিকা ও চালান ব্যবস্থাপনা</p>
           </div>
           
-          <Button 
-            onClick={handleOpenCreateModal}
-            className="bg-orange-600 hover:bg-orange-700 text-white font-bengali h-12 px-6 rounded-md font-bold shadow-md shadow-orange-600/20 active:scale-95 transition-all"
-          >
-            <Plus className="w-5 h-5 mr-2" />নতুন অর্ডার তৈরি করুন
-          </Button>
+          {canCreateInvoice && (
+            <Button 
+              onClick={handleOpenCreateModal}
+              className="bg-orange-600 hover:bg-orange-700 text-white font-bengali h-12 px-6 rounded-md font-bold shadow-md shadow-orange-600/20 active:scale-95 transition-all cursor-pointer"
+            >
+              <Plus className="w-5 h-5 mr-2" />নতুন অর্ডার তৈরি করুন
+            </Button>
+          )}
         </div>
 
         {/* Summary Widgets */}
@@ -2132,18 +2136,20 @@ export default function OrdersPage() {
               if (!targetOrder) return null;
               return (
                 <div className="space-y-0.5">
-                  <button
-                    onClick={() => {
-                      setOpenMenuId(null);
-                      setMenuPos(null);
-                      handleEditOrder(targetOrder);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-orange-50 hover:text-orange-600 rounded-xl transition-colors cursor-pointer"
-                  >
-                    <Pencil className="w-3.5 h-3.5" /> এডিট করুন
-                  </button>
+                  {canEditInvoice && (
+                    <button
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setMenuPos(null);
+                        handleEditOrder(targetOrder);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-orange-50 hover:text-orange-600 rounded-xl transition-colors cursor-pointer"
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> এডিট করুন
+                    </button>
+                  )}
 
-                  {!targetOrder.invoiced && (
+                  {!targetOrder.invoiced && canCreateInvoice && (
                     <button
                       onClick={() => {
                         setOpenMenuId(null);
@@ -2156,16 +2162,18 @@ export default function OrdersPage() {
                     </button>
                   )}
 
-                  <button
-                    onClick={() => {
-                      setOpenMenuId(null);
-                      setMenuPos(null);
-                      handleDeleteOrder(targetOrder.id);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> ডিলেট করুন
-                  </button>
+                  {canDeleteInvoice && (
+                    <button
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setMenuPos(null);
+                        handleDeleteOrder(targetOrder.id);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> ডিলেট করুন
+                    </button>
+                  )}
                 </div>
               );
             })()}

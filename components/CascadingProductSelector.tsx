@@ -510,8 +510,8 @@ export function CascadingProductSelector({
                 className={cn(
                   'py-2.5 px-3 rounded-xl font-black text-xs transition-all border flex items-center justify-center gap-1.5',
                   isSelected
-                    ? 'bg-orange-600 text-white border-orange-600 shadow-md shadow-orange-500/20 scale-[1.02]'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    ? 'bg-gradient-to-r from-[#b88e2d] to-[#d4af37] text-white border-[#8c6b1c] shadow-md shadow-amber-500/20 scale-[1.02]'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-[#fbf9f5]'
                 )}
               >
                 {cat === 'রড' && '🏗️'}
@@ -867,7 +867,7 @@ export function CascadingProductSelector({
               onAddCartItem();
               setEnteredTotal('');
             }}
-            className="w-full bg-orange-600 hover:bg-orange-700 text-white h-10 rounded-xl font-bold text-xs shadow-xs"
+            className="w-full bg-gradient-to-r from-[#b88e2d] to-[#d4af37] hover:from-[#a37c22] hover:to-[#be9b2d] text-white h-10 rounded-xl font-bold text-xs shadow-xs"
           >
             {buttonLabel}
           </Button>

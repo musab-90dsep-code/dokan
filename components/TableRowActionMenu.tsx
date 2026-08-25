@@ -15,6 +15,8 @@ export interface TableRowActionMenuProps {
   onDelete?: () => void;
   onApprove?: () => void;
   isPending?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
   align?: 'left' | 'right';
 }
 
@@ -27,6 +29,8 @@ export const TableRowActionMenu: React.FC<TableRowActionMenuProps> = ({
   onDelete,
   onApprove,
   isPending = false,
+  canEdit = true,
+  canDelete = true,
   align = 'right'
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -188,7 +192,7 @@ export const TableRowActionMenu: React.FC<TableRowActionMenuProps> = ({
             </button>
           )}
 
-          {onEdit && (
+          {onEdit && canEdit && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -202,7 +206,7 @@ export const TableRowActionMenu: React.FC<TableRowActionMenuProps> = ({
             </button>
           )}
 
-          {onDelete && (
+          {onDelete && canDelete && (
             <button
               onClick={(e) => {
                 e.stopPropagation();

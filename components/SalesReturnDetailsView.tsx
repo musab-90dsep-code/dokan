@@ -14,6 +14,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toBengaliDigits } from '@/lib/bengaliUtils';
 import { printElement } from '@/lib/printUtils';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/authContext';
 
 export interface SalesReturnDetailsViewProps {
   returnEntry: any;
@@ -36,6 +37,7 @@ export const SalesReturnDetailsView: React.FC<SalesReturnDetailsViewProps> = ({
   onSendEmail,
   onApprove
 }) => {
+  const { canEditInvoice, canDeleteInvoice } = useAuth();
   if (!returnEntry) return null;
 
   // Format Date & Time
@@ -149,7 +151,7 @@ export const SalesReturnDetailsView: React.FC<SalesReturnDetailsViewProps> = ({
             </Button>
           )}
 
-          {onEdit && (
+          {onEdit && canEditInvoice && (
             <Button
               onClick={() => onEdit(returnEntry)}
               variant="outline"
@@ -160,7 +162,7 @@ export const SalesReturnDetailsView: React.FC<SalesReturnDetailsViewProps> = ({
             </Button>
           )}
 
-          {onDelete && (
+          {onDelete && canDeleteInvoice && (
             <Button
               onClick={() => onDelete(returnEntry)}
               variant="outline"

@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toBengaliDigits, numberToBengaliWords } from '@/lib/bengaliUtils';
 import { printElement } from '@/lib/printUtils';
+import { useAuth } from '@/lib/authContext';
 
 export interface PaymentVoucherDetailsViewProps {
   voucher: any;
@@ -32,6 +33,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
   onDownloadPdf,
   onSendEmail
 }) => {
+  const { canEditInvoice, canDeleteInvoice } = useAuth();
   if (!voucher) return null;
 
   // Format Date & Time
@@ -176,7 +178,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
             </Button>
           )}
 
-          {onEdit && (
+          {onEdit && canEditInvoice && (
             <Button
               onClick={() => onEdit(voucher)}
               variant="outline"
@@ -187,7 +189,7 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
             </Button>
           )}
 
-          {onDelete && (
+          {onDelete && canDeleteInvoice && (
             <Button
               onClick={() => onDelete(voucher)}
               variant="outline"

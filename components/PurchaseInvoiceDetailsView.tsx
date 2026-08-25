@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { toBengaliDigits } from '@/lib/bengaliUtils';
 import { printElement } from '@/lib/printUtils';
+import { useAuth } from '@/lib/authContext';
 
 export interface PurchaseInvoiceDetailsViewProps {
   invoice: any;
@@ -32,6 +33,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
   onSendEmail,
   onApprove
 }) => {
+  const { canEditInvoice, canDeleteInvoice } = useAuth();
   if (!invoice) return null;
 
   // Format Date & Time
@@ -238,7 +240,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
             </Button>
           )}
 
-          {onEdit && (
+          {onEdit && canEditInvoice && (
             <Button
               onClick={() => onEdit(invoice)}
               variant="outline"
@@ -249,7 +251,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
             </Button>
           )}
 
-          {onDelete && (
+          {onDelete && canDeleteInvoice && (
             <Button
               onClick={() => onDelete(invoice)}
               variant="outline"

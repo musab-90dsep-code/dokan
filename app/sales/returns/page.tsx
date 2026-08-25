@@ -28,6 +28,7 @@ import { SalesReturnDetailsView } from '@/components/SalesReturnDetailsView';
 import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { printElement } from '@/lib/printUtils';
 import { TableRowActionMenu } from '@/components/TableRowActionMenu';
+import { useAuth } from '@/lib/authContext';
 
 interface ReturnEntry {
   id: string;
@@ -83,6 +84,7 @@ const COMMON_REASONS = [
 ];
 
 export default function SalesReturnsPage() {
+  const { canEditInvoice, canDeleteInvoice, canCreateInvoice } = useAuth();
   const [returns, setReturns] = useState<ReturnEntry[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -701,19 +703,21 @@ export default function SalesReturnsPage() {
               <p className="text-slate-500 text-xs mt-0.5">পণ্য ফেরত, স্টক পুনঃসংযোজন ও কাস্টমার বকেয়া সামঞ্জস্যের হিসাব</p>
             </div>
             
-            <Button 
-              onClick={() => {
-                setEditingReturn(null);
-                setSelectedCustomerId('');
-                setReturnCart([]);
-                setNewTakenCart([]);
-                setReason('');
-                setIsOpen(true);
-              }}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bengali h-10 px-5 rounded-md font-bold shadow-md shadow-blue-600/20 active:scale-95 transition-all text-xs"
-            >
-              <Plus className="w-4 h-4 mr-1.5" />নতুন বিক্রয় রিটার্ন তৈরি করুন
-            </Button>
+            {canCreateInvoice && (
+              <Button 
+                onClick={() => {
+                  setEditingReturn(null);
+                  setSelectedCustomerId('');
+                  setReturnCart([]);
+                  setNewTakenCart([]);
+                  setReason('');
+                  setIsOpen(true);
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bengali h-10 px-5 rounded-md font-bold shadow-md shadow-blue-600/20 active:scale-95 transition-all text-xs cursor-pointer"
+              >
+                <Plus className="w-4 h-4 mr-1.5" />নতুন বিক্রয় রিটার্ন তৈরি করুন
+              </Button>
+            )}
           </div>
 
           {/* Summary Cards */}
@@ -971,6 +975,8 @@ export default function SalesReturnsPage() {
                           onDelete={() => { setDeletingReturn(r); setIsDeleteDialogOpen(true); }}
                           onApprove={() => handleApproveReturn(r)}
                           isPending={r.status === 'pending' || r.status === 'draft' || r.status === 'অপেক্ষমান'}
+                          canEdit={canEditInvoice}
+                          canDelete={canDeleteInvoice}
                         />
                       </TableCell>
                     </TableRow>

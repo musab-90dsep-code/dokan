@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
+import { EngineerSearchSelect, EngineerOption } from '@/components/EngineerSearchSelect';
 import { toBengaliDigits, parseProductDetails } from '@/lib/bengaliUtils';
 import { ProductSearchSelect } from '@/components/ProductSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
@@ -30,6 +31,7 @@ import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
 import { printElement } from '@/lib/printUtils';
 import { TableRowActionMenu } from '@/components/TableRowActionMenu';
+import { useAuth } from '@/lib/authContext';
 
 interface Product { 
   id: string; 
@@ -77,6 +79,9 @@ interface Invoice {
   customerAddress?: string;
   businessName?: string;
   customerId?: string;
+  engineerId?: string;
+  engineerName?: string;
+  engineerPhone?: string;
   items: OrderItem[];
   subtotal?: number;
   discount?: number;
@@ -118,10 +123,18 @@ interface Invoice {
   cementLaborCost?: number;
   cementShippingCost?: number;
   cementTotalBags?: number;
+  engineerRodRate?: number;
+  engineerCementRate?: number;
+  engineerRodKg?: number;
+  engineerCementBags?: number;
+  engineerRodCommission?: number;
+  engineerCementCommission?: number;
+  engineerTotalCommission?: number;
 }
 
 function InvoicesContent() {
   const router = useRouter();
+  const { canEditInvoice, canDeleteInvoice, canCreateInvoice, isViewer } = useAuth();
   const searchParams = useSearchParams();
   const convertOrderId = searchParams ? (searchParams.get('fromOrder') || searchParams.get('convert')) : null;
   const fromOrderId = convertOrderId;
@@ -132,6 +145,7 @@ function InvoicesContent() {
   const [printingInvoice, setPrintingInvoice] = useState<Invoice | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [engineers, setEngineers] = useState<EngineerOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('সব');
@@ -140,6 +154,7 @@ function InvoicesContent() {
   // Image-Matched Filter States
   const [filterInvoiceNo, setFilterInvoiceNo] = useState('');
   const [filterCustomer, setFilterCustomer] = useState('all');
+  const [filterEngineer, setFilterEngineer] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [filterPaymentStatus, setFilterPaymentStatus] = useState('all');
@@ -166,6 +181,7 @@ function InvoicesContent() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedEngineer, setSelectedEngineer] = useState<EngineerOption | null>(null);
   const [isNewCustomer, setIsNewCustomer] = useState(false);
   const [newCustomerData, setNewCustomerData] = useState({ name: '', phone: '', address: '' });
   
@@ -244,6 +260,8 @@ function InvoicesContent() {
   });
 
   const [manualLaborCost, setManualLaborCost] = useState<number>(0);
+  const [engineerRodRate, setEngineerRodRate] = useState<number>(0);
+  const [engineerCementRate, setEngineerCementRate] = useState<number>(0);
   const [isGatePassOpen, setIsGatePassOpen] = useState<boolean>(false);
   const [isPrintMemoOpen, setIsPrintMemoOpen] = useState<boolean>(false);
   const [invoiceViewMode, setInvoiceViewMode] = useState<'details' | 'memo'>('details');
@@ -302,6 +320,9 @@ function InvoicesContent() {
           customerName: s.party_name || 'গ্রাহক',
           customerPhone: s.party_phone || '',
           customerId: String(s.party || ''),
+          engineerId: meta.engineerId || meta.engineer_id || '',
+          engineerName: meta.engineerName || meta.engineer_name || '',
+          engineerPhone: meta.engineerPhone || meta.engineer_phone || '',
           items: (s.items || []).map(i => ({
             id: String(i.product || ''),
             name: i.product_name,
@@ -350,7 +371,14 @@ function InvoicesContent() {
           cementShippingRate: meta.cementShippingRate !== undefined ? Number(meta.cementShippingRate) : undefined,
           cementLaborCost: meta.cementLaborCost !== undefined ? Number(meta.cementLaborCost) : undefined,
           cementShippingCost: meta.cementShippingCost !== undefined ? Number(meta.cementShippingCost) : undefined,
-          cementTotalBags: meta.cementTotalBags !== undefined ? Number(meta.cementTotalBags) : undefined
+          cementTotalBags: meta.cementTotalBags !== undefined ? Number(meta.cementTotalBags) : undefined,
+          engineerRodRate: meta.engineerRodRate !== undefined ? Number(meta.engineerRodRate) : undefined,
+          engineerCementRate: meta.engineerCementRate !== undefined ? Number(meta.engineerCementRate) : undefined,
+          engineerRodKg: meta.engineerRodKg !== undefined ? Number(meta.engineerRodKg) : undefined,
+          engineerCementBags: meta.engineerCementBags !== undefined ? Number(meta.engineerCementBags) : undefined,
+          engineerRodCommission: meta.engineerRodCommission !== undefined ? Number(meta.engineerRodCommission) : undefined,
+          engineerCementCommission: meta.engineerCementCommission !== undefined ? Number(meta.engineerCementCommission) : undefined,
+          engineerTotalCommission: meta.engineerTotalCommission !== undefined ? Number(meta.engineerTotalCommission) : undefined
         };
       });
       setInvoices(mappedInvoices);
@@ -380,6 +408,30 @@ function InvoicesContent() {
           balance: d,
           previousDue: d,
           openingBalance: Number(p.opening_balance || 0)
+        };
+      }));
+
+      const engineerList = await api.parties.list({ party_type: 'engineer' }).catch(() => []);
+      setEngineers(engineerList.map(p => {
+        let rodCommissionRate = 0;
+        let cementCommissionRate = 0;
+        if (p.note && typeof p.note === 'string' && p.note.trim().startsWith('{')) {
+          try {
+            const parsed = JSON.parse(p.note.split('\n')[0]);
+            rodCommissionRate = Number(parsed.rodCommissionRate || 0);
+            cementCommissionRate = Number(parsed.cementCommissionRate || 0);
+          } catch {}
+        }
+        return {
+          id: String(p.id),
+          name: p.name,
+          phone: p.phone,
+          address: p.address || '',
+          businessName: p.business_name || '',
+          customerType: p.customer_type || 'ইঞ্জিনিয়ার',
+          totalDue: Number(p.total_due || 0),
+          rodCommissionRate,
+          cementCommissionRate
         };
       }));
 
@@ -476,6 +528,26 @@ function InvoicesContent() {
           } catch {}
         }
         setInvoiceNote(cleanNote);
+
+        // Check for engineer metadata in order
+        if (raw.notes && raw.notes.trim().startsWith('{')) {
+          try {
+            const parsedMeta = JSON.parse(raw.notes.split('\n')[0]);
+            if (parsedMeta.engineerName || parsedMeta.engineerId) {
+              setSelectedEngineer({
+                id: parsedMeta.engineerId || 'eng-order',
+                name: parsedMeta.engineerName,
+                phone: parsedMeta.engineerPhone || ''
+              });
+            } else {
+              setSelectedEngineer(null);
+            }
+          } catch {
+            setSelectedEngineer(null);
+          }
+        } else {
+          setSelectedEngineer(null);
+        }
 
         setConvertedOrderId(String(raw.id));
         setEditingInvoiceId(null);
@@ -627,10 +699,16 @@ function InvoicesContent() {
   const cementLaborTotal = round2(cementTotalBags * (cementLaborRate || 0));
   const cementShippingTotal = round2(cementTotalBags * (cementShippingRate || 0));
 
-  const laborCost = chargeCalcMode === 'rate' ? round2(rodLaborTotal + cementLaborTotal) : manualLaborCost;
+  // Customer only pays Rod labor (or manual labor); Cement labor is shop loading charge paid by dokan
+  const laborCost = chargeCalcMode === 'rate' ? rodLaborTotal : manualLaborCost;
   const shippingCost = chargeCalcMode === 'rate' ? round2(rodShippingTotal + cementShippingTotal) : manualShippingCost;
 
-  // Cart Calculations matching 1:1 Screenshot
+  // Engineer Commission Calculations (Per KG for Rod, Per Bag for Cement)
+  const engineerRodCommission = round2(rodRingTotalKg * (engineerRodRate || 0));
+  const engineerCementCommission = round2(cementTotalBags * (engineerCementRate || 0));
+  const engineerTotalCommission = round2(engineerRodCommission + engineerCementCommission);
+
+  // Cart Calculations matching 1:1 Screenshot (Cement loading is borne by shop, not added to customer bill)
   const cartSubtotal = round2(cart.reduce((a, i) => a + (i.price * i.quantity), 0));
   const computedDiscount = discountType === 'percentage' 
     ? round2((cartSubtotal * (discountPercent || 0)) / 100) 
@@ -656,6 +734,7 @@ function InvoicesContent() {
     setEditingInvoiceId(null);
     setConvertedOrderId(null);
     setSelectedCustomer(null);
+    setSelectedEngineer(null);
     setIsNewCustomer(false);
     setNewCustomerData({ name: '', phone: '', address: '' });
     setCart([]);
@@ -696,6 +775,8 @@ function InvoicesContent() {
     setChargeCalcMode('rate');
     setManualLaborCost(0);
     setManualShippingCost(0);
+    setEngineerRodRate(0);
+    setEngineerCementRate(0);
 
     if (fromOrderId) {
       router.replace('/invoices');
@@ -717,6 +798,27 @@ function InvoicesContent() {
         phone: inv.customerPhone || '',
         address: inv.customerAddress || ''
       });
+    }
+
+    const eng = engineers.find(e => e.id === inv.engineerId || e.name === inv.engineerName);
+    if (eng) {
+      setSelectedEngineer(eng);
+      setEngineerRodRate(inv.engineerRodRate !== undefined ? inv.engineerRodRate : (eng.rodCommissionRate || 0));
+      setEngineerCementRate(inv.engineerCementRate !== undefined ? inv.engineerCementRate : (eng.cementCommissionRate || 0));
+    } else if (inv.engineerName) {
+      setSelectedEngineer({
+        id: inv.engineerId || 'custom-eng',
+        name: inv.engineerName,
+        phone: inv.engineerPhone || '',
+        rodCommissionRate: inv.engineerRodRate || 0,
+        cementCommissionRate: inv.engineerCementRate || 0
+      });
+      setEngineerRodRate(inv.engineerRodRate || 0);
+      setEngineerCementRate(inv.engineerCementRate || 0);
+    } else {
+      setSelectedEngineer(null);
+      setEngineerRodRate(0);
+      setEngineerCementRate(0);
     }
 
     setCart(inv.items ? inv.items.map(i => ({ ...i })) : []);
@@ -833,6 +935,9 @@ function InvoicesContent() {
         cementLaborRate: Number(cementLaborRate || 0),
         cementShippingRate: Number(cementShippingRate || 0),
         cementLaborCost: Number(cementLaborTotal || 0),
+        cementLoadingCharge: Number(cementLaborTotal || 0),
+        cementLoadingPaid: false,
+        isShopLoadingExpense: true,
         cementShippingCost: Number(cementShippingTotal || 0),
         cementTotalBags: Number(cementTotalBags || 0),
         laborCost: Number(laborCost || 0),
@@ -855,6 +960,16 @@ function InvoicesContent() {
         cashPaidAmount: Number(cashPaidAmount || 0),
         chequePaidAmount: Number(chequePaidAmount || 0),
         previousBalance: selectedCustomer ? Number((selectedCustomer as any).totalDue || (selectedCustomer as any).due || (selectedCustomer as any).balance || (selectedCustomer as any).previousDue || (selectedCustomer as any).openingBalance || 0) : 0,
+        engineerId: selectedEngineer ? String(selectedEngineer.id) : '',
+        engineerName: selectedEngineer ? selectedEngineer.name : '',
+        engineerPhone: selectedEngineer ? (selectedEngineer.phone || '') : '',
+        engineerRodRate: Number(engineerRodRate || 0),
+        engineerCementRate: Number(engineerCementRate || 0),
+        engineerRodKg: Number(rodRingTotalKg || 0),
+        engineerCementBags: Number(cementTotalBags || 0),
+        engineerRodCommission: Number(engineerRodCommission || 0),
+        engineerCementCommission: Number(engineerCementCommission || 0),
+        engineerTotalCommission: Number(engineerTotalCommission || 0),
         invoiced: true,
         isOrder: false,
         userNote: invoiceNote || ''
@@ -991,6 +1106,9 @@ function InvoicesContent() {
       if (selectedInvoice && selectedInvoice.id === inv.id) {
         setSelectedInvoice({ ...selectedInvoice, status: 'approved' });
       }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('orderUpdated'));
+      }
     } catch (err: any) {
       toast.error(err.message || 'অনুমোদন করতে সমস্যা হয়েছে');
     }
@@ -1016,6 +1134,7 @@ function InvoicesContent() {
   const handleResetFilters = () => {
     setFilterInvoiceNo('');
     setFilterCustomer('all');
+    setFilterEngineer('all');
     setStartDate('');
     setEndDate('');
     setFilterPaymentStatus('all');
@@ -1041,7 +1160,8 @@ function InvoicesContent() {
       const orderIdMatch = item.orderId?.toLowerCase().includes(q);
       const custMatch = item.customerName?.toLowerCase().includes(q);
       const phoneMatch = item.customerPhone?.includes(q);
-      if (!idMatch && !orderIdMatch && !custMatch && !phoneMatch) return false;
+      const engMatch = item.engineerName?.toLowerCase().includes(q);
+      if (!idMatch && !orderIdMatch && !custMatch && !phoneMatch && !engMatch) return false;
     }
 
     // 2. Customer
@@ -1049,6 +1169,13 @@ function InvoicesContent() {
       const matchesCustId = item.customerId && String(item.customerId) === filterCustomer;
       const matchesCustName = item.customerName === filterCustomer;
       if (!matchesCustId && !matchesCustName) return false;
+    }
+
+    // 2.1 Engineer
+    if (filterEngineer !== 'all') {
+      const matchesEngId = item.engineerId && String(item.engineerId) === filterEngineer;
+      const matchesEngName = item.engineerName === filterEngineer;
+      if (!matchesEngId && !matchesEngName) return false;
     }
 
     // 3. Date Range (Start / End)
@@ -1173,12 +1300,14 @@ function InvoicesContent() {
             <p className="text-slate-500 font-bengali mt-1">চুড়ান্ত চালানের তালিকা, নগদ প্রাপ্তি ও বকেয়া চালানের হিসাব</p>
           </div>
           
-          <Button 
-            onClick={() => { resetCreateForm(); setIsCreateInvoiceOpen(true); }}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bengali h-12 px-6 rounded-md font-bold shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
-          >
-            <Plus className="w-5 h-5 mr-2" />সরাসরি চালান তৈরি করুন
-          </Button>
+          {canCreateInvoice && (
+            <Button 
+              onClick={() => { resetCreateForm(); setIsCreateInvoiceOpen(true); }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bengali h-12 px-6 rounded-md font-bold shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer"
+            >
+              <Plus className="w-5 h-5 mr-2" />সরাসরি চালান তৈরি করুন
+            </Button>
+          )}
         </div>
 
         {/* Summary Cards */}
@@ -1305,9 +1434,9 @@ function InvoicesContent() {
             </div>
           </div>
 
-          {/* Secondary Collapsible Drawer: Advanced Options (Payment Method, Amount Ranges) */}
+          {/* Secondary Collapsible Drawer: Advanced Options (Payment Method, Engineer, Amount Ranges) */}
           {isFilterExpanded && (
-            <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 animate-in fade-in duration-200">
+            <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 animate-in fade-in duration-200">
               {/* Payment Method */}
               <div className="space-y-1">
                 <Label className="text-[11px] font-bold text-slate-600">পেমেন্ট মাধ্যম</Label>
@@ -1320,6 +1449,22 @@ function InvoicesContent() {
                     <SelectItem value="cash">নগদ</SelectItem>
                     <SelectItem value="bank">ব্যাংক</SelectItem>
                     <SelectItem value="cheque">চেক</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filter by Engineer */}
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-600">ইঞ্জিনিয়ার</Label>
+                <Select value={filterEngineer} onValueChange={(val) => setFilterEngineer(val || 'all')}>
+                  <SelectTrigger className="rounded-md h-9 bg-slate-50/50 border-slate-200 text-xs font-bold">
+                    <SelectValue placeholder="সব ইঞ্জিনিয়ার" />
+                  </SelectTrigger>
+                  <SelectContent className="font-bengali text-xs font-bold">
+                    <SelectItem value="all">সব ইঞ্জিনিয়ার</SelectItem>
+                    {engineers.map(e => (
+                      <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -1487,6 +1632,11 @@ function InvoicesContent() {
                         {inv.customerPhone && (
                           <p className="text-xs text-slate-400 font-sans mt-0.5">{inv.customerPhone}</p>
                         )}
+                        {inv.engineerName && (
+                          <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-50 text-orange-700 border border-orange-200">
+                            👷‍♂️ {inv.engineerName}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-bengali font-bold text-slate-900 text-sm py-4 px-4">
                         ৳{toBengaliDigits((inv.totalAmount || 0).toLocaleString('en-IN'))}
@@ -1526,6 +1676,8 @@ function InvoicesContent() {
                           onDelete={() => { setDeletingInvoice(inv); setIsDeleteDialogOpen(true); }}
                           onApprove={() => handleApproveInvoice(inv)}
                           isPending={inv.status === 'pending' || inv.status === 'draft' || inv.status === 'অপেক্ষমান'}
+                          canEdit={canEditInvoice}
+                          canDelete={canDeleteInvoice}
                         />
                       </TableCell>
                     </TableRow>
@@ -1676,7 +1828,7 @@ function InvoicesContent() {
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                       {/* Select Shop / Customer */}
                       <div className="space-y-1.5">
                         <Label className="text-xs font-bold text-slate-600">কাস্টমার / দোকান নির্বাচন করুন <span className="text-rose-500">*</span></Label>
@@ -1708,6 +1860,26 @@ function InvoicesContent() {
                         )}
                       </div>
 
+                      {/* Select Engineer */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold text-slate-600">ইঞ্জিনিয়ার নির্বাচন (ঐচ্ছিক)</Label>
+                        <EngineerSearchSelect
+                          engineers={engineers}
+                          selectedEngineer={selectedEngineer}
+                          onSelectEngineer={(eng) => {
+                            setSelectedEngineer(eng);
+                            if (eng) {
+                              setEngineerRodRate(eng.rodCommissionRate || 0);
+                              setEngineerCementRate(eng.cementCommissionRate || 0);
+                            } else {
+                              setEngineerRodRate(0);
+                              setEngineerCementRate(0);
+                            }
+                          }}
+                          placeholder="ইঞ্জিনিয়ার সার্চ করুন..."
+                        />
+                      </div>
+
                       {/* Invoice Number */}
                       <div className="space-y-1.5">
                         <Label className="text-xs font-bold text-slate-600">ইনভয়েস নম্বর</Label>
@@ -1733,25 +1905,102 @@ function InvoicesContent() {
                       </div>
                     </div>
 
-                    {/* Customer Existing Due Alert Box */}
-                    {selectedCustomer && (
-                      <div className="p-3.5 bg-rose-50/80 border border-rose-200 rounded-md flex items-center justify-between text-xs font-bengali mt-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-md bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
-                            <AlertCircle className="w-4 h-4" />
+                    {/* Customer & Engineer Alert Boxes */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                      {selectedCustomer && (
+                        <div className="p-3.5 bg-rose-50/80 border border-rose-200 rounded-md flex items-center justify-between text-xs font-bengali">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-md bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
+                              <AlertCircle className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="font-black text-slate-900">{selectedCustomer.name}</span>
+                              {selectedCustomer.phone && <span className="ml-2 text-slate-600 font-semibold">({toBengaliDigits(selectedCustomer.phone)})</span>}
+                              {selectedCustomer.address && <p className="text-slate-500 text-[11px] font-semibold">{selectedCustomer.address}</p>}
+                            </div>
                           </div>
-                          <div>
-                            <span className="font-black text-slate-900">{selectedCustomer.name}</span>
-                            {selectedCustomer.phone && <span className="ml-2 text-slate-600 font-semibold">({toBengaliDigits(selectedCustomer.phone)})</span>}
-                            {selectedCustomer.address && <p className="text-slate-500 text-[11px] font-semibold">{selectedCustomer.address}</p>}
+                          <div className="text-right">
+                            <span className="text-[11px] text-rose-600 font-bold block">পূর্বের মোট বকেয়া</span>
+                            <span className="font-black text-rose-700 text-base">৳ {toBengaliDigits(selectedCustomerDue.toLocaleString('en-IN'))}</span>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <span className="text-[11px] text-rose-600 font-bold block">পূর্বের মোট বকেয়া</span>
-                          <span className="font-black text-rose-700 text-base">৳ {toBengaliDigits(selectedCustomerDue.toLocaleString('en-IN'))}</span>
+                      )}
+
+                      {selectedEngineer && (
+                        <div className="p-3.5 bg-orange-50/90 border border-orange-200 rounded-md text-xs font-bengali space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-md bg-orange-100 text-orange-700 flex items-center justify-center font-bold">
+                                👷‍♂️
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-black text-slate-900">{selectedEngineer.name}</span>
+                                  <span className="text-[10px] bg-orange-200/60 text-orange-800 font-bold px-1.5 py-0.2 rounded">ইঞ্জিনিয়ার</span>
+                                </div>
+                                {selectedEngineer.phone && <span className="text-slate-600 font-semibold font-mono text-[11px]">{toBengaliDigits(selectedEngineer.phone)}</span>}
+                              </div>
+                            </div>
+                            {selectedEngineer.businessName && (
+                              <div className="text-right">
+                                <span className="text-[11px] text-slate-500 font-bold block">ফার্ম / প্রজেক্ট</span>
+                                <span className="font-bold text-slate-800 text-xs">{selectedEngineer.businessName}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* COMMISSION CALCULATION & RATE TWEAK */}
+                          <div className="pt-2 bg-white/80 p-2.5 rounded-lg border border-orange-200 space-y-2">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="font-black text-orange-950">👷‍♂️ কমিশন হিসাব (রড ও সিমেন্ট)</span>
+                              <span className="font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                মোট কমিশন: ৳ {toBengaliDigits(engineerTotalCommission.toLocaleString('en-IN'))}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                              {/* Rod Commission Line */}
+                              <div className="flex items-center justify-between bg-white p-1.5 rounded border border-orange-100">
+                                <div className="space-y-0.5">
+                                  <span className="font-bold text-slate-700 block">রড ({toBengaliDigits(rodRingTotalKg)} কেজি)</span>
+                                  <span className="text-[10px] text-slate-400">কমিশন রেট (৳/কেজি)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={engineerRodRate || ''}
+                                    onChange={(e) => setEngineerRodRate(parseFloat(e.target.value) || 0)}
+                                    placeholder="০.০০"
+                                    className="w-16 h-7 text-xs font-bold text-center bg-slate-50 border-orange-200 p-0"
+                                  />
+                                  <span className="font-black text-slate-900 font-mono w-16 text-right">৳{toBengaliDigits(engineerRodCommission.toLocaleString('en-IN'))}</span>
+                                </div>
+                              </div>
+
+                              {/* Cement Commission Line */}
+                              <div className="flex items-center justify-between bg-white p-1.5 rounded border border-orange-100">
+                                <div className="space-y-0.5">
+                                  <span className="font-bold text-slate-700 block">সিমেন্ট ({toBengaliDigits(cementTotalBags)} বস্তা)</span>
+                                  <span className="text-[10px] text-slate-400">কমিশন রেট (৳/বস্তা)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <Input
+                                    type="number"
+                                    step="0.1"
+                                    value={engineerCementRate || ''}
+                                    onChange={(e) => setEngineerCementRate(parseFloat(e.target.value) || 0)}
+                                    placeholder="০.০০"
+                                    className="w-16 h-7 text-xs font-bold text-center bg-slate-50 border-orange-200 p-0"
+                                  />
+                                  <span className="font-black text-slate-900 font-mono w-16 text-right">৳{toBengaliDigits(engineerCementCommission.toLocaleString('en-IN'))}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -2048,7 +2297,10 @@ function InvoicesContent() {
                               </div>
                               <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
-                                  <Label className="text-[11px] font-bold text-slate-600">লেবার রেট (৳/বস্তা)</Label>
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-[11px] font-bold text-slate-700">লোডিং লেবার রেট (৳/বস্তা)</Label>
+                                    <span className="text-[9px] bg-amber-200/80 text-amber-900 font-black px-1.5 py-0.2 rounded">দোকান প্রদেয়</span>
+                                  </div>
                                   <div className="relative">
                                     <Input 
                                       type="number"
@@ -2062,6 +2314,9 @@ function InvoicesContent() {
                                       = ৳{toBengaliDigits(cementLaborTotal.toLocaleString('en-IN'))}
                                     </span>
                                   </div>
+                                  <span className="text-[10px] text-amber-800 font-medium block">
+                                    💡 লোডিং খরচ কাস্টমারের বিলে যুক্ত হবে না, দোকান লোডিং বিল হিসেবে পরিশোধ হবে।
+                                  </span>
                                 </div>
                                 <div className="space-y-1">
                                   <Label className="text-[11px] font-bold text-slate-600">গাড়ি ভাড়া রেট (৳/বস্তা)</Label>
@@ -2521,8 +2776,15 @@ function InvoicesContent() {
 
                         {laborCost > 0 && (
                           <div className="flex justify-between text-amber-600">
-                            <span>লেবার খরচ</span>
+                            <span>লেবার খরচ (রড)</span>
                             <span className="font-bold">+ ৳ {toBengaliDigits(laborCost.toLocaleString('en-IN'))}</span>
+                          </div>
+                        )}
+
+                        {cementLaborTotal > 0 && (
+                          <div className="flex justify-between items-center bg-amber-50 p-1.5 rounded border border-amber-200 text-[11px] text-amber-900 font-bold">
+                            <span>দোকান প্রদেয় লোডিং চার্জ:</span>
+                            <span className="font-black font-mono">৳ {toBengaliDigits(cementLaborTotal.toLocaleString('en-IN'))}</span>
                           </div>
                         )}
 

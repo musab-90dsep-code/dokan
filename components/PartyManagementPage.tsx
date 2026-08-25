@@ -41,6 +41,7 @@ import { bdLocationData } from '@/lib/bangladeshData';
 import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
 import { TableRowActionMenu } from '@/components/TableRowActionMenu';
+import { useAuth } from '@/lib/authContext';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -86,6 +87,8 @@ export interface Party {
   creditLimit?: number;
   creditDays?: number;
   discountPercent?: number;
+  rodCommissionRate?: number;
+  cementCommissionRate?: number;
   joinedDate?: string;
   note?: string;
   photoUrl?: string;
@@ -94,16 +97,19 @@ export interface Party {
 }
 
 interface PartyManagementPageProps {
-  type: 'customer' | 'supplier';
+  type: 'customer' | 'supplier' | 'engineer';
 }
 
 import { useSearchParams } from 'next/navigation';
 
 export default function PartyManagementPage({ type }: PartyManagementPageProps) {
+  const { canModifyData } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const editIdParam = searchParams ? searchParams.get('edit') : null;
   const isCustomer = type === 'customer';
+  const isSupplier = type === 'supplier';
+  const isEngineer = type === 'engineer';
 
   const [parties, setParties] = useState<Party[]>([]);
   const [loading, setLoading] = useState(true);
@@ -173,13 +179,15 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
     creditLimit: number | string;
     creditDays: number | string;
     discountPercent: number | string;
+    rodCommissionRate: number | string;
+    cementCommissionRate: number | string;
     joinedDate: string;
     note: string;
     photoUrl: string;
   }>({
     businessName: '',
     name: '',
-    customerType: isCustomer ? 'খুচরা গ্রাহক' : 'রড',
+    customerType: isEngineer ? 'সিভিল ইঞ্জিনিয়ার' : isCustomer ? 'খুচরা গ্রাহক' : 'রড',
     phone: '',
     altPhone: '',
     email: '',
@@ -189,13 +197,15 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
     thana: '',
     address: '',
     postcode: '',
-    idType: 'NID',
+    idType: isEngineer ? 'IEB মেম্বারশিপ' : isCustomer ? 'NID' : 'TIN',
     nid: '',
     tinNumber: '',
     openingBalance: '',
     creditLimit: '',
     creditDays: 30,
     discountPercent: '',
+    rodCommissionRate: '',
+    cementCommissionRate: '',
     joinedDate: new Date().toISOString().split('T')[0],
     note: '',
     photoUrl: ''
@@ -212,7 +222,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
     setFormData({
       businessName: p.businessName || '',
       name: p.name || '',
-      customerType: p.customerType || p.supplyType || (isCustomer ? 'খুচরা গ্রাহক' : 'রড'),
+      customerType: p.customerType || p.supplyType || (isEngineer ? 'সিভিল ইঞ্জিনিয়ার' : isCustomer ? 'খুচরা গ্রাহক' : 'রড'),
       phone: p.phone || '',
       altPhone: p.altPhone || '',
       email: p.email || '',
@@ -222,53 +232,71 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       thana: p.thana || '',
       address: p.address || '',
       postcode: p.postcode || '',
-      idType: p.idType || (isCustomer ? 'NID' : 'TIN'),
+      idType: p.idType || (isEngineer ? 'IEB মেম্বারশিপ' : isCustomer ? 'NID' : 'TIN'),
       nid: p.nid || '',
       tinNumber: p.tinNumber || '',
       openingBalance: p.openingBalance ? String(p.openingBalance) : '',
       creditLimit: p.creditLimit ? String(p.creditLimit) : '',
       creditDays: p.creditDays || 30,
       discountPercent: p.discountPercent ? String(p.discountPercent) : '',
+      rodCommissionRate: p.rodCommissionRate !== undefined && p.rodCommissionRate > 0 ? String(p.rodCommissionRate) : '',
+      cementCommissionRate: p.cementCommissionRate !== undefined && p.cementCommissionRate > 0 ? String(p.cementCommissionRate) : '',
       joinedDate: p.joinedDate || new Date().toISOString().split('T')[0],
       note: p.note || '',
       photoUrl: p.photoUrl || ''
     });
     setIsAddOpen(true);
-  }, [isCustomer]);
+  }, [isCustomer, isEngineer]);
 
   const fetchParties = useCallback(async () => {
     try {
       setLoading(true);
       const data = await api.parties.list({ party_type: type });
       const safeData = Array.isArray(data) ? data : [];
-      const partyList: Party[] = safeData.map((p) => ({
-        id: String(p.id),
-        name: p.name,
-        businessName: p.business_name || '',
-        customerType: p.customer_type || '',
-        supplyType: p.supply_type || '',
-        phone: p.phone,
-        altPhone: p.alt_phone || '',
-        email: p.email || '',
-        country: p.country || 'বাংলাদেশ',
-        division: p.division || 'ঢাকা',
-        district: p.district || 'ঢাকা',
-        thana: p.thana || '',
-        address: p.address || '',
-        postcode: p.postcode || '',
-        idType: p.id_type || 'NID',
-        nid: p.nid || '',
-        tinNumber: p.tin_number || '',
-        openingBalance: Number(p.opening_balance || 0),
-        creditLimit: Number(p.credit_limit || 0),
-        creditDays: p.credit_days || 30,
-        discountPercent: Number(p.discount_percent || 0),
-        joinedDate: p.joined_date || '',
-        note: p.note || '',
-        photoUrl: p.photo_url || '',
-        totalDue: Number(p.total_due || 0),
-        totalPurchase: Number(p.total_purchases || 0)
-      }));
+      const partyList: Party[] = safeData.map((p) => {
+        let rodCommissionRate = 0;
+        let cementCommissionRate = 0;
+        let cleanNote = p.note || '';
+        if (p.note && typeof p.note === 'string' && p.note.trim().startsWith('{')) {
+          try {
+            const parsed = JSON.parse(p.note.split('\n')[0]);
+            rodCommissionRate = Number(parsed.rodCommissionRate || 0);
+            cementCommissionRate = Number(parsed.cementCommissionRate || 0);
+            cleanNote = parsed.userNote !== undefined ? parsed.userNote : (p.note.includes('\n') ? p.note.substring(p.note.indexOf('\n') + 1) : '');
+          } catch {}
+        }
+
+        return {
+          id: String(p.id),
+          name: p.name,
+          businessName: p.business_name || '',
+          customerType: p.customer_type || '',
+          supplyType: p.supply_type || '',
+          phone: p.phone,
+          altPhone: p.alt_phone || '',
+          email: p.email || '',
+          country: p.country || 'বাংলাদেশ',
+          division: p.division || 'ঢাকা',
+          district: p.district || 'ঢাকা',
+          thana: p.thana || '',
+          address: p.address || '',
+          postcode: p.postcode || '',
+          idType: p.id_type || 'NID',
+          nid: p.nid || '',
+          tinNumber: p.tin_number || '',
+          openingBalance: Number(p.opening_balance || 0),
+          creditLimit: Number(p.credit_limit || 0),
+          creditDays: p.credit_days || 30,
+          discountPercent: Number(p.discount_percent || 0),
+          rodCommissionRate,
+          cementCommissionRate,
+          joinedDate: p.joined_date || '',
+          note: cleanNote,
+          photoUrl: p.photo_url || '',
+          totalDue: Number(p.total_due || 0),
+          totalPurchase: Number(p.total_purchases || 0)
+        };
+      });
       setParties(partyList);
       return partyList;
     } catch (err) {
@@ -288,20 +316,20 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
         const target = partyList.find((p) => String(p.id) === String(editIdParam));
         if (target) {
           openEdit(target);
-          router.replace(isCustomer ? '/customers' : '/suppliers');
+          router.replace(isEngineer ? '/engineers' : isCustomer ? '/customers' : '/suppliers');
         }
       }
     }
     loadData();
     return () => { ignore = true; };
-  }, [fetchParties, editIdParam, openEdit, router, isCustomer]);
+  }, [fetchParties, editIdParam, openEdit, router, isCustomer, isEngineer]);
 
   const resetForm = () => {
     setEditing(null);
     setFormData({
       businessName: '',
       name: '',
-      customerType: isCustomer ? 'খুচরা গ্রাহক' : 'রড',
+      customerType: isEngineer ? 'সিভিল ইঞ্জিনিয়ার' : isCustomer ? 'খুচরা গ্রাহক' : 'রড',
       phone: '',
       altPhone: '',
       email: '',
@@ -311,13 +339,15 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       thana: '',
       address: '',
       postcode: '',
-      idType: isCustomer ? 'NID' : 'TIN',
+      idType: isEngineer ? 'IEB মেম্বারশিপ' : isCustomer ? 'NID' : 'TIN',
       nid: '',
       tinNumber: '',
       openingBalance: '',
       creditLimit: '',
       creditDays: 30,
       discountPercent: '',
+      rodCommissionRate: '',
+      cementCommissionRate: '',
       joinedDate: new Date().toISOString().split('T')[0],
       note: '',
       photoUrl: ''
@@ -348,13 +378,20 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      toast.error(isCustomer ? 'গ্রাহকের নাম পূরণ করুন' : 'কোম্পানি বা প্রতিনিধির নাম পূরণ করুন');
+      toast.error(isEngineer ? 'ইঞ্জিনিয়ারের নাম পূরণ করুন' : isCustomer ? 'গ্রাহকের নাম পূরণ করুন' : 'কোম্পানি বা প্রতিনিধির নাম পূরণ করুন');
       return;
     }
     if (!formData.phone.trim()) {
       toast.error('মোবাইল নম্বর পূরণ করুন');
       return;
     }
+
+    const meta = {
+      rodCommissionRate: Number(formData.rodCommissionRate || 0),
+      cementCommissionRate: Number(formData.cementCommissionRate || 0),
+      userNote: formData.note || ''
+    };
+    const notePayload = JSON.stringify(meta) + (formData.note ? `\n${formData.note}` : '');
 
     const payload: PartyData = {
       party_type: type,
@@ -380,17 +417,17 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       discount_percent: Number(formData.discountPercent || 0),
       total_due: editing ? (editing.totalDue || 0) : (Number(formData.openingBalance) || 0),
       joined_date: formData.joinedDate,
-      note: formData.note,
+      note: isEngineer ? notePayload : formData.note,
       photo_url: formData.photoUrl
     };
 
     try {
       if (editing) {
         await api.parties.update(editing.id, payload);
-        toast.success(isCustomer ? 'গ্রাহকের তথ্য আপডেট হয়েছে' : 'সরবরাহকারীর তথ্য আপডেট হয়েছে');
+        toast.success(isEngineer ? 'ইঞ্জিনিয়ারের তথ্য আপডেট হয়েছে' : isCustomer ? 'গ্রাহকের তথ্য আপডেট হয়েছে' : 'সরবরাহকারীর তথ্য আপডেট হয়েছে');
       } else {
         await api.parties.create(payload);
-        toast.success(isCustomer ? 'নতুন গ্রাহক নিবন্ধিত হয়েছে' : 'নতুন সরবরাহকারী নিবন্ধিত হয়েছে');
+        toast.success(isEngineer ? 'নতুন ইঞ্জিনিয়ার নিবন্ধিত হয়েছে' : isCustomer ? 'নতুন গ্রাহক নিবন্ধিত হয়েছে' : 'নতুন সরবরাহকারী নিবন্ধিত হয়েছে');
       }
       setIsAddOpen(false);
       resetForm();
@@ -402,7 +439,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm(isCustomer ? 'এই গ্রাহকের তথ্য মুছে ফেলবেন?' : 'এই সরবরাহকারীর তথ্য মুছে ফেলবেন?')) return;
+    if (!confirm(isEngineer ? 'এই ইঞ্জিনিয়ারের তথ্য মুছে ফেলবেন?' : isCustomer ? 'এই গ্রাহকের তথ্য মুছে ফেলবেন?' : 'এই সরবরাহকারীর তথ্য মুছে ফেলবেন?')) return;
     try {
       await api.parties.delete(id);
       toast.success('তথ্য মুছে ফেলা হয়েছে');
@@ -463,71 +500,82 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              {isCustomer ? 'কাস্টমার' : 'সরবরাহকারী'}
+              {isEngineer ? 'ইঞ্জিনিয়ার' : isCustomer ? 'কাস্টমার' : 'সরবরাহকারী'}
             </h1>
             <p className="text-xs text-slate-400 font-medium mt-0.5">
-              হোম &gt; {isCustomer ? 'কাস্টমার' : 'সরবরাহকারী'}
+              হোম &gt; {isEngineer ? 'ইঞ্জিনিয়ার' : isCustomer ? 'কাস্টমার' : 'সরবরাহকারী'}
             </p>
           </div>
 
           <div className="flex items-center gap-2.5">
-            <Button variant="outline" className="h-9 px-3.5 border-slate-200 text-blue-600 bg-white hover:bg-slate-50 font-bold text-xs rounded-md shadow-2xs flex items-center gap-1.5">
+            {isCustomer && (
+              <Link href="/customers/dues">
+                <Button variant="outline" className="h-9 px-3.5 border-rose-200 text-rose-600 bg-rose-50/50 hover:bg-rose-100/50 font-bold text-xs rounded-md shadow-2xs flex items-center gap-1.5 cursor-pointer">
+                  <Receipt className="w-3.5 h-3.5 text-rose-600" />
+                  <span>বাকী তালিকা</span>
+                </Button>
+              </Link>
+            )}
+
+            <Button variant="outline" className="h-9 px-3.5 border-slate-200 text-blue-600 bg-white hover:bg-slate-50 font-bold text-xs rounded-md shadow-2xs flex items-center gap-1.5 cursor-pointer">
               <Receipt className="w-3.5 h-3.5 text-blue-600" />
               <span>রিপোর্ট এক্সপোর্ট</span>
             </Button>
 
-            <Button
-              onClick={handleOpenAdd}
-              className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-md shadow-2xs flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              <span>{isCustomer ? 'নতুন কাস্টমার' : 'নতুন সরবরাহকারী'}</span>
-            </Button>
+            {canModifyData && (
+              <Button
+                onClick={handleOpenAdd}
+                className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-md shadow-2xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{isEngineer ? 'নতুন ইঞ্জিনিয়ার' : isCustomer ? 'নতুন কাস্টমার' : 'নতুন সরবরাহকারী'}</span>
+              </Button>
+            )}
           </div>
         </div>
 
         {/* 2. 4 TOP METRIC CARDS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           
-          {/* CARD 1: সর্বমোট কাস্টমার/সরবরাহকারী */}
+          {/* CARD 1: সর্বমোট কাস্টমার/সরবরাহকারী/ইঞ্জিনিয়ার */}
           <div className="bg-white border border-blue-100 rounded-md p-4 shadow-2xs flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
               <Users className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-500">{isCustomer ? 'সর্বমোট কাস্টমার' : 'সর্বমোট সরবরাহকারী'}</p>
+              <p className="text-xs font-semibold text-slate-500">{isEngineer ? 'সর্বমোট ইঞ্জিনিয়ার' : isCustomer ? 'সর্বমোট কাস্টমার' : 'সর্বমোট সরবরাহকারী'}</p>
               <p className="text-xl font-black text-slate-900 mt-0.5">
                 {toBnDigits(parties.length)} <span className="text-xs font-medium text-slate-500">জন</span>
               </p>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">{isCustomer ? 'সকল কাস্টমারের সংখ্যা' : 'সকল সরবরাহকারীর সংখ্যা'}</p>
+              <p className="text-[10px] text-slate-400 font-medium mt-0.5">{isEngineer ? 'তালিকাভুক্ত ইঞ্জিনিয়ার' : isCustomer ? 'সকল কাস্টমারের সংখ্যা' : 'সকল সরবরাহকারীর সংখ্যা'}</p>
             </div>
           </div>
 
-          {/* CARD 2: সক্রিয় কাস্টমার/সরবরাহকারী */}
+          {/* CARD 2: সক্রিয় কাস্টমার/সরবরাহকারী/প্রজেক্ট */}
           <div className="bg-white border border-emerald-100 rounded-md p-4 shadow-2xs flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-500">{isCustomer ? 'সক্রিয় কাস্টমার' : 'সক্রিয় সরবরাহকারী'}</p>
+              <p className="text-xs font-semibold text-slate-500">{isEngineer ? 'সক্রিয় প্রজেক্ট / সাইট' : isCustomer ? 'সক্রিয় কাস্টমার' : 'সক্রিয় সরবরাহকারী'}</p>
               <p className="text-xl font-black text-slate-900 mt-0.5">
-                {toBnDigits(parties.length)} <span className="text-xs font-medium text-slate-500">জন</span>
+                {toBnDigits(parties.length)} <span className="text-xs font-medium text-slate-500">{isEngineer ? 'টি' : 'জন'}</span>
               </p>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">লেনদেন করেছেন</p>
+              <p className="text-[10px] text-slate-400 font-medium mt-0.5">{isEngineer ? 'চলমান কনস্ট্রাকশন' : 'লেনদেন করেছেন'}</p>
             </div>
           </div>
 
-          {/* CARD 3: মোট বাকি */}
+          {/* CARD 3: মোট বাকি/পাওনা */}
           <div className="bg-white border border-amber-100 rounded-md p-4 shadow-2xs flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-md bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 font-bold text-lg">
               ৳
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-500">মোট বাকি</p>
+              <p className="text-xs font-semibold text-slate-500">{isEngineer ? 'মোট কমিশন / পাওনা' : 'মোট বাকি'}</p>
               <p className="text-xl font-black text-slate-900 mt-0.5">
                 ৳ {toBnDigits(totalDue.toLocaleString('en-IN'))}
               </p>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">{isCustomer ? 'সকল কাস্টমারের বাকি' : 'সকল পাওয়া পাওনা'}</p>
+              <p className="text-[10px] text-slate-400 font-medium mt-0.5">{isEngineer ? 'ইঞ্জিনিয়ারদের পাওনা ব্যালেন্স' : isCustomer ? 'সকল কাস্টমারের বাকি' : 'সকল পাওয়া পাওনা'}</p>
             </div>
           </div>
 
@@ -556,7 +604,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
             <div className="relative flex-1 min-w-[240px]">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
-                placeholder={isCustomer ? "কাস্টমার নাম, মোবাইল, বা ইমেইল দিয়ে খুঁজুন..." : "কোম্পানি বা সরবরাহকারীর নাম, ফোন দিয়ে খুঁজুন..."}
+                placeholder={isEngineer ? "ইঞ্জিনিয়ারের নাম, পদবী, মোবাইল, ফার্ম বা কাজের এলাকা দিয়ে খুঁজুন..." : isCustomer ? "কাস্টমার নাম, মোবাইল, বা ইমেইল দিয়ে খুঁজুন..." : "কোম্পানি বা সরবরাহকারীর নাম, ফোন দিয়ে খুঁজুন..."}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="pl-10 h-10 rounded-md bg-slate-50/80 border-slate-200 text-xs font-bold text-slate-900 focus:bg-white transition-all placeholder:text-slate-400"
@@ -586,8 +634,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
             {/* Quick Status/Due Pills */}
             <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
               {[
-                { id: 'সব', label: isCustomer ? 'সব কাস্টমার' : 'সব সরবরাহকারী' },
-                { id: 'বকেয়া আছে', label: 'বকেয়া আছে' },
+                { id: 'সব', label: isEngineer ? 'সব ইঞ্জিনিয়ার' : isCustomer ? 'সব কাস্টমার' : 'সব সরবরাহকারী' },
+                { id: 'বকেয়া আছে', label: isEngineer ? 'পাওনা আছে' : 'বকেয়া আছে' },
                 { id: 'পরিশোধিত', label: 'হিসাব পরিষ্কার' },
               ].map(p => (
                 <button
@@ -638,14 +686,24 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
               
               {/* Type Selector */}
               <div className="space-y-1">
-                <Label className="text-[11px] font-bold text-slate-600">শ্রেণী / ধরন</Label>
+                <Label className="text-[11px] font-bold text-slate-600">পদবী / শ্রেণী / ধরন</Label>
                 <Select value={filterType} onValueChange={(val) => setFilterType(val || 'সব')}>
                   <SelectTrigger className="w-full h-9 bg-slate-50/50 border-slate-200 rounded-md text-xs font-bold">
                     <SelectValue placeholder="সকল ধরন" />
                   </SelectTrigger>
                   <SelectContent className="font-bengali text-xs font-bold">
                     <SelectItem value="সব">সকল ধরন</SelectItem>
-                    {isCustomer ? (
+                    {isEngineer ? (
+                      <>
+                        <SelectItem value="সিভিল ইঞ্জিনিয়ার">সিভিল ইঞ্জিনিয়ার</SelectItem>
+                        <SelectItem value="স্ট্রাকচারাল ইঞ্জিনিয়ার">স্ট্রাকচারাল ইঞ্জিনিয়ার</SelectItem>
+                        <SelectItem value="ডিপ্লোমা ইঞ্জিনিয়ার">ডিপ্লোমা ইঞ্জিনিয়ার</SelectItem>
+                        <SelectItem value="আর্কিটেক্ট">আর্কিটেক্ট / স্থপতি</SelectItem>
+                        <SelectItem value="কনসালটেন্ট">কনসালটেন্ট</SelectItem>
+                        <SelectItem value="সাইট সুপারভাইজার">সাইট সুপারভাইজার</SelectItem>
+                        <SelectItem value="কন্ট্রাকটর">কন্ট্রাকটর / হেড মিস্ত্রি</SelectItem>
+                      </>
+                    ) : isCustomer ? (
                       <>
                         <SelectItem value="খুচরা গ্রাহক">খুচরা ক্রেতা</SelectItem>
                         <SelectItem value="কন্ট্রাকটর">ঠিকাদার</SelectItem>
@@ -681,7 +739,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
               {/* Due Range */}
               <div className="space-y-1">
-                <Label className="text-[11px] font-bold text-slate-600">বকেয়া পরিমাণ (৳)</Label>
+                <Label className="text-[11px] font-bold text-slate-600">বকেয়া / পাওনার পরিমাণ (৳)</Label>
                 <div className="flex items-center gap-1.5">
                   <Input
                     placeholder="সর্বনিম্ন"
@@ -712,11 +770,17 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                 <TableHeader className="bg-slate-50/80 border-b border-slate-200">
                   <TableRow className="text-xs text-slate-700 font-black">
                     <TableHead className="py-3 px-4 text-left font-black text-slate-900 w-12">ক্রমিক</TableHead>
-                    <TableHead className="py-3 px-4 text-left font-black text-slate-900">{isCustomer ? 'কাস্টমারের নাম' : 'কোম্পানি / সরবরাহকারী'}</TableHead>
+<TableHead className="py-3 px-4 text-left font-black text-slate-900">
+                      {isEngineer ? 'ইঞ্জিনিয়ারের নাম ও ডিগ্রি' : isCustomer ? 'কাস্টমারের নাম' : 'কোম্পানি / সরবরাহকারী'}
+                    </TableHead>
                     <TableHead className="py-3 px-4 text-left font-black text-slate-900">মোবাইল নম্বর</TableHead>
-                    <TableHead className="py-3 px-4 text-left font-black text-slate-900">{isCustomer ? 'গ্রুপ' : 'সরবরাহের ধরন'}</TableHead>
-                    <TableHead className="py-3 px-4 text-right font-black text-slate-900">মোট বকেয়া</TableHead>
-                    <TableHead className="py-3 px-4 text-left font-black text-slate-900">সর্বশেষ লেনদেন</TableHead>
+                    <TableHead className="py-3 px-4 text-left font-black text-slate-900">
+                      {isEngineer ? 'পদবী / ক্যাটাগরি' : isCustomer ? 'গ্রুপ' : 'সরবরাহের ধরন'}
+                    </TableHead>
+                    <TableHead className="py-3 px-4 text-right font-black text-slate-900">
+                      {isEngineer ? 'মোট পাওনা / ব্যালেন্স' : 'মোট বকেয়া'}
+                    </TableHead>
+                    <TableHead className="py-3 px-4 text-left font-black text-slate-900">যুক্ত হওয়ার তারিখ</TableHead>
                     <TableHead className="py-3 px-4 text-center font-black text-slate-900">স্ট্যাটাস</TableHead>
                     <TableHead className="py-3 px-4 text-center font-black text-slate-900">অ্যাকশন</TableHead>
                   </TableRow>
@@ -739,10 +803,13 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                       const isWholesale = p.customerType === 'পাইকারি গ্রাহক';
                       const isContractor = p.customerType === 'কন্ট্রাকটর';
                       const suppType = p.customerType || p.supplyType || 'রড';
+                      const engRole = p.customerType || 'সিভিল ইঞ্জিনিয়ার';
+                      const profileRoute = isEngineer ? `/engineers/${p.id}` : isCustomer ? `/customers/${p.id}` : `/suppliers/${p.id}`;
+
                       return (
                         <TableRow
                           key={p.id}
-                          onClick={() => router.push(isCustomer ? `/customers/${p.id}` : `/suppliers/${p.id}`)}
+                          onClick={() => router.push(profileRoute)}
                           className="hover:bg-slate-50/70 transition-colors cursor-pointer"
                         >
                           <TableCell className="py-3.5 px-4 text-left text-slate-500 font-mono font-bold">
@@ -751,17 +818,17 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
                           <TableCell className="py-3.5 px-4 text-left">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 font-bold text-xs flex items-center justify-center border border-rose-200 flex-shrink-0">
+                              <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-bold text-xs flex items-center justify-center border border-blue-200 flex-shrink-0">
                                 {p.photoUrl ? (
                                   /* eslint-disable-next-line @next/next/no-img-element */
                                   <img src={p.photoUrl} alt="" className="w-full h-full rounded-full object-cover" />
                                 ) : (
-                                  p.name?.charAt(0) || 'ক'
+                                  p.name?.charAt(0) || 'ই'
                                 )}
                               </div>
                               <div>
                                 <p className="font-bold text-slate-900 text-xs">{p.name}</p>
-                                <p className="text-[11px] text-slate-400 font-medium">{p.email || `${p.phone}@dokan.com`}</p>
+                                <p className="text-[11px] text-slate-400 font-medium">{p.businessName ? `${p.businessName} • ` : ''}{p.email || `${p.phone}@dokan.com`}</p>
                               </div>
                             </div>
                           </TableCell>
@@ -771,7 +838,28 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           </TableCell>
 
                           <TableCell className="py-3.5 px-4 text-left">
-                            {isCustomer ? (
+                            {isEngineer ? (
+                              <div className="space-y-1">
+                                <span className={cn(
+                                  "inline-block font-bold text-[11px] px-3 py-0.5 rounded-md",
+                                  engRole.includes('আর্কিটেক্ট')
+                                    ? "bg-purple-100/80 text-purple-700"
+                                    : engRole.includes('স্ট্রাকচারাল')
+                                    ? "bg-amber-100/80 text-amber-800"
+                                    : engRole.includes('ডিপ্লোমা')
+                                    ? "bg-cyan-100/80 text-cyan-700"
+                                    : "bg-blue-100/80 text-blue-700"
+                                )}>
+                                  {engRole}
+                                </span>
+                                {((p.rodCommissionRate || 0) > 0 || (p.cementCommissionRate || 0) > 0) && (
+                                  <div className="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-flex flex-wrap gap-1">
+                                    {p.rodCommissionRate ? <span>রড: ৳{toBnDigits(p.rodCommissionRate)}/কেজি</span> : null}
+                                    {p.cementCommissionRate ? <span>সিমেন্ট: ৳{toBnDigits(p.cementCommissionRate)}/বস্তা</span> : null}
+                                  </div>
+                                )}
+                              </div>
+                            ) : isCustomer ? (
                               <span className={cn(
                                 "inline-block font-bold text-[11px] px-3 py-0.5 rounded-md",
                                 isContractor
@@ -815,9 +903,11 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
                           <TableCell className="py-3.5 px-4 text-right" onClick={e => e.stopPropagation()}>
                             <TableRowActionMenu
-                              onView={() => router.push(isCustomer ? `/customers/${p.id}` : `/suppliers/${p.id}`)}
+                              onView={() => router.push(profileRoute)}
                               onEdit={() => openEdit(p)}
                               onDelete={() => handleDelete(p.id)}
+                              canEdit={canModifyData}
+                              canDelete={canModifyData}
                             />
                           </TableCell>
                         </TableRow>
@@ -831,7 +921,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
             {/* Pagination Footer */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs font-semibold text-slate-500">
               <div>
-                মোট <strong className="text-slate-900 font-bold">{toBnDigits(parties.length)}</strong> জন {isCustomer ? 'কাস্টমারের' : 'সরবরাহকারীর'} মধ্যে ১ থেকে {toBnDigits(filtered.length)} দেখানো হচ্ছে
+                মোট <strong className="text-slate-900 font-bold">{toBnDigits(parties.length)}</strong> জন {isEngineer ? 'ইঞ্জিনিয়ারের' : isCustomer ? 'কাস্টমারের' : 'সরবরাহকারীর'} মধ্যে ১ থেকে {toBnDigits(filtered.length)} দেখানো হচ্ছে
               </div>
 
               <div className="flex items-center gap-1.5">
@@ -858,7 +948,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
         </Card>
       </div>
       ) : (
-        /* CREATE / EDIT CUSTOMER IN-PAGE VIEW (Direct Page View, Framed Container) */
+        /* CREATE / EDIT IN-PAGE VIEW (Direct Page View, Framed Container) */
         <div className="space-y-4 animate-in fade-in duration-300 font-bengali">
           <div className="w-full bg-slate-100 border-2 border-slate-300 shadow-xl rounded-md overflow-hidden flex flex-col min-h-[calc(100vh-100px)]">
             
@@ -876,12 +966,12 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                 </Button>
                 <div>
                   <span className="text-[10px] font-black tracking-widest text-blue-600 uppercase block">
-                    {isCustomer ? 'কাস্টমার ব্যবস্থাপনা' : 'সরবরাহকারী ব্যবস্থাপনা'}
+                    {isEngineer ? 'ইঞ্জিনিয়ার ব্যবস্থাপনা' : isCustomer ? 'কাস্টমার ব্যবস্থাপনা' : 'সরবরাহকারী ব্যবস্থাপনা'}
                   </span>
                   <h1 className="text-lg font-black text-slate-900 tracking-tight leading-none">
                     {editing
-                      ? isCustomer ? 'গ্রাহকের তথ্য সম্পাদনা করুন' : 'সরবরাহকারীর তথ্য সম্পাদনা করুন'
-                      : isCustomer ? 'নতুন গ্রাহক যোগ করুন' : 'নতুন কোম্পানি / সরবরাহকারী যোগ করুন'}
+                      ? isEngineer ? 'ইঞ্জিনিয়ারের তথ্য সম্পাদনা করুন' : isCustomer ? 'গ্রাহকের তথ্য সম্পাদনা করুন' : 'সরবরাহকারীর তথ্য সম্পাদনা করুন'
+                      : isEngineer ? 'নতুন ইঞ্জিনিয়ার নিবন্ধন করুন' : isCustomer ? 'নতুন গ্রাহক যোগ করুন' : 'নতুন কোম্পানি / সরবরাহকারী যোগ করুন'}
                   </h1>
                 </div>
               </div>
@@ -904,40 +994,40 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                 {/* --- LEFT COLUMN (WIDE ~75%) --- */}
                 <div className="lg:col-span-9 space-y-5">
                   
-                  {/* STEP 1: ❶ প্রাথমিক তথ্য */}
+                  {/* STEP 1: ❶ প্রাথমিক ও পেশাগত তথ্য */}
                   <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
                     <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
                       <span className="w-6 h-6 rounded-md bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
                         ১
                       </span>
                       <h2 className="text-sm font-black text-slate-900 tracking-wide">
-                        প্রাথমিক তথ্য
+                        {isEngineer ? 'প্রাথমিক ও পেশাগত তথ্য' : 'প্রাথমিক তথ্য'}
                       </h2>
                     </div>
 
-                    <div className={cn("grid grid-cols-1 gap-3 text-xs font-bold text-slate-700", isCustomer ? "md:grid-cols-3" : "md:grid-cols-2")}>
+                    <div className={cn("grid grid-cols-1 gap-3 text-xs font-bold text-slate-700", (isCustomer || isEngineer) ? "md:grid-cols-3" : "md:grid-cols-2")}>
                       <div className="space-y-1">
                         <Label className="text-xs font-bold text-slate-700">
-                          {isCustomer ? 'গ্রাহকের নাম' : 'কোম্পানি / প্রতিনিধির নাম'} <span className="text-rose-500">*</span>
+                          {isEngineer ? 'ইঞ্জিনিয়ারের পুরো নাম' : isCustomer ? 'গ্রাহকের নাম' : 'কোম্পানি / প্রতিনিধির নাম'} <span className="text-rose-500">*</span>
                         </Label>
                         <Input
                           required
                           value={formData.name}
                           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                          placeholder={isCustomer ? 'যেমন: মোহাম্মদ রফিকুল ইসলাম' : 'যেমন: বিএসআরএম স্টিল মিলস'}
+                          placeholder={isEngineer ? 'যেমন: ইঞ্জি. মাহফুজুর রহমান' : isCustomer ? 'যেমন: মোহাম্মদ রফিকুল ইসলাম' : 'যেমন: বিএসআরএম স্টিল মিলস'}
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
 
-                      {isCustomer && (
+                      {(isCustomer || isEngineer) && (
                         <div className="space-y-1">
                           <Label className="text-xs font-bold text-slate-700">
-                            ব্যবসা / প্রতিষ্ঠানের নাম <span className="text-xs font-normal text-slate-400">(ঐচ্ছিক)</span>
+                            {isEngineer ? 'ফার্ম / কনস্ট্রাকশন কোম্পানি / অফিসের নাম' : 'ব্যবসা / প্রতিষ্ঠানের নাম'} <span className="text-xs font-normal text-slate-400">(ঐচ্ছিক)</span>
                           </Label>
                           <Input
                             value={formData.businessName}
                             onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                            placeholder="যেমন: রফিক ট্রেডার্স (ঐচ্ছিক)"
+                            placeholder={isEngineer ? 'যেমন: রহমান ডিজাইন এন্ড বিল্ডার্স' : 'যেমন: রফিক ট্রেডার্স (ঐচ্ছিক)'}
                             className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                           />
                         </div>
@@ -945,19 +1035,29 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
                       <div className="space-y-1">
                         <Label className="text-xs font-bold text-slate-700">
-                          {isCustomer ? 'গ্রাহকের ধরন (ঐচ্ছিক)' : 'সরবরাহের ধরন / ক্যাটাগরি (ঐচ্ছিক)'}
+                          {isEngineer ? 'পদবী / ক্যাটাগরি' : isCustomer ? 'গ্রাহকের ধরন (ঐচ্ছিক)' : 'সরবরাহের ধরন / ক্যাটাগরি (ঐচ্ছিক)'}
                         </Label>
                         <Select
                           value={formData.customerType}
                           onValueChange={(val: string | null) =>
-                            setFormData({ ...formData, customerType: val || (isCustomer ? 'খুচরা গ্রাহক' : 'রড') })
+                            setFormData({ ...formData, customerType: val || (isEngineer ? 'সিভিল ইঞ্জিনিয়ার' : isCustomer ? 'খুচরা গ্রাহক' : 'রড') })
                           }
                         >
                           <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 font-bold">
                             <SelectValue placeholder="ধরন নির্বাচন করুন" />
                           </SelectTrigger>
                           <SelectContent className="font-bengali text-xs">
-                            {isCustomer ? (
+                            {isEngineer ? (
+                              <>
+                                <SelectItem value="সিভিল ইঞ্জিনিয়ার">📐 সিভিল ইঞ্জিনিয়ার</SelectItem>
+                                <SelectItem value="স্ট্রাকচারাল ইঞ্জিনিয়ার">🏛️ স্ট্রাকচারাল ইঞ্জিনিয়ার</SelectItem>
+                                <SelectItem value="ডিপ্লোমা ইঞ্জিনিয়ার">🏗️ ডিপ্লোমা ইঞ্জিনিয়ার</SelectItem>
+                                <SelectItem value="আর্কিটেক্ট">🎨 আর্কিটেক্ট / স্থপতি</SelectItem>
+                                <SelectItem value="কনসালটেন্ট">💼 কনসালটেন্ট</SelectItem>
+                                <SelectItem value="সাইট সুপারভাইজার">👷‍♂️ সাইট সুপারভাইজার</SelectItem>
+                                <SelectItem value="কন্ট্রাকটর">🛠️ ঠিকাদার / হেড মিস্ত্রি</SelectItem>
+                              </>
+                            ) : isCustomer ? (
                               <>
                                 <SelectItem value="খুচরা গ্রাহক">খুচরা গ্রাহক</SelectItem>
                                 <SelectItem value="পাইকারি গ্রাহক">পাইকারি গ্রাহক</SelectItem>
@@ -1033,14 +1133,14 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                     </div>
                   </div>
 
-                  {/* STEP 2: ❷ ঠিকানা তথ্য */}
+                  {/* STEP 2: ❷ ঠিকানা ও প্রজেক্ট তথ্য */}
                   <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
                     <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
                       <span className="w-6 h-6 rounded-full bg-orange-500 text-white font-black text-xs flex items-center justify-center shadow-xs">
                         ২
                       </span>
                       <h2 className="text-sm font-black text-slate-900 tracking-wide">
-                        ঠিকানা ও অবস্থান তথ্য (ঐচ্ছিক)
+                        {isEngineer ? 'ঠিকানা ও চলমান সাইট / প্রজেক্টের তথ্য' : 'ঠিকানা ও অবস্থান তথ্য (ঐচ্ছিক)'}
                       </h2>
                     </div>
 
@@ -1124,7 +1224,9 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           </SelectContent>
                         </Select>
                       </div>
+                    </div>
 
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs font-bold text-slate-700">
                       <div className="space-y-1">
                         <Label className="text-xs font-bold text-slate-700">উপজেলা / থানা</Label>
                         <Select
@@ -1143,15 +1245,15 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           </SelectContent>
                         </Select>
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs font-bold text-slate-700">
-                      <div className="md:col-span-3 space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">বিস্তারিত ঠিকানা (বিল্ডিং / রোড / এলাকা)</Label>
+                      <div className="md:col-span-2 space-y-1">
+                        <Label className="text-xs font-bold text-slate-700">
+                          {isEngineer ? 'বিস্তারিত চেম্বার / অফিসের ঠিকানা' : 'বিস্তারিত ঠিকানা (বিল্ডিং / রোড / এলাকা)'}
+                        </Label>
                         <Input
                           value={formData.address}
                           onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                          placeholder="দোকান বা বাড়ির বিস্তারিত ঠিকানা"
+                          placeholder={isEngineer ? 'চেম্বার বা অফিসের ঠিকানা' : 'দোকান বা বাড়ির বিস্তারিত ঠিকানা'}
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1168,14 +1270,14 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                     </div>
                   </div>
 
-                  {/* STEP 3: ❸ আর্থিক পলিসি ও পরিচয়পত্র */}
+                  {/* STEP 3: ❸ আর্থিক পলিসি, কমিশন ও পরিচয়পত্র */}
                   <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
                     <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
                       <span className="w-6 h-6 rounded-md bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
                         ৩
                       </span>
                       <h2 className="text-sm font-black text-slate-900 tracking-wide">
-                        আর্থিক পলিসি ও পরিচয়পত্র
+                        {isEngineer ? 'কমিশন পলিসি, আইডি ও হিসাবের শর্তাবলী' : 'আর্থিক পলিসি ও পরিচয়পত্র'}
                       </h2>
                     </div>
 
@@ -1184,27 +1286,42 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         <Label className="text-xs font-bold text-slate-700">পরিচয়পত্রের ধরন</Label>
                         <Select
                           value={formData.idType}
-                          onValueChange={(val: string | null) => setFormData({ ...formData, idType: val || 'জাতীয় পরিচয়পত্র' })}
+                          onValueChange={(val: string | null) => setFormData({ ...formData, idType: val || (isEngineer ? 'IEB মেম্বারশিপ' : 'জাতীয় পরিচয়পত্র') })}
                         >
                           <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 font-bold">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="font-bengali text-xs">
-                            <SelectItem value="জাতীয় পরিচয়পত্র">জাতীয় পরিচয়পত্র (এনআইডি)</SelectItem>
-                            <SelectItem value="ট্রেড লাইসেন্স">ট্রেড লাইসেন্স</SelectItem>
-                            <SelectItem value="পাসপোর্ট">পাসপোর্ট</SelectItem>
-                            <SelectItem value="জন্ম নিবন্ধন">জন্ম নিবন্ধন</SelectItem>
-                            <SelectItem value="অন্যান্য">অন্যান্য পরিচয়পত্র</SelectItem>
+                            {isEngineer ? (
+                              <>
+                                <SelectItem value="IEB মেম্বারশিপ">IEB মেম্বারশিপ কার্ড</SelectItem>
+                                <SelectItem value="রাজউক লাইসেন্স">রাজউক লাইসেন্স</SelectItem>
+                                <SelectItem value="জাতীয় পরিচয়পত্র">জাতীয় পরিচয়পত্র (এনআইডি)</SelectItem>
+                                <SelectItem value="ট্রেড লাইসেন্স">ট্রেড লাইসেন্স</SelectItem>
+                                <SelectItem value="পাসপোর্ট">পাসপোর্ট</SelectItem>
+                                <SelectItem value="অন্যান্য">অন্যান্য পরিচয়পত্র</SelectItem>
+                              </>
+                            ) : (
+                              <>
+                                <SelectItem value="জাতীয় পরিচয়পত্র">জাতীয় পরিচয়পত্র (এনআইডি)</SelectItem>
+                                <SelectItem value="ট্রেড লাইসেন্স">ট্রেড লাইসেন্স</SelectItem>
+                                <SelectItem value="পাসপোর্ট">পাসপোর্ট</SelectItem>
+                                <SelectItem value="জন্ম নিবন্ধন">জন্ম নিবন্ধন</SelectItem>
+                                <SelectItem value="অন্যান্য">অন্যান্য পরিচয়পত্র</SelectItem>
+                              </>
+                            )}
                           </SelectContent>
                         </Select>
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">পরিচয়পত্র / লাইসেন্স নম্বর</Label>
+                        <Label className="text-xs font-bold text-slate-700">
+                          {isEngineer ? 'মেম্বারশিপ / লাইসেন্স / এনআইডি নম্বর' : 'পরিচয়পত্র / লাইসেন্স নম্বর'}
+                        </Label>
                         <Input
                           value={formData.nid}
                           onChange={(e) => setFormData({ ...formData, nid: e.target.value })}
-                          placeholder="এনআইডি বা লাইসেন্স নম্বর"
+                          placeholder={isEngineer ? 'যেমন: IEB M-34821 বা NID' : 'এনআইডি বা লাইসেন্স নম্বর'}
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1222,7 +1339,9 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs font-bold text-slate-700 pt-1">
                       <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">প্রারম্ভিক বকেয়া / পাওনা (৳)</Label>
+                        <Label className="text-xs font-bold text-slate-700">
+                          {isEngineer ? 'প্রারম্ভিক কমিশন / পাওনা (৳)' : 'প্রারম্ভিক বকেয়া / পাওনা (৳)'}
+                        </Label>
                         <Input
                           type="number"
                           value={formData.openingBalance}
@@ -1235,7 +1354,9 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">বাকি বা ঋণের সীমা (৳)</Label>
+                        <Label className="text-xs font-bold text-slate-700">
+                          {isEngineer ? 'সর্বোচ্চ পাওনা লিমিট (৳)' : 'বাকি বা ঋণের সীমা (৳)'}
+                        </Label>
                         <Input
                           type="number"
                           value={formData.creditLimit}
@@ -1248,7 +1369,9 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">স্পেশাল কমিশন / ছাড় (%)</Label>
+                        <Label className="text-xs font-bold text-slate-700">
+                          {isEngineer ? 'রেফারেল কমিশন হার (%)' : 'স্পেশাল কমিশন / ছাড় (%)'}
+                        </Label>
                         <Input
                           type="number"
                           value={formData.discountPercent}
@@ -1272,12 +1395,77 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                       </div>
                     </div>
 
+                    {/* Engineer Specific Rod & Cement Commission Per-Unit Inputs */}
+                    {isEngineer && (
+                      <div className="p-4 bg-orange-50/80 border border-orange-200 rounded-2xl space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-base shrink-0">
+                            👷‍♂️
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black text-orange-950">পণ্যভিত্তিক বিক্রয় কমিশন রেট (রড ও সিমেন্ট)</h4>
+                            <p className="text-[11px] text-orange-700 font-semibold">
+                              চালান/ইনভয়েস তৈরির সময় কাস্টমার যত কেজি রড বা যত বস্তা সিমেন্ট নিবে, সেই পরিমাণের উপর স্বয়ংক্রিয়ভাবে কমিশন হিসাব হবে।
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                          {/* Rod Commission (Per KG) */}
+                          <div className="space-y-1.5 bg-white p-3.5 rounded-xl border border-orange-200/80 shadow-2xs">
+                            <Label className="text-xs font-black text-slate-800 flex items-center justify-between">
+                              <span>রড কমিশন রেট <span className="text-orange-600 font-bold">(প্রতি কেজি)</span></span>
+                              <span className="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold">৳ / কেজি</span>
+                            </Label>
+                            <div className="relative">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={formData.rodCommissionRate}
+                                onChange={(e) => setFormData({ ...formData, rodCommissionRate: e.target.value })}
+                                placeholder="যেমন: ০.৫০ (৫০ পয়সা/কেজি)"
+                                className="rounded-lg h-10 bg-slate-50 border-orange-200 font-black text-slate-900 text-sm pl-7"
+                              />
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xs">৳</span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-medium">
+                              ১ টন রড বিক্রি হলে কমিশন হবে: <strong className="text-orange-700 font-bold font-mono">৳ {(Number(formData.rodCommissionRate || 0) * 1000).toLocaleString('en-IN')}</strong>
+                            </p>
+                          </div>
+
+                          {/* Cement Commission (Per Bag) */}
+                          <div className="space-y-1.5 bg-white p-3.5 rounded-xl border border-orange-200/80 shadow-2xs">
+                            <Label className="text-xs font-black text-slate-800 flex items-center justify-between">
+                              <span>সিমেন্ট কমিশন রেট <span className="text-orange-600 font-bold">(প্রতি বস্তা)</span></span>
+                              <span className="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold">৳ / বস্তা</span>
+                            </Label>
+                            <div className="relative">
+                              <Input
+                                type="number"
+                                step="0.1"
+                                value={formData.cementCommissionRate}
+                                onChange={(e) => setFormData({ ...formData, cementCommissionRate: e.target.value })}
+                                placeholder="যেমন: ১০.০০ (১০ টাকা/বস্তা)"
+                                className="rounded-lg h-10 bg-slate-50 border-orange-200 font-black text-slate-900 text-sm pl-7"
+                              />
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xs">৳</span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-medium">
+                              ১০০ বস্তা সিমেন্ট বিক্রি হলে কমিশন হবে: <strong className="text-orange-700 font-bold font-mono">৳ {(Number(formData.cementCommissionRate || 0) * 100).toLocaleString('en-IN')}</strong>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="space-y-1 pt-1">
-                      <Label className="text-xs font-bold text-slate-700">বিশেষ মন্তব্য / নোট</Label>
+                      <Label className="text-xs font-bold text-slate-700">
+                        {isEngineer ? 'চলমান সাইট / প্রজেক্ট বা চুক্তির বিশেষ নোট' : 'বিশেষ মন্তব্য / নোট'}
+                      </Label>
                       <Input
                         value={formData.note}
                         onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-                        placeholder="গ্রাহক সম্পর্কে যেকোনো অতিরিক্ত তথ্য বা নোট লিখে রাখুন"
+                        placeholder={isEngineer ? 'যেমন: বসুন্ধরা ৩ তলা রেসিডেন্সিয়াল সাইট, প্রতি টন রডে ৫০ টাকা ও প্রতি ব্যাগ সিমেন্টে ২০ টাকা কমিশন' : 'গ্রাহক সম্পর্কে যেকোনো অতিরিক্ত তথ্য বা নোট লিখে রাখুন'}
                         className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                       />
                     </div>
@@ -1289,7 +1477,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                   {/* CARD 1: LOGO / PHOTO UPLOAD */}
                   <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3 text-center">
                     <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">
-                      {isCustomer ? 'গ্রাহকের ছবি / লোগো' : 'কোম্পানির লোগো / ছবি'}
+                      {isEngineer ? 'ইঞ্জিনিয়ারের ছবি' : isCustomer ? 'গ্রাহকের ছবি / লোগো' : 'কোম্পানির লোগো / ছবি'}
                     </h2>
 
                     <div className="flex flex-col items-center gap-2.5">
@@ -1297,6 +1485,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         {formData.photoUrl ? (
                           /* eslint-disable-next-line @next/next/no-img-element */
                           <img src={formData.photoUrl} alt="লোগো / ছবি" className="w-full h-full object-cover" />
+                        ) : isEngineer ? (
+                          <Users className="w-9 h-9 text-blue-400" />
                         ) : isCustomer ? (
                           <Users className="w-9 h-9 text-slate-300" />
                         ) : (
@@ -1306,7 +1496,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
                       <div className="space-y-1.5 w-full">
                         <p className="text-[10px] text-slate-400 font-bold leading-tight">
-                          ছবি বা লোগো আপলোড করুন
+                          {isEngineer ? 'প্রোফাইল ছবি আপলোড করুন' : 'ছবি বা লোগো আপলোড করুন'}
                           <br />
                           <span className="text-[9px] text-slate-400 font-semibold">জেপিজি বা পিএনজি (সর্বোচ্চ ২ মেগাবাইট)</span>
                         </p>
@@ -1338,10 +1528,10 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                     <div className="space-y-2.5 pt-0.5 text-[11px]">
                       <div className="flex justify-between items-center">
                         <span className="text-slate-500 font-semibold">
-                          {isCustomer ? 'গ্রাহক আইডি' : 'কোম্পানি আইডি'}
+                          {isEngineer ? 'ইঞ্জিনিয়ার আইডি' : isCustomer ? 'গ্রাহক আইডি' : 'কোম্পানি আইডি'}
                         </span>
                         <span className="font-mono bg-slate-100 text-slate-800 px-2 py-0.5 rounded text-[10px] font-bold">
-                          {isCustomer ? (editing ? `গ্রাহক-${toBnDigits(editing.id)}` : 'স্বয়ংক্রিয় তৈরি') : (editing ? `সরবরাহকারী-${toBnDigits(editing.id)}` : 'স্বয়ংক্রিয় তৈরি')}
+                          {isEngineer ? (editing ? `ইঞ্জি-${toBnDigits(editing.id)}` : 'স্বয়ংক্রিয় তৈরি') : isCustomer ? (editing ? `গ্রাহক-${toBnDigits(editing.id)}` : 'স্বয়ংক্রিয় তৈরি') : (editing ? `সরবরাহকারী-${toBnDigits(editing.id)}` : 'স্বয়ংক্রিয় তৈরি')}
                         </span>
                       </div>
 
@@ -1354,10 +1544,10 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
                       <div className="flex justify-between items-center">
                         <span className="text-slate-500 font-semibold">
-                          {isCustomer ? 'গ্রাহকের ধরন' : 'সরবরাহের ধরন'}
+                          {isEngineer ? 'পদবী' : isCustomer ? 'গ্রাহকের ধরন' : 'সরবরাহের ধরন'}
                         </span>
-                        <span className="bg-orange-100 text-orange-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                          {formData.customerType || (isCustomer ? 'খুচরা গ্রাহক' : 'রড')}
+                        <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                          {formData.customerType || (isEngineer ? 'সিভিল ইঞ্জিনিয়ার' : isCustomer ? 'খুচরা গ্রাহক' : 'রড')}
                         </span>
                       </div>
                     </div>
@@ -1370,7 +1560,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                 <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold">
                   <Lightbulb className="w-4 h-4 text-blue-600 flex-shrink-0" />
                   <span>
-                    💡 {isCustomer ? 'গ্রাহকের তথ্য সংরক্ষণের পূর্বে সঠিকতা যাচাই করে নিন।' : 'কোম্পানির তথ্য সংরক্ষণের পূর্বে যাচাই করে নিন।'}
+                    💡 {isEngineer ? 'ইঞ্জিনিয়ারের তথ্য সংরক্ষণের পূর্বে সঠিকতা যাচাই করে নিন।' : isCustomer ? 'গ্রাহকের তথ্য সংরক্ষণের পূর্বে সঠিকতা যাচাই করে নিন।' : 'কোম্পানির তথ্য সংরক্ষণের পূর্বে যাচাই করে নিন।'}
                   </span>
                 </div>
 
@@ -1389,7 +1579,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                     className="bg-blue-600 hover:bg-blue-700 text-white font-black px-6 h-11 rounded-xl shadow-md shadow-blue-600/20 active:scale-95 transition-all text-sm cursor-pointer"
                   >
                     <Save className="w-4 h-4 mr-2 inline" />
-                    {isCustomer ? 'গ্রাহকের তথ্য সংরক্ষণ করুন' : 'সরবরাহকারী সংরক্ষণ করুন'}
+                    {isEngineer ? 'ইঞ্জিনিয়ার সংরক্ষণ করুন' : isCustomer ? 'গ্রাহকের তথ্য সংরক্ষণ করুন' : 'সরবরাহকারী সংরক্ষণ করুন'}
                   </Button>
                 </div>
               </div>

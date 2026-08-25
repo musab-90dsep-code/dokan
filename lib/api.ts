@@ -20,7 +20,7 @@ export interface ShopSettingsData {
 
 export interface PartyData {
   id?: string | number;
-  party_type: 'customer' | 'supplier' | 'both';
+  party_type: 'customer' | 'supplier' | 'engineer' | 'both';
   name: string;
   business_name?: string;
   customer_type?: string;
@@ -120,6 +120,7 @@ export interface TransactionData {
   party?: number | null;
   party_name?: string;
   party_phone?: string;
+  party_type?: 'customer' | 'supplier' | 'engineer';
   transaction_type: 'sale' | 'purchase' | 'sale_return' | 'purchase_return' | 'payment_in' | 'payment_out';
   status?: string;
   subtotal?: number;
@@ -195,13 +196,44 @@ export interface DashboardStats {
   recentTransactions: TransactionData[];
 }
 
+export interface AuthUserData {
+  id: number;
+  username: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  phone?: string;
+  role: 'admin' | 'staff' | 'viewer';
+  role_display?: string;
+  role_badge?: string;
+  is_active?: boolean;
+  is_superuser?: boolean;
+  date_joined?: string;
+}
+
+export type UserData = AuthUserData;
+
+export interface AuthLoginResponse {
+  token: string;
+  user: AuthUserData;
+  message: string;
+}
+
 // Request Helper
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
   
+  const token = typeof window !== 'undefined' ? localStorage.getItem('dokan_auth_token') : null;
+  const authHeaders: Record<string, string> = {};
+  if (token && /^[a-f0-9]{30,}$/i.test(token.trim())) {
+    authHeaders['Authorization'] = `Token ${token.trim()}`;
+  }
+
   const headers = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
+    ...authHeaders,
     ...(options.headers || {}),
   };
 
@@ -213,6 +245,23 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
     if (!response.ok) {
       const errorText = await response.text();
+      let errorJson: any = null;
+      try {
+        errorJson = JSON.parse(errorText);
+      } catch (e) {}
+
+      if (response.status === 401 && (errorJson?.detail === 'Invalid token.' || errorText.includes('Invalid token'))) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('dokan_auth_token');
+        }
+      }
+
+      if (errorJson && errorJson.detail) {
+        throw new Error(errorJson.detail);
+      } else if (errorJson && errorJson.error) {
+        throw new Error(errorJson.error);
+      }
+
       throw new Error(`API Error [${response.status} ${response.statusText}]: ${errorText}`);
     }
 
@@ -258,9 +307,9 @@ export const api = {
     }
   },
 
-  // Parties (Customers & Suppliers)
+  // Parties (Customers, Suppliers & Engineers)
   parties: {
-    list: async (params?: { party_type?: 'customer' | 'supplier'; search?: string }): Promise<PartyData[]> => {
+    list: async (params?: { party_type?: 'customer' | 'supplier' | 'engineer' | 'both'; search?: string }): Promise<PartyData[]> => {
       try {
         const query = new URLSearchParams();
         if (params?.party_type) query.append('party_type', params.party_type);
@@ -570,6 +619,50 @@ export const api = {
   dashboard: {
     getStats: async (): Promise<DashboardStats> => {
       return request<DashboardStats>('/dashboard/stats/');
+    }
+  },
+
+  // Authentication & User Management
+  auth: {
+    login: async (username: string, password?: string): Promise<AuthLoginResponse> => {
+      return request<AuthLoginResponse>('/auth/login/', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      });
+    },
+    me: async (): Promise<AuthUserData> => {
+      return request<AuthUserData>('/auth/me/');
+    },
+    logout: async (): Promise<{ message: string }> => {
+      return request<{ message: string }>('/auth/logout/', {
+        method: 'POST',
+      });
+    },
+    users: {
+      list: async (): Promise<AuthUserData[]> => {
+        try {
+          const res: any = await request<AuthUserData[]>('/auth/users/');
+          return Array.isArray(res) ? res : (res?.results || []);
+        } catch (e: any) {
+          // If unauthenticated or token expired, return empty list gracefully
+          return [];
+        }
+      },
+      create: async (data: { username: string; password?: string; role: string; full_name?: string; phone?: string; email?: string }): Promise<AuthUserData> => {
+        return request<AuthUserData>('/auth/users/', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
+      },
+      update: async (id: number | string, data: Partial<{ username: string; password?: string; role: string; full_name?: string; phone?: string; email?: string }>): Promise<AuthUserData> => {
+        return request<AuthUserData>(`/auth/users/${id}/`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        });
+      },
+      delete: async (id: number | string): Promise<void> => {
+        return request<void>(`/auth/users/${id}/`, { method: 'DELETE' });
+      }
     }
   }
 };

@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Package, ShoppingCart, Users, Settings, LogOut,
   TrendingUp, ChevronDown, ChevronRight, Truck, BarChart3,
   AlertTriangle, FileText, Receipt, RotateCcw, Building2,
-  DollarSign, PieChart, Landmark, ArrowUpCircle, ArrowDownCircle, PlusCircle, BookOpen, ArrowRightLeft, Scale, PanelLeftClose, PanelLeftOpen, Wallet, Percent
+  DollarSign, PieChart, Landmark, ArrowUpCircle, ArrowDownCircle, PlusCircle, BookOpen, ArrowRightLeft, Scale, PanelLeftClose, PanelLeftOpen, Wallet, Percent, HardHat
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -31,6 +31,7 @@ const menuStructure: MenuItem[] = [
     href: '/inventory',
     children: [
       { name: 'সব পণ্য', href: '/inventory', icon: Package },
+      { name: 'স্টক শিট', href: '/reports/stock-sheet', icon: FileText },
       { name: 'কম স্টক', href: '/inventory/low-stock', icon: AlertTriangle },
     ],
   },
@@ -55,6 +56,11 @@ const menuStructure: MenuItem[] = [
     ],
   },
   {
+    name: 'ইঞ্জিনিয়ার',
+    icon: HardHat,
+    href: '/engineers',
+  },
+  {
     name: 'লেনদেন',
     icon: ArrowUpCircle,
     href: '/transactions',
@@ -76,11 +82,12 @@ const menuStructure: MenuItem[] = [
     href: '/reports',
     children: [
       { name: 'সব রিপোর্ট', href: '/reports?tab=hub', icon: BarChart3 },
-      { name: 'বাকি কাস্টমার তালিকা', href: '/reports?tab=due_customers', icon: Users },
+      { name: 'স্টক শিট রিপোর্ট', href: '/reports/stock-sheet', icon: Package },
+      { name: 'বাকি কাস্টমার তালিকা', href: '/customers/dues', icon: Receipt },
       { name: 'ব্যাংক এর তালিকা', href: '/reports?tab=bank_list', icon: Landmark },
       { name: 'ডেইলী টপসিট', href: '/reports?tab=daily_topsheet', icon: FileText },
       { name: 'ডেইলী সেলস স্টেটমেন্ট', href: '/reports?tab=daily_sales', icon: ShoppingCart },
-      { name: 'প্রফিট এবং লস', href: '/reports?tab=profit_loss', icon: TrendingUp },
+      { name: 'ইনকাম বিবরণী (Profit/Loss)', href: '/reports?tab=profit_loss', icon: TrendingUp },
       { name: 'ব্যালেন্স স্টেটমেন্ট', href: '/reports?tab=balance_sheet', icon: Scale },
       { name: 'রড সিমেন্ট ক্রয় বিক্রয় স্টেটমেন্ট', href: '/reports?tab=trade_register', icon: Truck },
       { name: 'পেন্ডিং কমিশন তালিকা', href: '/reports?tab=commissions', icon: Percent },
@@ -98,9 +105,12 @@ interface SidebarProps {
   onCloseMobile?: () => void;
 }
 
+import { useAuth } from '@/lib/authContext';
+
 export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { user, role, logout } = useAuth();
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const currentType = searchParams.get('type');
   
@@ -128,8 +138,11 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
 
   const handleLogout = async () => {
     try { 
-      window.location.href = '/';
-    } catch (e) { console.error(e); }
+      await logout();
+    } catch (e) { 
+      console.error(e); 
+      window.location.href = '/login';
+    }
   };
 
   const handleNavClick = () => {
@@ -355,15 +368,34 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
             </nav>
           </ScrollArea>
 
-          {/* FOOTER LOGOUT */}
-          <div className="p-3 border-t border-slate-100 bg-slate-50/50">
+          {/* FOOTER USER INFO & LOGOUT */}
+          <div className="p-3 border-t border-slate-100 bg-slate-50/50 space-y-2">
+            {(isExpanded || mobileOpen) && user && (
+              <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
+                <div className={cn(
+                  "w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm text-white flex-shrink-0 shadow-2xs",
+                  role === 'admin' ? "bg-amber-500" : role === 'staff' ? "bg-blue-600" : "bg-emerald-600"
+                )}>
+                  {role === 'admin' ? '👑' : role === 'staff' ? '👔' : '👁️'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-slate-800 truncate">
+                    {user.full_name || user.username}
+                  </p>
+                  <p className="text-[10px] font-semibold text-slate-500 truncate">
+                    {role === 'admin' ? 'অ্যাডমিন (সর্বোচ্চ ক্ষমতা)' : role === 'staff' ? 'স্টাফ (এডিট/ডিলিট বন্ধ)' : 'ভিউয়ার (রিড-অনলি)'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <button
               onClick={handleLogout}
               title={!isExpanded && !mobileOpen ? 'লগ আউট' : undefined}
-              className="w-full flex items-center justify-start gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:text-rose-600 hover:bg-rose-50 transition-colors text-sm font-bold relative group"
+              className="w-full flex items-center justify-start gap-3 px-3 py-2 rounded-xl text-slate-600 hover:text-rose-600 hover:bg-rose-50 transition-colors text-xs font-bold relative group cursor-pointer"
             >
-              <LogOut className="w-5 h-5 flex-shrink-0 text-rose-500" />
-              {(isExpanded || mobileOpen) && <span className="whitespace-nowrap">লগ আউট</span>}
+              <LogOut className="w-4 h-4 flex-shrink-0 text-rose-500" />
+              {(isExpanded || mobileOpen) && <span className="whitespace-nowrap">লগ আউট করুন</span>}
 
               {!isExpanded && !mobileOpen && (
                 <div className="hidden md:block absolute left-full ml-2 px-2.5 py-1 bg-rose-900 text-white text-xs font-medium rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg z-50">

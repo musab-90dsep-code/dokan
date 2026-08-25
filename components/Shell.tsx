@@ -90,6 +90,10 @@ export interface LaborChargeItem {
   id: string;
   invoiceId: string;
   date: string;
+  type?: 'loading' | 'unloading';
+  partyName?: string;
+  cementBags?: number;
+  loadingRate?: number;
   unloadingSite?: string;
   operatorName?: string;
   amount: number;
@@ -100,14 +104,12 @@ export interface LaborChargeItem {
   rawTx?: any;
 }
 
+import { useAuth } from '@/lib/authContext';
+
 export function Shell({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const { user, role, isAdmin, isStaff, isViewer, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  // Admin user context
-  const [user, setUser] = useState<{ displayName: string; email: string; photoURL?: string } | null>({
-    displayName: 'এডমিন ইউজার',
-    email: 'admin@dokan.com'
-  });
   const [loading, setLoading] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showChequeDrawer, setShowChequeDrawer] = useState(false);
@@ -363,26 +365,31 @@ export function Shell({ children }: { children: ReactNode }) {
         });
       setOrders(orderItems);
 
-      // Load shipping & labor charges from purchase transactions
+      // Load shipping & labor charges from purchase & sales transactions
       const sItems: ShippingChargeItem[] = [];
       const lItems: LaborChargeItem[] = [];
 
-      safeTxs
-        .filter(t => t.transaction_type === 'purchase')
-        .forEach(t => {
-          let meta: any = {};
-          if (t.notes && typeof t.notes === 'string' && t.notes.trim().startsWith('{')) {
-            try {
-              const firstLine = t.notes.split('\n')[0];
-              meta = JSON.parse(firstLine);
-            } catch {}
-          }
+      safeTxs.forEach(t => {
+        let meta: any = {};
+        if (t.notes && typeof t.notes === 'string' && t.notes.trim().startsWith('{')) {
+          try {
+            const firstLine = t.notes.split('\n')[0];
+            meta = JSON.parse(firstLine);
+          } catch {}
+        }
 
-          const tAny = t as any;
+        const tAny = t as any;
+        const txDate = t.created_at || new Date().toISOString();
+
+        // 1. PURCHASE TRANSACTIONS (Shipping & Unloading)
+        if (t.transaction_type === 'purchase') {
+          const rawStatus = String(t.status || meta.status || '').toLowerCase().trim();
+          const isPending = rawStatus === 'pending' || rawStatus === 'draft' || rawStatus === 'cancelled' || rawStatus === 'rejected' || rawStatus === 'অপেক্ষমান' || rawStatus === 'বাতিল';
+          if (isPending) return;
+
           const shipCost = Number(tAny.shipping_cost !== undefined ? tAny.shipping_cost : (meta.shippingCost || meta.transportCost || 0));
           const labCost = Number(tAny.labor_cost !== undefined ? tAny.labor_cost : (meta.laborCost || 0));
           const invNo = t.invoice_no || (t.id ? `PUR-${t.id}` : 'PUR-0001');
-          const txDate = t.created_at || new Date().toISOString();
 
           const shipPaidAmt = Number(meta.shippingPaidAmount !== undefined ? meta.shippingPaidAmount : (meta.shippingStatus === 'paid' ? shipCost : 0));
           const labPaidAmt = Number(meta.laborPaidAmount !== undefined ? meta.laborPaidAmount : (meta.laborStatus === 'paid' ? labCost : 0));
@@ -431,6 +438,8 @@ export function Shell({ children }: { children: ReactNode }) {
               id: String(t.id),
               invoiceId: invNo,
               date: txDate,
+              type: 'unloading',
+              partyName: t.party_name || 'সাপ্লায়ার',
               unloadingSite: tAny.delivery_address || meta.deliveryAddress || meta.unloadingSite || '',
               operatorName: meta.preparedBy || meta.operatorName || '',
               amount: labCost,
@@ -441,7 +450,60 @@ export function Shell({ children }: { children: ReactNode }) {
               rawTx: t
             });
           }
-        });
+        }
+
+        // 2. SALES TRANSACTIONS (Cement Loading Charges - Shop Payable)
+        // Strictly exclude pending/draft/unapproved invoices
+        if (t.transaction_type === 'sale') {
+          const rawStatus = String(t.status || meta.status || '').toLowerCase().trim();
+          const isPending = rawStatus === 'pending' || rawStatus === 'draft' || rawStatus === 'cancelled' || rawStatus === 'rejected' || rawStatus === 'অপেক্ষমান' || rawStatus === 'বাতিল';
+          if (isPending) return;
+
+          const cementRate = Number(meta.cementLaborRate || tAny.cementLaborRate || 0);
+          const cementCost = Number(meta.cementLaborCost || meta.cementLoadingCharge || tAny.cementLaborCost || 0);
+          const cementBags = Number(meta.cementTotalBags || tAny.cementTotalBags || 0);
+          const totalLoadingCost = cementCost > 0 ? cementCost : (cementRate > 0 && cementBags > 0 ? cementRate * cementBags : 0);
+
+          if (totalLoadingCost > 0 || (cementBags > 0 && cementRate > 0)) {
+            const invNo = t.invoice_no || (t.id ? `INV-${t.id}` : 'INV-0001');
+            const isPaid = Boolean(meta.cementLoadingPaid || tAny.cementLoadingPaid);
+            const loadingPaidAmt = Number(meta.cementLoadingPaidAmount !== undefined ? meta.cementLoadingPaidAmount : (isPaid ? totalLoadingCost : 0));
+
+            const labDue = Math.max(0, Math.round((totalLoadingCost - loadingPaidAmt) * 100) / 100);
+            const labOver = Math.max(0, Math.round((loadingPaidAmt - totalLoadingCost) * 100) / 100);
+            let labStatus: 'pending' | 'paid' | 'partial' | 'overpaid' = 'pending';
+            if (labDue > 0) {
+              labStatus = loadingPaidAmt > 0 ? 'partial' : 'pending';
+            } else if (labOver > 0) {
+              labStatus = 'overpaid';
+            } else {
+              labStatus = 'paid';
+            }
+
+            lItems.push({
+              id: String(t.id),
+              invoiceId: invNo,
+              date: txDate,
+              type: 'loading',
+              partyName: t.party_name || meta.customerName || 'খুচরা গ্রাহক',
+              cementBags: cementBags > 0 ? cementBags : (cementRate > 0 ? Math.round(totalLoadingCost / cementRate) : undefined),
+              loadingRate: cementRate > 0 ? cementRate : undefined,
+              unloadingSite: tAny.delivery_address || meta.deliveryAddress || 'গ্রাহকের সাইট / ডেলিভারি',
+              operatorName: meta.cementLoadingSardar || meta.preparedBy || meta.operatorName || '',
+              amount: totalLoadingCost,
+              status: labStatus,
+              paidAmount: loadingPaidAmt,
+              dueAmount: labDue,
+              overpaidAmount: labOver,
+              rawTx: t
+            });
+          }
+        }
+      });
+
+      // Sort newest first
+      lItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      sItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       setShippingItems(sItems);
       setLaborItems(lItems);
@@ -515,12 +577,42 @@ export function Shell({ children }: { children: ReactNode }) {
       meta.shippingStatus = 'paid';
       meta.shippingPaidAmount = item.amount;
 
+      // 1. Record payment_out transaction so Cash balance and Transactions list are debited
+      await api.transactions.create({
+        party_name: `গাড়ি ভাড়া (${item.driverName || item.vehicleNo || 'পরিবহন'})`,
+        transaction_type: 'payment_out',
+        total_amount: Number(payAmount),
+        paid_amount: Number(payAmount),
+        due_amount: 0,
+        payment_method: 'Cash',
+        notes: JSON.stringify({
+          category: 'পরিবহন খরচ',
+          expenseCategory: 'পরিবহন খরচ',
+          invoiceId: item.invoiceId,
+          invoiceNo: item.invoiceId,
+          isShippingExpense: true
+        }) + `\n[গাড়ি ভাড়া পরিশোধ] চালান: #${item.invoiceId}`
+      }).catch(err => console.warn('Transaction record fallback:', err));
+
+      // 2. Record in expenses table
+      await api.expenses.create({
+        title: `পরিবহন / গাড়ি ভাড়া (চালান #${item.invoiceId})`,
+        category_name: 'পরিবহন খরচ',
+        amount: Number(payAmount),
+        date: format(new Date(), 'yyyy-MM-dd'),
+        payment_method: 'Cash',
+        notes: `চালান নং: ${item.invoiceId} | গাড়ি: ${item.vehicleNo || ''} | ড্রাইভার: ${item.driverName || ''}`
+      }).catch(err => console.warn('Expense record fallback:', err));
+
       const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
       await api.transactions.update(item.id, { notes: newNotes });
 
-      toast.success(`গাড়ি ভাড়া ৳ ${payAmount.toLocaleString('bn-BD')} সফলভাবে পরিশোধিত হয়েছে!`);
+      toast.success(`গাড়ি ভাড়া ৳ ${payAmount.toLocaleString('bn-BD')} ক্যাশ থেকে পরিশোধ করা হয়েছে!`);
       setSettlingShipping(null);
       void loadChequesAndOrders();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('orderUpdated'));
+      }
     } catch (err) {
       console.error(err);
       toast.error('গাড়ি ভাড়া পরিশোধ করতে সমস্যা হয়েছে');
@@ -549,6 +641,9 @@ export function Shell({ children }: { children: ReactNode }) {
       toast.success(`অতিরিক্ত গাড়ি ভাড়া ৳ ${refundAmount.toLocaleString('bn-BD')} সফলভাবে ERP-তে সমন্বয় করা হয়েছে!`);
       setSettlingShipping(null);
       void loadChequesAndOrders();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('orderUpdated'));
+      }
     } catch (err) {
       console.error(err);
       toast.error('গাড়ি ভাড়া সমন্বয় করতে সমস্যা হয়েছে');
@@ -568,15 +663,60 @@ export function Shell({ children }: { children: ReactNode }) {
           userNote = userNote.substring(firstLine.length).trim();
         } catch {}
       }
-      meta.laborStatus = 'paid';
-      meta.laborPaidAmount = item.amount;
+
+      if (item.type === 'loading') {
+        meta.cementLoadingPaid = true;
+        meta.cementLoadingPaidAmount = item.amount;
+        meta.cementLoadingPaidAt = new Date().toISOString();
+        meta.cementLoadingPaidMethod = 'নগদ';
+      } else {
+        meta.laborStatus = 'paid';
+        meta.laborPaidAmount = item.amount;
+      }
+
+      // 1. Record payment_out transaction so Cash balance and Transactions list immediately deduct cash (ক্যাশ থেকে আউট)
+      await api.transactions.create({
+        party_name: item.type === 'loading' 
+          ? `লোডিং লেবার বিল (${item.partyName || 'বিক্রয়'})` 
+          : `আনলোডিং লেবার বিল (${item.partyName || 'ক্রয়'})`,
+        transaction_type: 'payment_out',
+        total_amount: Number(payAmount),
+        paid_amount: Number(payAmount),
+        due_amount: 0,
+        payment_method: 'Cash',
+        notes: JSON.stringify({
+          category: 'লোডিং ও খালাস খরচ',
+          expenseCategory: 'লোডিং ও খালাস খরচ',
+          invoiceId: item.invoiceId,
+          invoiceNo: item.invoiceId,
+          type: item.type,
+          cementBags: item.cementBags,
+          loadingRate: item.loadingRate,
+          isLaborExpense: true
+        }) + `\n[লেবার খরচ পরিশোধ - ${item.type === 'loading' ? 'বিক্রয় সিমেন্ট লোডিং' : 'ক্রয় আনলোডিং'}] চালান: #${item.invoiceId}`
+      }).catch(err => console.warn('Transaction record fallback:', err));
+
+      // 2. Also record in expenses table
+      await api.expenses.create({
+        title: item.type === 'loading' ? `বিক্রয় চালান লোডিং চার্জ (চালান #${item.invoiceId})` : `ক্রয় চালান আনলোডিং চার্জ (চালান #${item.invoiceId})`,
+        category_name: 'লোডিং ও খালাস খরচ',
+        amount: Number(payAmount),
+        date: format(new Date(), 'yyyy-MM-dd'),
+        payment_method: 'Cash',
+        notes: item.type === 'loading' 
+          ? `বিক্রয় চালান নং: ${item.invoiceId} | গ্রাহক: ${item.partyName || ''} | সিমেন্ট: ${item.cementBags || 0} বস্তা`
+          : `ক্রয় চালান নং: ${item.invoiceId} | সাপ্লায়ার: ${item.partyName || ''} | স্থান: ${item.unloadingSite || 'প্রধান গুদাম'}`
+      }).catch(err => console.warn('Expense record fallback:', err));
 
       const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
       await api.transactions.update(item.id, { notes: newNotes });
 
-      toast.success(`লেবার খরচ ৳ ${payAmount.toLocaleString('bn-BD')} সফলভাবে পরিশোধিত হয়েছে!`);
+      toast.success(`${item.type === 'loading' ? 'সিমেন্ট লোডিং' : 'লেবার'} খরচ ৳ ${payAmount.toLocaleString('bn-BD')} ক্যাশ থেকে পরিশোধ করা হয়েছে!`);
       setSettlingLabor(null);
       void loadChequesAndOrders();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('orderUpdated'));
+      }
     } catch (err) {
       console.error(err);
       toast.error('লেবার খরচ পরিশোধ করতে সমস্যা হয়েছে');
@@ -596,8 +736,14 @@ export function Shell({ children }: { children: ReactNode }) {
           userNote = userNote.substring(firstLine.length).trim();
         } catch {}
       }
-      meta.laborStatus = 'paid';
-      meta.laborPaidAmount = item.amount;
+
+      if (item.type === 'loading') {
+        meta.cementLoadingPaid = true;
+        meta.cementLoadingPaidAmount = item.amount;
+      } else {
+        meta.laborStatus = 'paid';
+        meta.laborPaidAmount = item.amount;
+      }
 
       const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
       await api.transactions.update(item.id, { notes: newNotes });
@@ -605,6 +751,9 @@ export function Shell({ children }: { children: ReactNode }) {
       toast.success(`অতিরিক্ত লেবার খরচ ৳ ${refundAmount.toLocaleString('bn-BD')} সফলভাবে ERP-তে সমন্বয় করা হয়েছে!`);
       setSettlingLabor(null);
       void loadChequesAndOrders();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('orderUpdated'));
+      }
     } catch (err) {
       console.error(err);
       toast.error('লেবার খরচ সমন্বয় করতে সমস্যা হয়েছে');
@@ -627,12 +776,12 @@ export function Shell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="relative flex min-h-screen bg-slate-50 text-slate-900 font-sans antialiased selection:bg-amber-600 selection:text-white overflow-x-hidden">
+    <div className="relative flex min-h-screen bg-[#faf8f5] text-[#2e2316] font-sans antialiased selection:bg-[#b88e2d] selection:text-white overflow-x-hidden">
       {/* Printed Subtle Pattern Background Overlay */}
-      <div className="fixed inset-0 pointer-events-none z-0 bg-[radial-gradient(#cbd5e1_1.2px,transparent_1.2px)] [background-size:24px_24px] opacity-70" />
+      <div className="fixed inset-0 pointer-events-none z-0 bg-[radial-gradient(#d6cbb8_1.2px,transparent_1.2px)] [background-size:24px_24px] opacity-70" />
       {/* Soft Printed Ambient Gradient Accents */}
-      <div className="fixed top-0 right-0 w-[600px] h-[600px] bg-gradient-to-br from-amber-400/20 via-yellow-300/10 to-transparent rounded-full blur-3xl pointer-events-none z-0" />
-      <div className="fixed bottom-0 left-0 w-[700px] h-[700px] bg-gradient-to-tr from-indigo-500/10 via-blue-400/5 to-transparent rounded-full blur-3xl pointer-events-none z-0" />
+      <div className="fixed top-0 right-0 w-[600px] h-[600px] bg-gradient-to-br from-[#d4af37]/15 via-[#b88e2d]/5 to-transparent rounded-full blur-3xl pointer-events-none z-0" />
+      <div className="fixed bottom-0 left-0 w-[700px] h-[700px] bg-gradient-to-tr from-[#8c6b1c]/10 via-[#c59b27]/5 to-transparent rounded-full blur-3xl pointer-events-none z-0" />
 
       {/* Sidebar Component */}
       <Sidebar mobileOpen={mobileMenuOpen} onCloseMobile={() => setMobileMenuOpen(false)} />
@@ -640,13 +789,13 @@ export function Shell({ children }: { children: ReactNode }) {
       {/* Main Wrapper */}
       <div className="flex-1 flex flex-col min-w-0 z-10 relative">
         {/* Top Navbar Header */}
-        <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-3 sm:px-4 md:px-6 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-xs print:hidden">
+        <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-3 sm:px-4 md:px-6 bg-white/95 backdrop-blur-md border-b border-[#e8dfd0] shadow-2xs print:hidden">
           {/* Left: Mobile Hamburger & Search Bar */}
           <div className="flex items-center gap-2 sm:gap-3 flex-1 max-w-[200px] xs:max-w-xs sm:max-w-md">
             {/* Mobile Hamburger Toggle */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 text-slate-700 hover:text-amber-800 hover:bg-amber-50 rounded-xl transition-colors flex-shrink-0 cursor-pointer"
+              className="md:hidden p-2 text-[#4a3b2c] hover:text-[#8c6b1c] hover:bg-[#f5f0e6] rounded-xl transition-colors flex-shrink-0 cursor-pointer"
               title="মেনু খুলুন"
               aria-label="Toggle navigation menu"
             >
@@ -654,13 +803,13 @@ export function Shell({ children }: { children: ReactNode }) {
             </button>
 
             <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8c7a65]" />
               <input
                 type="text"
                 placeholder="সার্চ করুন..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-slate-100/80 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-600 transition-all font-bengali"
+                className="w-full pl-9 pr-3 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-[#f5f0e6]/70 border border-[#e2d7c5] rounded-xl text-[#2e2316] placeholder:text-[#8c7a65] focus:outline-none focus:ring-2 focus:ring-[#b88e2d]/30 focus:border-[#b88e2d] transition-all font-bengali"
               />
             </div>
           </div>
@@ -740,14 +889,27 @@ export function Shell({ children }: { children: ReactNode }) {
               )}
             </button>
 
-            {/* User Avatar & Name */}
+            {/* User Avatar & Name & Role */}
             <div className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-3 border-l border-slate-200">
-              <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-gradient-to-tr from-[#8c6b1c] via-[#b88e2d] to-[#d4af37] flex items-center justify-center text-white font-black text-xs sm:text-sm shadow-md shadow-amber-500/25 flex-shrink-0">
-                {user?.displayName?.charAt(0) || 'দ'}
+              <div className={cn(
+                "h-8 w-8 sm:h-9 sm:w-9 rounded-xl flex items-center justify-center text-white font-black text-xs sm:text-sm shadow-md flex-shrink-0",
+                role === 'admin' ? "bg-gradient-to-tr from-[#8c6b1c] via-[#b88e2d] to-[#d4af37] shadow-amber-500/25" : role === 'staff' ? "bg-blue-600 shadow-blue-500/25" : "bg-emerald-600 shadow-emerald-500/25"
+              )}>
+                {role === 'admin' ? '👑' : role === 'staff' ? '👔' : '👁️'}
               </div>
               <div className="hidden md:block text-left font-bengali">
-                <p className="text-xs font-bold text-slate-800">{user?.displayName || 'দোকান এডমিন'}</p>
-                <p className="text-[10px] text-slate-500">{user?.email || 'admin@dokan.com'}</p>
+                <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <span>{user?.full_name || user?.username || 'দোকান এডমিন'}</span>
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.2 rounded-md font-extrabold uppercase",
+                    role === 'admin' ? "bg-amber-100 text-amber-900 border border-amber-300/80" : role === 'staff' ? "bg-blue-100 text-blue-900 border border-blue-300/80" : "bg-emerald-100 text-emerald-900 border border-emerald-300/80"
+                  )}>
+                    {role === 'admin' ? 'এডমিন' : role === 'staff' ? 'স্টাফ' : 'ভিউয়ার'}
+                  </span>
+                </p>
+                <p className="text-[10px] text-slate-500 font-medium">
+                  {role === 'admin' ? 'সব ক্ষমতার এক্সেস' : role === 'staff' ? 'ইনভয়েস এডিট/ডিলিট বন্ধ' : 'রিড-অনলি মোড'}
+                </p>
               </div>
             </div>
           </div>
@@ -1456,9 +1618,9 @@ export function Shell({ children }: { children: ReactNode }) {
                   </div>
                   <div>
                     <h3 className="font-bold text-lg text-white flex items-center gap-2">
-                      লেবার খরচ খাতা <span className="text-xs font-normal text-amber-400">(আনলোডিং ও মজুরি)</span>
+                      লেবার খরচ খাতা <span className="text-xs font-normal text-amber-400">(লোডিং ও আনলোডিং মজুরি)</span>
                     </h3>
-                    <p className="text-xs text-slate-400">ক্রয় ইনভয়েসের আনলোডিং শ্রমিক ও মজুরির হিসাব</p>
+                    <p className="text-xs text-slate-400">ক্রয় আনলোডিং ও বিক্রয় সিমেন্ট লোডিং লেবার মজুরির হিসাব</p>
                   </div>
                 </div>
                 <button
@@ -1525,24 +1687,55 @@ export function Shell({ children }: { children: ReactNode }) {
                             <span className="font-mono text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
                               #{item.invoiceId}
                             </span>
+                            {item.type === 'loading' ? (
+                              <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-md border border-amber-500/30">
+                                🚚 বিক্রয় লোডিং (সিমেন্ট)
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-md border border-blue-500/30">
+                                🏗️ ক্রয় আনলোডিং
+                              </span>
+                            )}
                             <span className="text-xs text-slate-400 font-sans">
                               {formatBnDate(item.date, 'dd/MM/yyyy')}
                             </span>
                           </div>
-                          <p className="font-bold text-slate-200 text-sm mt-1">
-                            আনলোডিং স্থান: <span className="text-white">{item.unloadingSite || 'প্রধান গুদাম'}</span>
-                          </p>
+
+                          {item.type === 'loading' ? (
+                            <div className="text-xs space-y-0.5 mt-1.5">
+                              <p className="text-slate-300">
+                                গ্রাহক: <strong className="text-white">{item.partyName || 'খুচরা গ্রাহক'}</strong>
+                              </p>
+                              {item.cementBags ? (
+                                <p className="text-slate-300">
+                                  সিমেন্ট পরিমাণ: <strong className="text-amber-300 font-mono">{toBnDigits(item.cementBags)} বস্তা</strong> {item.loadingRate ? `(@ ৳${toBnDigits(item.loadingRate)}/বস্তা)` : ''}
+                                </p>
+                              ) : null}
+                              {item.unloadingSite && (
+                                <p className="text-slate-400 text-[11px]">ডেলিভারি ঠিকানা: {item.unloadingSite}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="text-xs space-y-0.5 mt-1.5">
+                              {item.partyName && (
+                                <p className="text-slate-300">সাপ্লায়ার: <strong className="text-white">{item.partyName}</strong></p>
+                              )}
+                              <p className="font-bold text-slate-200">
+                                আনলোডিং স্থান: <span className="text-white">{item.unloadingSite || 'প্রধান গুদাম'}</span>
+                              </p>
+                            </div>
+                          )}
                         </div>
                         <div className="text-right">
-                          <p className="text-base font-black text-amber-400">
+                          <p className="text-base font-black text-amber-400 font-mono">
                             ৳ {item.amount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
                           </p>
                           {(item.dueAmount || 0) > 0 ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md mt-0.5">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md mt-0.5 font-mono">
                               বকেয়া: ৳ {(item.dueAmount || 0).toLocaleString('bn-BD')}
                             </span>
                           ) : (item.overpaidAmount || 0) > 0 ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md mt-0.5">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md mt-0.5 font-mono">
                               অতিরিক্ত: ৳ {(item.overpaidAmount || 0).toLocaleString('bn-BD')}
                             </span>
                           ) : (
@@ -1554,9 +1747,9 @@ export function Shell({ children }: { children: ReactNode }) {
                       </div>
 
                       {item.paidAmount !== undefined && item.paidAmount > 0 && (
-                        <div className="text-xs text-slate-400 bg-slate-900/40 px-2.5 py-1.5 rounded-lg flex justify-between">
+                        <div className="text-xs text-slate-400 bg-slate-900/40 px-2.5 py-1.5 rounded-lg flex justify-between font-mono">
                           <span>পূর্বে পরিশোধিত: <strong className="text-slate-200">৳ {item.paidAmount.toLocaleString('bn-BD')}</strong></span>
-                          <span>সংশোধিত খরচ: <strong className="text-slate-200">৳ {item.amount.toLocaleString('bn-BD')}</strong></span>
+                          <span>মোট খরচ: <strong className="text-slate-200">৳ {item.amount.toLocaleString('bn-BD')}</strong></span>
                         </div>
                       )}
 
@@ -1567,7 +1760,7 @@ export function Shell({ children }: { children: ReactNode }) {
                             onClick={() => setSettlingLabor(item)}
                             className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-4 rounded-xl shadow-md cursor-pointer"
                           >
-                            বাকি ৳ {(item.dueAmount || 0).toLocaleString('bn-BD')} লেবার খরচ পরিশোধ করুন
+                            বাকি ৳ {(item.dueAmount || 0).toLocaleString('bn-BD')} {item.type === 'loading' ? 'লোডিং' : 'লেবার'} খরচ পরিশোধ করুন
                           </Button>
                         </div>
                       )}
@@ -1689,10 +1882,14 @@ export function Shell({ children }: { children: ReactNode }) {
                 </div>
                 <div>
                   <h3 className="font-bold text-base text-white">
-                    {(settlingLabor.overpaidAmount || 0) > 0 ? 'অতিরিক্ত লেবার খরচ সমন্বয়' : 'লেবার খরচ পরিশোধ নিশ্চিতকরণ'}
+                    {(settlingLabor.overpaidAmount || 0) > 0 
+                      ? 'অতিরিক্ত খরচ সমন্বয়' 
+                      : (settlingLabor.type === 'loading' ? 'বিক্রয় লোডিং খরচ পরিশোধ' : 'ক্রয় লেবার খরচ পরিশোধ')}
                   </h3>
                   <p className="text-xs text-slate-400">
-                    {(settlingLabor.overpaidAmount || 0) > 0 ? 'খরচ কমানোর ফলে অতিরিক্ত টাকা ERP-তে সমন্বয় করুন' : 'বকেয়া লেবার ফি পরিশোধ সম্পন্ন করুন'}
+                    {(settlingLabor.overpaidAmount || 0) > 0 
+                      ? 'খরচ কমানোর ফলে অতিরিক্ত টাকা ERP-তে সমন্বয় করুন' 
+                      : (settlingLabor.type === 'loading' ? 'বিক্রয় চালানের সিমেন্ট লোডিং খরচ পরিশোধ করুন' : 'বকেয়া আনলোডিং লেবার মজুরি পরিশোধ করুন')}
                   </p>
                 </div>
               </div>
@@ -1702,18 +1899,41 @@ export function Shell({ children }: { children: ReactNode }) {
                   <span className="text-slate-400">ইনভয়েস নং:</span>
                   <span className="font-bold text-white">#{settlingLabor.invoiceId}</span>
                 </div>
+                {settlingLabor.type === 'loading' ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">গ্রাহকের নাম:</span>
+                      <span className="font-bold text-slate-200">{settlingLabor.partyName || 'খুচরা গ্রাহক'}</span>
+                    </div>
+                    {settlingLabor.cementBags && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">সিমেন্ট পরিমাণ:</span>
+                        <span className="font-bold text-amber-300 font-mono">{toBnDigits(settlingLabor.cementBags)} বস্তা</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {settlingLabor.partyName && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">সাপ্লায়ার:</span>
+                        <span className="font-bold text-slate-200">{settlingLabor.partyName}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">আনলোডিং স্থান:</span>
+                      <span className="font-bold text-slate-200">{settlingLabor.unloadingSite || 'প্রধান গুদাম'}</span>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-between">
-                  <span className="text-slate-400">আনলোডিং স্থান:</span>
-                  <span className="font-bold text-slate-200">{settlingLabor.unloadingSite || 'প্রধান গুদাম'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">সংশোধিত মোট খরচ:</span>
-                  <span className="font-bold text-slate-200">৳ {settlingLabor.amount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                  <span className="text-slate-400">মোট খরচ:</span>
+                  <span className="font-bold text-slate-200 font-mono">৳ {settlingLabor.amount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
                 </div>
                 {settlingLabor.paidAmount !== undefined && settlingLabor.paidAmount > 0 && (
                   <div className="flex justify-between">
                     <span className="text-slate-400">পূর্বে পরিশোধিত:</span>
-                    <span className="font-bold text-slate-200">৳ {settlingLabor.paidAmount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                    <span className="font-bold text-slate-200 font-mono">৳ {settlingLabor.paidAmount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
                   </div>
                 )}
                 <div className="flex justify-between border-t border-slate-700/80 pt-1.5">

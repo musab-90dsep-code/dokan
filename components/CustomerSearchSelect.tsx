@@ -224,8 +224,8 @@ export function CustomerSearchSelect({
                       className={cn(
                         'px-3.5 py-2.5 text-xs flex items-center justify-between cursor-pointer transition-colors',
                         isSelected
-                          ? 'bg-orange-50/80 text-orange-900 font-bold'
-                          : 'hover:bg-slate-50 text-slate-700'
+                          ? 'bg-amber-50/90 text-amber-900 font-bold border-l-2 border-[#b88e2d]'
+                          : 'hover:bg-[#faf8f5] text-slate-700'
                       )}
                     >
                       <div className="flex items-center gap-2 font-bold text-slate-900 text-xs">

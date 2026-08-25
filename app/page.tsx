@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { Shell } from '@/components/Shell';
 import { cn, fixMiliName, toBnNum, formatBnCurrency } from '@/lib/utils';
@@ -139,11 +139,11 @@ const allShortcuts: ShortcutAction[] = [
     sub: 'নতুন অর্ডার ও তালিকা', 
     href: '/orders', 
     icon: ShoppingCart, 
-    bg: 'bg-orange-50/70', 
-    hoverBg: 'hover:bg-orange-500', 
-    text: 'text-orange-950 group-hover:text-white', 
-    border: 'border-orange-200 hover:border-orange-500', 
-    iconBg: 'bg-orange-500 text-white',
+    bg: 'bg-amber-50/80', 
+    hoverBg: 'hover:bg-[#b88e2d]', 
+    text: 'text-[#3b2e1e] group-hover:text-white', 
+    border: 'border-[#e2d7c5] hover:border-[#b88e2d]', 
+    iconBg: 'bg-gradient-to-r from-[#b88e2d] to-[#d4af37] text-white',
     badge: 'বিক্রয়'
   },
   { 
@@ -357,11 +357,11 @@ const allShortcuts: ShortcutAction[] = [
     sub: 'দৈনিক বিক্রয় বিবরণী', 
     href: '/reports?tab=daily_sales', 
     icon: ShoppingCart, 
-    bg: 'bg-orange-50/70', 
-    hoverBg: 'hover:bg-orange-600', 
-    text: 'text-orange-950 group-hover:text-white', 
-    border: 'border-orange-200 hover:border-orange-600', 
-    iconBg: 'bg-orange-600 text-white',
+    bg: 'bg-amber-50/80', 
+    hoverBg: 'hover:bg-[#b88e2d]', 
+    text: 'text-[#3b2e1e] group-hover:text-white', 
+    border: 'border-[#e2d7c5] hover:border-[#b88e2d]', 
+    iconBg: 'bg-gradient-to-r from-[#b88e2d] to-[#d4af37] text-white',
     badge: 'সেলস শিট'
   },
   { 
@@ -440,7 +440,7 @@ export default function Dashboard() {
     return allShortcuts.filter(s => s.category === shortcutCategory);
   }, [shortcutCategory]);
 
-  useEffect(() => {
+  const fetchDashboardData = useCallback(() => {
     Promise.all([
       api.dashboard.getStats(),
       api.inventory.list(),
@@ -472,6 +472,14 @@ export default function Dashboard() {
       setLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    fetchDashboardData();
+    window.addEventListener('orderUpdated', fetchDashboardData);
+    return () => {
+      window.removeEventListener('orderUpdated', fetchDashboardData);
+    };
+  }, [fetchDashboardData]);
 
   const totalCashBalance = stats?.totalCash ?? 0;
   const totalBankBalance = stats?.totalBank ?? 0;
@@ -585,7 +593,7 @@ export default function Dashboard() {
     <Shell>
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500 w-full font-bengali">
         
-        {/* ══════════ STAT CARDS WITH UNIQUE MINI GRAPHS ══════════ */}
+        {/* ==================== STAT CARDS WITH UNIQUE MINI GRAPHS ==================== */}
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
           {/* CARD 1: CASH BALANCE (Smooth Curved Area Chart) */}
           <StatCard 
@@ -644,11 +652,11 @@ export default function Dashboard() {
             trend="বিক্রি" 
             trendUp={true} 
             description="চলতি মাসের সেলস"
-            bg="bg-gradient-to-br from-orange-500 to-amber-500"
-            iconBg="bg-orange-100 text-orange-600"
-            badgeBg="bg-orange-100 text-orange-700"
+            bg="bg-gradient-to-br from-[#8c6b1c] via-[#b88e2d] to-[#d4af37]"
+            iconBg="bg-amber-100/90 text-amber-800"
+            badgeBg="bg-amber-100 text-amber-800"
             graphType="double-line"
-            strokeColor="#f97316"
+            strokeColor="#b88e2d"
             graphData={weeklyData.map(d => ({ v: d.বিক্রয়, t: d.ক্রয় }))}
           />
 
@@ -660,15 +668,15 @@ export default function Dashboard() {
             trend="রিফিল" 
             trendUp={false} 
             description="পুনরায় অর্ডার প্রয়োজন"
-            bg="bg-gradient-to-br from-amber-400 to-orange-500"
-            iconBg="bg-amber-100 text-amber-600"
-            badgeBg="bg-amber-100 text-amber-700"
+            bg="bg-gradient-to-br from-amber-500 via-amber-600 to-yellow-600"
+            iconBg="bg-amber-100 text-amber-800"
+            badgeBg="bg-amber-100 text-amber-800"
             graphType="segmented-bars"
             graphData={products.length > 0 ? products.slice(0, 7).map(p => ({ v: p.stock })) : [{ v: 0 }]}
           />
         </div>
 
-        {/* ══════════ QUICK SHORTCUTS & NAVIGATION HUB (COMPACT DOUBLE-LINE) ══════════ */}
+        {/* ==================== QUICK SHORTCUTS & NAVIGATION HUB ==================== */}
         <div className="rounded-[2rem] bg-white border border-slate-200/80 p-5 shadow-xl shadow-slate-200/50 space-y-4 font-bengali">
           {/* Header with Title and Category Filters */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
@@ -756,19 +764,15 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ══════════ CHARTS ROW ══════════ */}
-        <div className="grid gap-6 lg:grid-cols-12">
-          {/* Area Chart */}
-          <div className="col-span-12 lg:col-span-8 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200/80">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+        {/* ==================== MAIN ANALYSIS ROW ==================== */}
+        <div className="grid grid-cols-12 gap-6">
+          
+          {/* Main Area Chart: Weekly Trends */}
+          <div className="col-span-12 lg:col-span-8 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200/80 font-bengali">
+            <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-orange-500 flex items-center justify-center shadow-md shadow-orange-500/20">
-                    <TrendingUp className="w-4 h-4 text-white" />
-                  </div>
-                  <h3 className="font-black text-slate-800 text-base">সাপ্তাহিক বিক্রয় ও ক্রয়</h3>
-                </div>
-                <p className="text-xs font-medium text-slate-400 mt-1 ml-10">গত ৭ দিনের লেনদেনের গ্রাফ</p>
+                <h3 className="font-black text-slate-800 text-base">সাপ্তাহিক লেনদেন বিশ্লেষণ</h3>
+                <p className="text-xs font-semibold text-slate-400">গত ৭ দিনের বিক্রি ও ক্রয়ের তুলনামূলক চার্ট</p>
               </div>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5">
@@ -782,8 +786,8 @@ export default function Dashboard() {
                 <span className="px-3 py-1 bg-orange-50 text-orange-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-orange-200">এই সপ্তাহ</span>
               </div>
             </div>
-            <div className="p-6 h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="p-6 h-[300px] w-full min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <AreaChart data={weeklyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gSales" x1="0" y1="0" x2="0" y2="1">
@@ -849,7 +853,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ══════════ RECENT SALES + SUMMARY ══════════ */}
+        {/* ==================== RECENT SALES + SUMMARY ==================== */}
         <div className="grid gap-6 lg:grid-cols-12">
           {/* Recent Sales Table */}
           <div className="col-span-12 lg:col-span-8 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200/80">
@@ -922,8 +926,8 @@ export default function Dashboard() {
 
               <div className="flex flex-col items-center py-2 space-y-4">
                 {/* Circular Donut Chart */}
-                <div className="relative w-44 h-44 flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="relative w-44 h-44 flex items-center justify-center min-w-0">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <PieChart>
                       <Pie
                         data={financialPieData}
@@ -1060,9 +1064,9 @@ function StatCard({
       </div>
 
       {/* Unique Mini Graph Area at the Bottom */}
-      <div className="h-14 w-full mt-2 overflow-hidden relative">
+      <div className="h-14 w-full mt-2 overflow-hidden relative min-w-0">
         {graphType === 'area' && (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <AreaChart data={graphData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id={gradId || 'areaGrad'} x1="0" y1="0" x2="0" y2="1">
@@ -1076,7 +1080,7 @@ function StatCard({
         )}
 
         {graphType === 'step' && (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <LineChart data={graphData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
               <Line type="stepAfter" dataKey="v" stroke={strokeColor} strokeWidth={2.5} dot={{ r: 2.5, fill: strokeColor }} />
             </LineChart>
@@ -1084,7 +1088,7 @@ function StatCard({
         )}
 
         {graphType === 'bar' && (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <BarChart data={graphData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
               <Bar dataKey="v" fill={strokeColor} radius={[4, 4, 0, 0]} />
             </BarChart>
@@ -1092,7 +1096,7 @@ function StatCard({
         )}
 
         {graphType === 'double-line' && (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <LineChart data={graphData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
               <Line type="monotone" dataKey="v" stroke={strokeColor} strokeWidth={2.5} dot={false} />
               <Line type="monotone" dataKey="t" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={false} />

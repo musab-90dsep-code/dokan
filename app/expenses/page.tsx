@@ -24,6 +24,7 @@ import { bn } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toBengaliDigits } from '@/lib/bengaliUtils';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
+import { useAuth } from '@/lib/authContext';
 
 export interface ExpenseItem {
   id: string;
@@ -67,6 +68,7 @@ const defaultCategories = [
 ];
 
 export default function ExpensePage() {
+  const { canModifyData } = useAuth();
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [banks, setBanks] = useState<Bank[]>([]);
   const [dbCategories, setDbCategories] = useState<{ id: number | string; name: string }[]>([]);
@@ -232,8 +234,48 @@ export default function ExpensePage() {
   }, []);
 
   useEffect(() => {
-    fetchExpensesAndBanks();
-  }, [fetchExpensesAndBanks]);
+    let isMounted = true;
+    Promise.all([
+      api.expenses.list(),
+      api.banks.list(),
+      api.expenseCategories.list()
+    ]).then(([list, bankList, catList]) => {
+      if (!isMounted) return;
+      const safeList = Array.isArray(list) ? list : [];
+      setExpenses(safeList.map(e => ({
+        id: String(e.id),
+        title: e.title || e.category_name || 'সাধারণ খরচ',
+        category: e.category_name || e.title || 'সাধারণ খরচ',
+        amount: Number(e.amount || 0),
+        date: e.date || new Date().toISOString().split('T')[0],
+        vendor: e.reference_no || '',
+        status: 'পরিশোধিত',
+        paymentMethod: e.payment_method === 'bank' ? 'Bank' : 'Cash',
+        bankId: e.bank_account ? String(e.bank_account) : '',
+        note: e.notes || '',
+        createdAt: e.date
+      })));
+
+      const safeBanks = Array.isArray(bankList) ? bankList : [];
+      setBanks(safeBanks.map(b => ({
+        id: String(b.id),
+        name: b.name,
+        accNo: b.account_number || '',
+        balance: Number(b.balance || 0)
+      })));
+
+      const safeCats = Array.isArray(catList) ? catList : [];
+      setDbCategories(safeCats);
+      setLoading(false);
+    }).catch(err => {
+      console.error('Error fetching expenses:', err);
+      if (isMounted) setLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleAddNewCategory = async () => {
     const name = newCategoryInput.trim();
@@ -409,12 +451,14 @@ export default function ExpensePage() {
 
           {/* RIGHT TOP ACTION BUTTONS */}
           <div className="flex flex-wrap items-center gap-2.5">
-            <Button 
-              onClick={handleOpenCreateExpense}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all text-xs cursor-pointer"
-            >
-              <Plus className="w-4 h-4 mr-1.5" /> + নতুন খরচ যোগ করুন
-            </Button>
+            {canModifyData && (
+              <Button 
+                onClick={handleOpenCreateExpense}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all text-xs cursor-pointer"
+              >
+                <Plus className="w-4 h-4 mr-1.5" /> + নতুন খরচ যোগ করুন
+              </Button>
+            )}
 
             <Button 
               variant="outline" 
@@ -1116,18 +1160,20 @@ export default function ExpensePage() {
               <span>বিস্তারিত দেখুন</span>
             </button>
 
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpenMenuId(null);
-                handleEditExpense(targetExp);
-              }}
-              className="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 hover:bg-amber-50 hover:text-amber-700 flex items-center gap-2.5 transition-colors cursor-pointer"
-            >
-              <Edit2 className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>সম্পাদনা করুন</span>
-            </button>
+            {canModifyData && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpenMenuId(null);
+                  handleEditExpense(targetExp);
+                }}
+                className="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 hover:bg-amber-50 hover:text-amber-700 flex items-center gap-2.5 transition-colors cursor-pointer"
+              >
+                <Edit2 className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>সম্পাদনা করুন</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -1143,20 +1189,24 @@ export default function ExpensePage() {
               <span>প্রিন্ট ভাউচার</span>
             </button>
 
-            <div className="my-1 border-t border-slate-100" />
+            {canModifyData && (
+              <>
+                <div className="my-1 border-t border-slate-100" />
 
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpenMenuId(null);
-                handleDeleteExpense(targetExp.id);
-              }}
-              className="w-full px-3.5 py-2 text-left text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 transition-colors cursor-pointer"
-            >
-              <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>মুছে ফেলুন</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenMenuId(null);
+                    handleDeleteExpense(targetExp.id);
+                  }}
+                  className="w-full px-3.5 py-2 text-left text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>মুছে ফেলুন</span>
+                </button>
+              </>
+            )}
           </div>
         );
       })()}

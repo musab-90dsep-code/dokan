@@ -73,6 +73,9 @@ export interface InvoiceMemoProps {
     preparedBy?: string;
     authorizedBy?: string;
     receivedBy?: string;
+    engineerId?: string;
+    engineerName?: string;
+    engineerPhone?: string;
   };
   shopInfo?: {
     name?: string;
@@ -233,9 +236,10 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
     ? (rodLaborRate + rodShippingRate)
     : (rodRingWeight > 0 && cementBags === 0 ? (effectiveShippingCost + effectiveLaborCost) / rodRingWeight : 0);
 
+  // Cement labor is paid by the shop (দোকানের খরচ), only shipping applies to customer unit extra
   const cementUnitExtra = hasExplicitRates
-    ? (cementLaborRate + cementShippingRate)
-    : (cementBags > 0 && rodRingWeight === 0 ? (effectiveShippingCost + effectiveLaborCost) / cementBags : 0);
+    ? cementShippingRate
+    : (cementBags > 0 && rodRingWeight === 0 ? effectiveShippingCost / cementBags : 0);
 
   const paidAmount = invoice.paidAmount !== undefined ? invoice.paidAmount : 0;
   const dueAmount = invoice.dueAmount !== undefined ? invoice.dueAmount : Math.max(0, totalAmount - paidAmount);
@@ -256,15 +260,15 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
     <div className="w-full font-bengali">
       {/* Top action bar for web preview */}
       {showPrintButton && (
-        <div className="flex items-center justify-between bg-slate-900 text-white p-3 px-6 rounded-t-2xl print:hidden shadow-md">
+        <div className="flex items-center justify-between bg-[#1f1910] text-white p-3 px-6 rounded-t-2xl print:hidden shadow-md">
           <div className="flex items-center gap-2 text-xs font-bold">
-            <FileText className="w-4 h-4 text-orange-400" />
+            <FileText className="w-4 h-4 text-[#d4af37]" />
             <span>প্রিন্ট কপি প্রিভিউ (Standard Sales Invoice Format)</span>
           </div>
           <button
             type="button"
             onClick={handleTriggerPrint}
-            className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-black px-5 py-2 rounded-xl flex items-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer border border-orange-500"
+            className="bg-gradient-to-r from-[#b88e2d] to-[#d4af37] hover:from-[#a37c22] hover:to-[#be9b2d] text-white text-xs font-black px-5 py-2 rounded-xl flex items-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer border border-[#c59b27]"
           >
             <Printer className="w-4 h-4 text-white" />
             <span>ইনভয়েস প্রিন্ট করুন</span>
@@ -300,7 +304,7 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                 {shop.name}
               </h1>
               {shop.tagline && (
-                <p className="text-[11px] font-bold text-orange-600">
+                <p className="text-[11px] font-bold text-[#8c6b1c]">
                   {shop.tagline}
                 </p>
               )}
@@ -398,6 +402,16 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                 <span className="shrink-0 px-1">:</span>
                 <span className="leading-tight">{invoice.customerAddress || '—'}</span>
               </div>
+              {(invoice.engineerName || meta.engineerName) && (
+                <div className="flex">
+                  <span className="w-28 shrink-0 font-bold text-slate-700">ইঞ্জিনিয়ার</span>
+                  <span className="shrink-0 px-1">:</span>
+                  <span className="font-bold text-slate-900">
+                    {invoice.engineerName || meta.engineerName}
+                    {(invoice.engineerPhone || meta.engineerPhone) ? ` (${toBengaliDigits(invoice.engineerPhone || meta.engineerPhone)})` : ''}
+                  </span>
+                </div>
+              )}
               {(invoice.tin || meta.tin) && (
                 <div className="flex">
                   <span className="w-28 shrink-0 text-slate-700">TIN নম্বর</span>
@@ -754,15 +768,26 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
               {effectiveLaborCost > 0 && (
                 <div className="flex justify-between items-center p-1.5 px-2">
                   <div className="flex flex-col text-left">
-                    <span className="text-slate-800 font-medium">আনলোডিং ও লেবার খরচ</span>
-                    {(rodLaborRate > 0 || cementLaborRate > 0) && (
+                    <span className="text-slate-800 font-medium">লেবার খরচ (রড)</span>
+                    {rodLaborRate > 0 && (
                       <span className="text-[9px] text-slate-500 font-normal">
-                        {rodLaborRate > 0 ? `রড: ৳${toBengaliDigits(rodLaborRate)}/কেজি ` : ''}
-                        {cementLaborRate > 0 ? `সিমেন্ট: ৳${toBengaliDigits(cementLaborRate)}/বস্তা` : ''}
+                        রড: ৳{toBengaliDigits(rodLaborRate)}/কেজি
                       </span>
                     )}
                   </div>
                   <span className="font-mono">+ ৳ {toBengaliDigits(effectiveLaborCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+                </div>
+              )}
+
+              {cementLaborRate > 0 && cementBags > 0 && (
+                <div className="flex justify-between items-center p-1.5 px-2 bg-amber-50/40 text-[11px]">
+                  <div className="flex flex-col text-left">
+                    <span className="text-amber-900 font-medium">সিমেন্ট লোডিং চার্জ (দোকান প্রদেয়)</span>
+                    <span className="text-[9px] text-slate-500 font-normal">
+                      {toBengaliDigits(cementBags)} বস্তা @ ৳{toBengaliDigits(cementLaborRate)}/বস্তা (গ্রাহকের জন্য প্রযোজ্য নয়)
+                    </span>
+                  </div>
+                  <span className="font-mono text-emerald-700 font-bold">দোকান বহন করবে</span>
                 </div>
               )}
 

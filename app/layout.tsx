@@ -25,12 +25,16 @@ export const metadata: Metadata = {
   },
 };
 
+import { AuthProvider } from '@/lib/authContext';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="bn" className={cn(inter.variable, hindSiliguri.variable, "font-bengali")} suppressHydrationWarning>
-      <body suppressHydrationWarning className="bg-slate-50 text-slate-900 min-h-screen">
-        {children}
-        <Toaster position="top-center" richColors />
+      <body suppressHydrationWarning className="bg-[#faf8f5] text-[#2e2316] min-h-screen antialiased">
+        <AuthProvider>
+          {children}
+          <Toaster position="top-center" richColors />
+        </AuthProvider>
       </body>
     </html>
   );
