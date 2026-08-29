@@ -10,7 +10,7 @@ import {
   Receipt, Calendar, DollarSign, AlertCircle, CheckCircle2, Printer, UploadCloud, X,
   Building2, User, Phone, ShieldCheck, FileText, Check, ArrowLeft, Eye, Edit2,
   FileSpreadsheet, FileDown, Clock, PieChart, ChevronLeft, ChevronRight, Lightbulb, PlusCircle,
-  ChevronUp, ChevronDown, RotateCcw, MoreVertical
+  ChevronUp, ChevronDown, RotateCcw, MoreVertical, HardHat
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -93,6 +93,12 @@ interface OrderInvoice {
   purchaseId?: string;
   customerName?: string;
   supplierName?: string;
+  engineerName?: string;
+  partyName?: string;
+  customerId?: string;
+  supplierId?: string;
+  engineerId?: string;
+  partyId?: string;
   customerPhone?: string;
   supplierPhone?: string;
   totalAmount?: number;
@@ -107,6 +113,7 @@ function TransactionsContent() {
   const { canEditInvoice, canDeleteInvoice, canCreateInvoice } = useAuth();
   const searchParams = useSearchParams();
   const partyParam = searchParams ? searchParams.get('party') : null;
+  const partyTypeParam = searchParams ? searchParams.get('party_type') : null;
   const filterParam = searchParams ? searchParams.get('filter') : null;
   const typeParam = searchParams ? searchParams.get('type') : null;
   const actionParam = searchParams ? searchParams.get('action') : null;
@@ -115,6 +122,7 @@ function TransactionsContent() {
   const [banks, setBanks] = useState<Bank[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [engineers, setEngineers] = useState<Supplier[]>([]);
   const [orders, setOrders] = useState<OrderInvoice[]>([]);
   const [purchases, setPurchases] = useState<OrderInvoice[]>([]);
   
@@ -205,6 +213,7 @@ function TransactionsContent() {
   // Form States for Direct Add
   const [txnType, setTxnType] = useState<'income' | 'expense' | 'contra'>('income');
   const [paymentType, setPaymentType] = useState<'income' | 'expense'>('income');
+  const [expensePartyType, setExpensePartyType] = useState<'supplier' | 'engineer'>('supplier');
   const [autoPaymentId, setAutoPaymentId] = useState<string>('');
   const [amount, setAmount] = useState<number>(0);
   const [category, setCategory] = useState<string>('বিক্রি প্রাপ্তি');
@@ -434,21 +443,35 @@ function TransactionsContent() {
         id: String(p.id),
         name: p.name,
         phone: p.phone,
-        businessName: p.business_name
+        businessName: p.business_name,
+        address: p.address,
+        totalDue: Number(p.total_due || 0)
       }));
       const loadedSupps = safePartyList.filter((p: any) => p.party_type === 'supplier' || p.party_type === 'both').map((p: any) => ({
         id: String(p.id),
         name: p.name,
         phone: p.phone,
-        businessName: p.business_name
+        businessName: p.business_name,
+        address: p.address,
+        totalDue: Number(p.total_due || 0)
+      }));
+      const loadedEngineers = safePartyList.filter((p: any) => p.party_type === 'engineer').map((p: any) => ({
+        id: String(p.id),
+        name: p.name,
+        phone: p.phone,
+        businessName: p.business_name,
+        address: p.address,
+        supplyType: p.supply_type || p.customer_type || 'ইঞ্জিনিয়ার',
+        totalDue: Number(p.total_due || 0)
       }));
 
       setCustomers(loadedCusts);
       setSuppliers(loadedSupps);
-      return { loadedCusts, loadedSupps };
+      setEngineers(loadedEngineers);
+      return { loadedCusts, loadedSupps, loadedEngineers };
     } catch (err) {
       console.error('Error loading transactions page:', err);
-      return { loadedCusts: [], loadedSupps: [] };
+      return { loadedCusts: [], loadedSupps: [], loadedEngineers: [] };
     } finally {
       setLoading(false);
     }
@@ -459,15 +482,33 @@ function TransactionsContent() {
     type: 'income' | 'expense', 
     targetPartyId?: string,
     customCusts?: Customer[],
-    customSupps?: Supplier[]
+    customSupps?: Supplier[],
+    customEngineers?: Supplier[],
+    defaultPartyType?: 'supplier' | 'engineer'
   ) => {
     setEditingTransactionId(null);
     setPaymentType(type);
     setAutoPaymentId(`PAY-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`);
+    
+    const engList = customEngineers || engineers;
+    const suppList = customSupps || suppliers;
+    const custsList = customCusts || customers;
+    
+    let activeExpType: 'supplier' | 'engineer' = defaultPartyType || 'supplier';
     const pId = targetPartyId || partyParam || '';
+    
+    if (type === 'expense') {
+      if (defaultPartyType) {
+        activeExpType = defaultPartyType;
+      } else if (pId && engList.some(e => String(e.id) === String(pId))) {
+        activeExpType = 'engineer';
+      }
+      setExpensePartyType(activeExpType);
+    }
+
     setSelectedPartyId(pId);
     if (pId) {
-      const partyList = type === 'income' ? (customCusts || customers) : (customSupps || suppliers);
+      const partyList = type === 'income' ? custsList : (activeExpType === 'engineer' ? engList : suppList);
       const found = partyList.find(c => String(c.id) === String(pId));
       if (found) {
         setSelectedParty(found);
@@ -492,7 +533,7 @@ function TransactionsContent() {
     }
     setTransactionRef('');
     setIsAddOpen(true);
-  }, [partyParam, customers, suppliers, availableBankOptions]);
+  }, [partyParam, engineers, suppliers, customers, availableBankOptions]);
 
   // Edit Existing Transaction
   const handleEditTransaction = (t: Transaction) => {
@@ -501,7 +542,16 @@ function TransactionsContent() {
     setPaymentType(type);
     setAutoPaymentId(t.paymentId || `PAY-${t.id}`);
     
-    const partyList = type === 'income' ? customers : suppliers;
+    let activeExpType: 'supplier' | 'engineer' = 'supplier';
+    if (type === 'expense') {
+      const isEng = engineers.some(e => e.name === t.partyName || String(e.id) === String(t.raw?.party || t.raw?.party_id));
+      if (isEng) {
+        activeExpType = 'engineer';
+      }
+      setExpensePartyType(activeExpType);
+    }
+
+    const partyList = type === 'income' ? customers : (activeExpType === 'engineer' ? engineers : suppliers);
     const foundParty = partyList.find(p => p.name === t.partyName || String(p.id) === String(t.raw?.party || t.raw?.party_id));
     if (foundParty) {
       setSelectedPartyId(foundParty.id);
@@ -719,7 +769,7 @@ function TransactionsContent() {
   useEffect(() => {
     let ignore = false;
     async function init() {
-      const { loadedCusts, loadedSupps } = await loadAllTransactionsData();
+      const { loadedCusts, loadedSupps, loadedEngineers } = await loadAllTransactionsData();
       if (ignore) return;
       if (typeParam === 'income' || typeParam === 'expense' || typeParam === 'contra') {
         setActiveTab(typeParam);
@@ -729,14 +779,15 @@ function TransactionsContent() {
           setIsAddMoneyOpen(true);
         } else {
           const mode = typeParam === 'expense' ? 'expense' : 'income';
-          handleOpenAddForm(mode, partyParam || undefined, loadedCusts, loadedSupps);
+          const isEngParam = partyTypeParam === 'engineer' || (partyParam && loadedEngineers?.some(e => String(e.id) === String(partyParam)));
+          handleOpenAddForm(mode, partyParam || undefined, loadedCusts, loadedSupps, loadedEngineers, isEngParam ? 'engineer' : 'supplier');
         }
       }
     }
     init();
     return () => { ignore = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeParam, actionParam, partyParam, loadAllTransactionsData]);
+  }, [typeParam, actionParam, partyParam, partyTypeParam, loadAllTransactionsData]);
 
   // Reset Filters
   const handleResetFilters = () => {
@@ -761,7 +812,8 @@ function TransactionsContent() {
       setSelectedParty(cust);
       if (cust) setAccountHolderName(cust.name);
     } else {
-      const supp = suppliers.find(s => s.id === partyId) || null;
+      const list = expensePartyType === 'engineer' ? engineers : suppliers;
+      const supp = list.find(s => s.id === partyId) || null;
       setSelectedParty(supp);
       if (supp) setAccountHolderName(supp.name);
     }
@@ -784,7 +836,7 @@ function TransactionsContent() {
   const handleSubmitPaymentForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedParty) {
-      toast.error(paymentType === 'income' ? 'কাস্টমার নির্বাচন করুন' : 'সাপ্লায়ার নির্বাচন করুন');
+      toast.error(paymentType === 'income' ? 'কাস্টমার নির্বাচন করুন' : (expensePartyType === 'engineer' ? 'ইঞ্জিনিয়ার নির্বাচন করুন' : 'সাপ্লায়ার নির্বাচন করুন'));
       return;
     }
     if (paidAmount <= 0) {
@@ -804,6 +856,7 @@ function TransactionsContent() {
       partyName: partyObj.name,
       partyPhone: partyObj.phone || '',
       partyAddress: partyObj.address || '',
+      partyType: paymentType === 'income' ? 'customer' : expensePartyType,
       businessName: partyObj.businessName || partyObj.business_name || '',
       invoiceNo: selectedInvoice?.orderId || selectedInvoice?.purchaseId || selectedInvoice?.id || selectedInvoiceId || '',
       referenceNo: referenceNo || '',
@@ -1024,8 +1077,10 @@ function TransactionsContent() {
 
   // Form Calculations
   const availableInvoices = paymentType === 'income' 
-    ? orders.filter(o => !selectedPartyId || o.customerName === selectedPartyObj?.name)
-    : purchases.filter(p => !selectedPartyId || p.supplierName === selectedPartyObj?.name);
+    ? orders.filter(o => !selectedPartyId || o.customerName === selectedParty?.name || String(o.customerId) === String(selectedPartyId))
+    : expensePartyType === 'supplier'
+      ? purchases.filter(p => !selectedPartyId || p.supplierName === selectedParty?.name || String(p.supplierId) === String(selectedPartyId))
+      : orders.filter(o => !selectedPartyId || o.engineerName === selectedParty?.name || String(o.engineerId) === String(selectedPartyId));
 
   const totalInvoiceAmount = (selectedInvoice ? (selectedInvoice.totalAmount || 0) : (selectedParty?.totalDue || 0)) || 0;
   const previousPaidAmount = (selectedInvoice ? (selectedInvoice.paidAmount || 0) : 0) || 0;
@@ -1717,20 +1772,90 @@ function TransactionsContent() {
                   {/* LEFT 8 COLUMNS: CUSTOMER / PAYMENT / BANK / ATTACHMENT CARDS */}
                   <div className="lg:col-span-8 space-y-5">
                     
-                    {/* CARD 1: CUSTOMER / SUPPLIER INFO */}
+                    {/* CARD 1: CUSTOMER / SUPPLIER / ENGINEER INFO */}
                     <Card className="bg-white border border-slate-200/80 rounded-md shadow-2xs">
                       <CardContent className="p-5 space-y-4">
-                        <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-2">
-                          <User className="w-4 h-4 text-blue-600" />
-                          {paymentType === 'income' ? 'কাস্টমার তথ্য' : 'সাপ্লায়ার তথ্য'}
-                        </Label>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                          <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-2">
+                            {paymentType === 'income' ? (
+                              <>
+                                <User className="w-4 h-4 text-blue-600" />
+                                <span>কাস্টমার তথ্য</span>
+                              </>
+                            ) : expensePartyType === 'engineer' ? (
+                              <>
+                                <HardHat className="w-4 h-4 text-amber-600" />
+                                <span>ইঞ্জিনিয়ার তথ্য</span>
+                              </>
+                            ) : (
+                              <>
+                                <Building2 className="w-4 h-4 text-blue-600" />
+                                <span>সাপ্লায়ার তথ্য</span>
+                              </>
+                            )}
+                          </Label>
+
+                          {/* Party Type Toggle for Expense (পেমেন্ট প্রদান) */}
+                          {paymentType === 'expense' && (
+                            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-lg border border-slate-200/80">
+                              <span className="text-[11px] font-bold text-slate-500 px-1.5 hidden sm:inline">প্রাপক:</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (expensePartyType !== 'supplier') {
+                                    setExpensePartyType('supplier');
+                                    setSelectedPartyId('');
+                                    setSelectedParty(null);
+                                    setSelectedInvoiceId('');
+                                    setSelectedInvoice(null);
+                                  }
+                                }}
+                                className={cn(
+                                  "px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                                  expensePartyType === 'supplier'
+                                    ? "bg-white text-blue-700 shadow-xs border border-slate-200 font-black"
+                                    : "text-slate-600 hover:text-slate-900"
+                                )}
+                              >
+                                <Building2 className="w-3.5 h-3.5" />
+                                <span>🏢 সরবরাহকারী (Supplier)</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (expensePartyType !== 'engineer') {
+                                    setExpensePartyType('engineer');
+                                    setSelectedPartyId('');
+                                    setSelectedParty(null);
+                                    setSelectedInvoiceId('');
+                                    setSelectedInvoice(null);
+                                  }
+                                }}
+                                className={cn(
+                                  "px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                                  expensePartyType === 'engineer'
+                                    ? "bg-amber-600 text-white shadow-xs font-black"
+                                    : "text-slate-600 hover:text-slate-900"
+                                )}
+                              >
+                                <HardHat className="w-3.5 h-3.5" />
+                                <span>👷 ইঞ্জিনিয়ার (Engineer)</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-start">
                           
-                          {/* Searchable Customer / Supplier Selection */}
+                          {/* Searchable Customer / Supplier / Engineer Selection */}
                           <div className="sm:col-span-5 space-y-1.5">
                             <Label className="text-xs font-bold text-slate-600">
-                              {paymentType === 'income' ? 'কাস্টমার নির্বাচন করুন (সার্চ করুন) *' : 'সাপ্লায়ার নির্বাচন করুন (সার্চ করুন) *'}
+                              {paymentType === 'income' 
+                                ? 'কাস্টমার নির্বাচন করুন (সার্চ করুন) *' 
+                                : expensePartyType === 'engineer'
+                                  ? 'ইঞ্জিনিয়ার নির্বাচন করুন (সার্চ করুন) *'
+                                  : 'সাপ্লায়ার নির্বাচন করুন (সার্চ করুন) *'}
                             </Label>
                             {paymentType === 'income' ? (
                               <CustomerSearchSelect
@@ -1740,6 +1865,15 @@ function TransactionsContent() {
                                   handleSelectParty(cust ? cust.id : '');
                                 }}
                                 placeholder="কাস্টমারের নাম বা ফোন নম্বর দিয়ে খুঁজুন..."
+                              />
+                            ) : expensePartyType === 'engineer' ? (
+                              <SupplierSearchSelect
+                                suppliers={engineers}
+                                selectedSupplier={selectedParty}
+                                onSelectSupplier={(eng) => {
+                                  handleSelectParty(eng ? eng.id : '');
+                                }}
+                                placeholder="ইঞ্জিনিয়ারের নাম বা মোবাইল নম্বর দিয়ে খুঁজুন..."
                               />
                             ) : (
                               <SupplierSearchSelect
@@ -1753,10 +1887,14 @@ function TransactionsContent() {
                             )}
                           </div>
 
-                          {/* Customer Name */}
+                          {/* Party Name */}
                           <div className="sm:col-span-3 space-y-1">
                             <Label className="text-xs font-bold text-slate-500">
-                              {paymentType === 'income' ? 'কাস্টমার নাম' : 'সাপ্লায়ার নাম'}
+                              {paymentType === 'income' 
+                                ? 'কাস্টমার নাম' 
+                                : expensePartyType === 'engineer'
+                                  ? 'ইঞ্জিনিয়ার নাম'
+                                  : 'সাপ্লায়ার নাম'}
                             </Label>
                             <p className="text-sm font-black text-slate-900 pt-1.5">
                               {selectedParty?.name || '—'}
@@ -1773,16 +1911,22 @@ function TransactionsContent() {
 
                           {/* Due Balance */}
                           <div className="sm:col-span-2 space-y-1 text-right">
-                            <Label className="text-xs font-bold text-slate-500">বকেয়া পরিমাণ</Label>
+                            <Label className="text-xs font-bold text-slate-500">
+                              {expensePartyType === 'engineer' ? 'পাওনা / কমিশন' : 'বকেয়া পরিমাণ'}
+                            </Label>
                             <p className="text-base font-black text-rose-600 pt-1">
                               ৳ {toBengaliDigits((selectedParty?.totalDue || 0).toLocaleString('bn-BD'))}
                             </p>
                           </div>
 
-                          {/* Sales Invoice Select (Optional) */}
+                          {/* Sales / Purchase Invoice Select (Optional) */}
                           <div className="sm:col-span-12 space-y-1.5 pt-2 border-t border-slate-100">
                             <Label className="text-xs font-bold text-slate-600">
-                              {paymentType === 'income' ? 'বিক্রয় ইনভয়েস (ঐচ্ছিক)' : 'ক্রয় ইনভয়েস (ঐচ্ছিক)'}
+                              {paymentType === 'income' 
+                                ? 'বিক্রয় ইনভয়েস (ঐচ্ছিক)' 
+                                : expensePartyType === 'engineer'
+                                  ? 'রেফারেল / বিক্রয় ইনভয়েস (ঐচ্ছিক)'
+                                  : 'ক্রয় ইনভয়েস (ঐচ্ছিক)'}
                             </Label>
                             <Select value={selectedInvoiceId} onValueChange={(val: string | null) => { if (val) handleSelectInvoice(val); }}>
                               <SelectTrigger className="rounded-md h-10 bg-slate-50/50 border-slate-200 font-bold text-xs">
@@ -1864,7 +2008,7 @@ function TransactionsContent() {
                                       setCashPaidAmount(val);
                                       setPaidAmount(val + chequePaidAmount);
                                     }}
-                                    placeholder="যেমন: ১০,০০০"
+                                    placeholder="০"
                                     className="rounded-md h-10 bg-emerald-50/70 border-emerald-300 text-xs font-black text-emerald-700 font-bengali"
                                   />
                                 </div>
@@ -1878,7 +2022,7 @@ function TransactionsContent() {
                                       setChequePaidAmount(val);
                                       setPaidAmount(cashPaidAmount + val);
                                     }}
-                                    placeholder="যেমন: ৭০,০০০"
+                                    placeholder="০"
                                     className="rounded-md h-10 bg-purple-50/70 border-purple-300 text-xs font-black text-purple-700 font-bengali"
                                   />
                                 </div>
@@ -1922,7 +2066,7 @@ function TransactionsContent() {
                               <Input 
                                 value={referenceNo}
                                 onChange={e => setReferenceNo(e.target.value)}
-                                placeholder="যেমন: REF-102"
+                                placeholder="REF-102"
                                 className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-mono font-bold"
                               />
                             </div>
@@ -1973,7 +2117,7 @@ function TransactionsContent() {
                                     </Select>
                                   ) : (
                                     <Input 
-                                      placeholder="যেমন: প্রাপক ব্যাংক নাম, শাখা ও অ্যাকাউন্ট নং" 
+                                      placeholder="প্রাপক ব্যাংক নাম, শাখা ও অ্যাকাউন্ট নং" 
                                       value={bankName} 
                                       onChange={e => {
                                         setBankName(e.target.value);
@@ -1986,7 +2130,7 @@ function TransactionsContent() {
                                 <div>
                                   <Label className="text-[10px] font-bold text-slate-600">ট্রানজেকশন / রেফারেন্স আইডি (ঐচ্ছিক)</Label>
                                   <Input 
-                                    placeholder="যেমন: TXN-123456" 
+                                    placeholder="TXN-123456" 
                                     value={transactionRef} 
                                     onChange={e => setTransactionRef(e.target.value)}
                                     className="h-9 rounded-md bg-white text-xs font-mono"
@@ -2035,7 +2179,7 @@ function TransactionsContent() {
                                   <div>
                                     <Label className="text-[10px] font-bold text-slate-600">প্রেরক ব্যাংকের নাম</Label>
                                     <Input 
-                                      placeholder="যেমন: ইবিএল / প্রাইম ব্যাংক" 
+                                      placeholder="ইবিএল / প্রাইম ব্যাংক / ব্যাংকের নাম" 
                                       value={senderBankName} 
                                       onChange={e => setSenderBankName(e.target.value)}
                                       className="h-9 rounded-md bg-white text-xs font-bengali"
@@ -2104,7 +2248,7 @@ function TransactionsContent() {
                                     <>
                                       <Label className="text-[10px] font-bold text-purple-900">কাস্টমারের ব্যাংকের নাম</Label>
                                       <Input 
-                                        placeholder="যেমন: সোনালী ব্যাংক / ডাচ-বাংলা" 
+                                        placeholder="সোনালী ব্যাংক / ডাচ-বাংলা / ব্যাংকের নাম" 
                                         value={bankName} 
                                         onChange={e => setBankName(e.target.value)}
                                         className="h-9 rounded-md bg-white text-xs font-bengali"
@@ -2438,7 +2582,7 @@ function TransactionsContent() {
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-slate-600">নোট / বিবরণী (ঐচ্ছিক)</Label>
                 <Input 
-                  placeholder="যেমন: ক্যাশ বক্সে টাকা জমা..."
+                  placeholder="ক্যাশ বক্সে টাকা জমা..."
                   value={addMoneyNote}
                   onChange={e => setAddMoneyNote(e.target.value)}
                   className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold"
@@ -2626,7 +2770,7 @@ function TransactionsContent() {
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-slate-700">চেক / রেফারেন্স / স্লিপ নং</Label>
                   <Input 
-                    placeholder="যেমন: CQ-8492 বা স্লিপ নং"
+                    placeholder="CQ-8492 বা স্লিপ নং"
                     value={transferRefNo}
                     onChange={e => setTransferRefNo(e.target.value)}
                     className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold"
@@ -2640,10 +2784,10 @@ function TransactionsContent() {
                 <Input 
                   placeholder={
                     transferMode === 'bank_to_cash' 
-                      ? 'যেমন: দোকানের নগদ খরচের জন্য ব্যাংক উত্তোলন'
+                      ? 'দোকানের নগদ খরচের জন্য ব্যাংক উত্তোলন'
                       : transferMode === 'bank_to_bank'
-                        ? 'যেমন: একাউন্ট সমন্বয় / ফান্ড ট্রান্সফার'
-                        : 'যেমন: দিনের অতিরিক্ত ক্যাশ জমা'
+                        ? 'একাউন্ট সমন্বয় / ফান্ড ট্রান্সফার'
+                        : 'দিনের অতিরিক্ত ক্যাশ জমা'
                   }
                   value={transferNote}
                   onChange={e => setTransferNote(e.target.value)}

@@ -1552,7 +1552,7 @@ export default function OrdersPage() {
                         <div>
                           <Label className="text-[10px] font-bold text-slate-600">প্রেরক ব্যাংকের নাম</Label>
                           <Input 
-                            placeholder="যেমন: ইবিএল / প্রাইম ব্যাংক" 
+                            placeholder="ইবিএল / প্রাইম ব্যাংক / ব্যাংকের নাম" 
                             value={senderBankName} 
                             onChange={e => setSenderBankName(e.target.value)}
                             className="h-9 rounded-lg bg-white mt-0.5 text-xs"

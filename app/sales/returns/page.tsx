@@ -1679,7 +1679,7 @@ export default function SalesReturnsPage() {
                       <Input
                         value={reason}
                         onChange={e => setReason(e.target.value)}
-                        placeholder="যেমন: মালামাল ডেমেজ / কাস্টমারের অপছন্দ / সাইজ সমস্যা..."
+                        placeholder="মালামাল ডেমেজ / কাস্টমারের অপছন্দ / সাইজ সমস্যা / অন্যান্য কারণ..."
                         className="bg-white border-slate-200 text-xs font-bold rounded-md h-10 mt-2"
                       />
                     </CardContent>

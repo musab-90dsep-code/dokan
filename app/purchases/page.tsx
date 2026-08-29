@@ -1873,7 +1873,7 @@ export default function PurchasesPage() {
                                 <div>
                                   <Label className="text-[10px] font-bold text-slate-600">গ্রহীতা ব্যাংকের নাম</Label>
                                   <Input 
-                                    placeholder="যেমন: ইসলামী ব্যাংক / ডাচ-বাংলা" 
+                                    placeholder="ইসলামী ব্যাংক / ডাচ-বাংলা / ব্যাংকের নাম" 
                                     value={supplierBankName} 
                                     onChange={e => setSupplierBankName(e.target.value)}
                                     className="h-8 rounded-lg bg-white text-xs font-bold text-slate-800"
@@ -1942,7 +1942,7 @@ export default function PurchasesPage() {
                                   <div>
                                     <Label className="text-[10px] font-bold text-slate-600">গ্রহীতা ব্যাংকের নাম</Label>
                                     <Input 
-                                      placeholder="যেমন: ইসলামী ব্যাংক / ডাচ-বাংলা" 
+                                      placeholder="ইসলামী ব্যাংক / ডাচ-বাংলা / ব্যাংকের নাম" 
                                       value={supplierBankName} 
                                       onChange={e => setSupplierBankName(e.target.value)}
                                       className="h-8 rounded-lg bg-white text-xs"

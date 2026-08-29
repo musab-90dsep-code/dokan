@@ -765,7 +765,7 @@ export default function LoadingChargesPage() {
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-slate-700">লেবার সর্দার / কর্মীর নাম (প্রাপক)</Label>
                   <Input
-                    placeholder="যেমন: মোঃ কাশেম সর্দার / লেবার টিম"
+                    placeholder="মোঃ কাশেম সর্দার / লেবার টিম"
                     value={sardarName}
                     onChange={e => setSardarName(e.target.value)}
                     className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"

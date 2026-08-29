@@ -620,9 +620,9 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
   const openGeneralPaymentModal = useCallback(() => {
     router.push(isCustomer 
       ? `/transactions?type=income&action=create&party=${id}` 
-      : `/transactions?type=expense&action=create&party=${id}`
+      : `/transactions?type=expense&action=create&party=${id}&party_type=${isEngineer ? 'engineer' : 'supplier'}`
     );
-  }, [router, isCustomer, id]);
+  }, [router, isCustomer, isEngineer, id]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { useRouter, usePathname } from 'next/navigation';
 import { api, AuthUserData } from '@/lib/api';
 
-export type UserRole = 'admin' | 'staff' | 'viewer';
+export type UserRole = 'developer' | 'admin' | 'staff';
 
 export interface AuthContextType {
   user: AuthUserData | null;
@@ -12,6 +12,7 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   role: UserRole;
+  isDeveloper: boolean;
   isAdmin: boolean;
   isStaff: boolean;
   isViewer: boolean;
@@ -21,7 +22,6 @@ export interface AuthContextType {
   canModifyData: boolean;
   login: (usernameOrPhone: string, password?: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  switchDemoRole: (role: UserRole) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -29,18 +29,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'dokan_auth_token';
 const USER_KEY = 'dokan_auth_user';
-
-const DEFAULT_ADMIN: AuthUserData = {
-  id: 1,
-  username: 'admin',
-  full_name: 'দোকান এডমিন',
-  email: 'admin@dokan.com',
-  phone: '01711000000',
-  role: 'admin',
-  role_display: 'অ্যাডমিন (Admin)',
-  role_badge: '👑 অ্যাডমিন (সব ক্ষমতা)',
-  is_superuser: true
-};
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [token, setToken] = useState<string | null>(null);
@@ -50,15 +38,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Hydrate from localStorage on client side after initial mount
+  // Hydrate from localStorage on client side after initial mount and sync with backend
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const initAuth = async () => {
       try {
         const savedToken = localStorage.getItem(TOKEN_KEY);
         const savedUser = localStorage.getItem(USER_KEY);
         if (savedToken && savedUser) {
           setToken(savedToken);
           setUser(JSON.parse(savedUser));
+          
+          // Verify with backend silently
+          try {
+            const freshUser = await api.auth.me();
+            if (freshUser) {
+              setUser(freshUser);
+              localStorage.setItem(USER_KEY, JSON.stringify(freshUser));
+            }
+          } catch (e: any) {
+            // If token invalid, clear state
+            if (e?.message?.includes('Invalid token') || e?.message?.includes('401')) {
+              setToken(null);
+              setUser(null);
+              localStorage.removeItem(TOKEN_KEY);
+              localStorage.removeItem(USER_KEY);
+            }
+          }
         } else {
           setToken(null);
           setUser(null);
@@ -70,8 +75,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } finally {
         setIsInitialized(true);
       }
-    }, 0);
-    return () => clearTimeout(timer);
+    };
+
+    initAuth();
   }, []);
 
   // Route Protection: Redirect to /login if unauthenticated
@@ -119,55 +125,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const switchDemoRole = async (targetRole: UserRole) => {
-    setIsLoading(true);
-    try {
-      const password = `${targetRole}123`;
-      await login(targetRole, password);
-    } catch (e) {
-      // Local fallback mock if backend network fails
-      let mockUser: AuthUserData;
-      if (targetRole === 'admin') {
-        mockUser = {
-          id: 1,
-          username: 'admin',
-          full_name: 'দোকান মালিক (এডমিন)',
-          role: 'admin',
-          role_display: 'অ্যাডমিন (Admin)',
-          role_badge: '👑 অ্যাডমিন (সব ক্ষমতা)',
-          is_superuser: true
-        };
-      } else if (targetRole === 'staff') {
-        mockUser = {
-          id: 2,
-          username: 'staff',
-          full_name: 'স্টাফ ম্যানেজার',
-          role: 'staff',
-          role_display: 'স্টাফ / ম্যানেজার',
-          role_badge: '👔 স্টাফ (ইনভয়েস এডিট/ডিলিট বন্ধ)',
-          is_superuser: false
-        };
-      } else {
-        mockUser = {
-          id: 3,
-          username: 'viewer',
-          full_name: 'রিপোর্ট ভিউয়ার',
-          role: 'viewer',
-          role_display: 'ভিউয়ার (Viewer)',
-          role_badge: '👁️ ভিউয়ার (শুধুমাত্র দেখার অনুমতি)',
-          is_superuser: false
-        };
-      }
-      const fakeToken = `demo_${targetRole}_token`;
-      setToken(fakeToken);
-      setUser(mockUser);
-      localStorage.setItem(TOKEN_KEY, fakeToken);
-      localStorage.setItem(USER_KEY, JSON.stringify(mockUser));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const refreshUser = async () => {
     try {
       const userData = await api.auth.me();
@@ -181,19 +138,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Determine computed role
-  const role: UserRole = (user?.role as UserRole) || 'admin';
-  const isAdmin = role === 'admin' || !!user?.is_superuser;
-  const isStaff = role === 'staff';
-  const isViewer = role === 'viewer';
+  const role: UserRole = (user?.role as UserRole) || (user?.is_superuser ? 'developer' : 'admin');
+  const isDeveloper = role === 'developer' || !!user?.is_superuser;
+  const isAdmin = role === 'admin' || isDeveloper;
+  const isStaff = role === 'staff' && !isAdmin && !isDeveloper;
+  const isViewer = isStaff; // staff has view-only access
 
   // Specific Permission Rules:
-  // 1. Admin: Everything
-  // 2. Staff: Can create invoices and edit non-invoices, but CANNOT edit or delete invoices!
-  // 3. Viewer: Read-only, cannot edit or delete anything!
-  const canEditInvoice = isAdmin;
-  const canDeleteInvoice = isAdmin;
-  const canCreateInvoice = isAdmin || isStaff;
-  const canModifyData = isAdmin || isStaff;
+  // 1. Developer (সর্বোচ্চ অ্যাক্সেস): Full access, can edit and delete invoices.
+  // 2. Admin (অ্যাডমিন): Can create invoices, manage customers/suppliers/products/expenses/settings, but CANNOT edit or delete invoices.
+  // 3. Staff (স্টাফ): View-only across the system, cannot create, edit, or delete anything.
+  const canEditInvoice = isDeveloper;
+  const canDeleteInvoice = isDeveloper;
+  const canCreateInvoice = isAdmin || isDeveloper;
+  const canModifyData = isAdmin || isDeveloper;
 
   return (
     <AuthContext.Provider
@@ -203,6 +161,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isAuthenticated: !!user,
         isLoading,
         role,
+        isDeveloper,
         isAdmin,
         isStaff,
         isViewer,
@@ -212,7 +171,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         canModifyData,
         login,
         logout,
-        switchDemoRole,
         refreshUser,
       }}
     >

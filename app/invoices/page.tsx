@@ -2432,7 +2432,7 @@ function InvoicesContent() {
                                       type="number"
                                       value={cashPaidAmount || ''}
                                       onChange={e => setCashPaidAmount(parseFloat(e.target.value) || 0)}
-                                      placeholder="যেমন: ১০,০০০"
+                                      placeholder="০"
                                       className="rounded-md h-10 bg-emerald-50/70 border-emerald-300 text-xs font-black text-emerald-700 font-bengali w-full"
                                     />
                                   </div>
@@ -2442,7 +2442,7 @@ function InvoicesContent() {
                                       type="number"
                                       value={chequePaidAmount || ''}
                                       onChange={e => setChequePaidAmount(parseFloat(e.target.value) || 0)}
-                                      placeholder="যেমন: ৭০,০০০"
+                                      placeholder="০"
                                       className="rounded-md h-10 bg-purple-50/70 border-purple-300 text-xs font-black text-purple-700 font-bengali w-full"
                                     />
                                   </div>
@@ -2459,7 +2459,7 @@ function InvoicesContent() {
                                       if (invoicePaymentMethod === 'Cash') setCashPaidAmount(val);
                                       if (invoicePaymentMethod === 'Cheque') setChequePaidAmount(val);
                                     }}
-                                    placeholder="০.০০"
+                                    placeholder="০"
                                     className="rounded-md h-10 bg-emerald-50/60 border-emerald-200 text-xs font-black text-emerald-600 font-bengali"
                                   />
                                 </div>
@@ -2554,7 +2554,7 @@ function InvoicesContent() {
                                     <div>
                                       <Label className="text-[10px] font-bold text-slate-600">প্রেরক ব্যাংকের নাম</Label>
                                       <Input 
-                                        placeholder="যেমন: ইবিএল / প্রাইম ব্যাংক" 
+                                        placeholder="ইবিএল / প্রাইম ব্যাংক / ব্যাংকের নাম" 
                                         value={senderBankName} 
                                         onChange={e => setSenderBankName(e.target.value)}
                                         className="h-8 rounded-md bg-white text-xs"
@@ -2593,7 +2593,7 @@ function InvoicesContent() {
                                   <div>
                                     <Label className="text-[10px] font-bold text-purple-900">ব্যাংকের নাম</Label>
                                     <Input 
-                                      placeholder="যেমন: ডাচ বাংলা ব্যাংক" 
+                                      placeholder="ব্যাংকের নাম" 
                                       value={bankName} 
                                       onChange={e => setBankName(e.target.value)}
                                       className="h-8 rounded-md bg-white text-xs"

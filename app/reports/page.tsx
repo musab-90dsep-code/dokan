@@ -3265,7 +3265,7 @@ function MasterReportsContent() {
                             type="number"
                             value={tempCapitalInput}
                             onChange={(e) => setTempCapitalInput(e.target.value)}
-                            placeholder="যেমন: 10000000"
+                            placeholder="১০০০০০০০"
                             className="mt-1 font-bold text-sm bg-slate-50 border-slate-300 rounded-xl"
                           />
                           <p className="text-[11px] font-semibold text-slate-400 mt-1">
@@ -3658,7 +3658,7 @@ function MasterReportsContent() {
                   required
                   value={bankName}
                   onChange={(e) => setBankName(e.target.value)}
-                  placeholder="যেমন: ডাচ-বাংলা ব্যাংক লিমিটেড"
+                  placeholder="ডাচ-বাংলা ব্যাংক লিমিটেড"
                   className="rounded-xl h-10 font-bold text-xs bg-white border-slate-200"
                 />
               </div>
@@ -3668,7 +3668,7 @@ function MasterReportsContent() {
                 <Input
                   value={bankAccNo}
                   onChange={(e) => setBankAccNo(e.target.value)}
-                  placeholder="যেমন: 123.456.7890"
+                  placeholder="123.456.7890"
                   className="rounded-xl h-10 font-bold text-xs bg-white border-slate-200"
                 />
               </div>
@@ -3679,7 +3679,7 @@ function MasterReportsContent() {
                   <Input
                     value={bankBranch}
                     onChange={(e) => setBankBranch(e.target.value)}
-                    placeholder="যেমন: মিরপুর শাখা"
+                    placeholder="মিরপুর শাখা"
                     className="rounded-xl h-10 font-bold text-xs bg-white border-slate-200"
                   />
                 </div>

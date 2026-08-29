@@ -43,7 +43,7 @@ export default function SettingsPage() {
     full_name: '',
     phone: '',
     email: '',
-    role: 'staff' as 'admin' | 'staff' | 'viewer'
+    role: 'staff' as 'admin' | 'staff'
   });
   const [isSubmittingUser, setIsSubmittingUser] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
@@ -65,7 +65,9 @@ export default function SettingsPage() {
     try {
       setUsersLoading(true);
       const list = await api.auth.users.list();
-      setUsersList(Array.isArray(list) ? list : []);
+      const raw = Array.isArray(list) ? list : [];
+      // Filter out hidden developer user from UI list
+      setUsersList(raw.filter(u => u.username !== 'developer' && u.role !== 'developer'));
     } catch (err) {
       console.error('Error loading users:', err);
     } finally {
@@ -78,7 +80,8 @@ export default function SettingsPage() {
     if (isAdmin && token) {
       api.auth.users.list().then(list => {
         if (isMounted) {
-          setUsersList(Array.isArray(list) ? list : []);
+          const raw = Array.isArray(list) ? list : [];
+          setUsersList(raw.filter(u => u.username !== 'developer' && u.role !== 'developer'));
         }
       }).catch(() => {});
     }
@@ -126,7 +129,7 @@ export default function SettingsPage() {
       full_name: u.full_name || '',
       phone: u.phone || '',
       email: u.email || '',
-      role: u.role
+      role: u.role === 'admin' || (u.role as string) === 'developer' ? 'admin' : 'staff'
     });
     setIsUserModalOpen(true);
   };
@@ -202,25 +205,19 @@ export default function SettingsPage() {
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'admin':
+      case 'developer':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-500/15 text-amber-600 border border-amber-500/30">
-            👑 অ্যাডমিন (সর্বোচ্চ ক্ষমতা)
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+            👑 অ্যাডমিন
           </span>
         );
       case 'staff':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-blue-500/15 text-blue-600 border border-blue-500/30">
-            👔 স্টাফ (চালান এডিট/ডিলিট ব্যতীত সব)
-          </span>
-        );
-      case 'viewer':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
-            👁️ ভিউয়ার (শুধুমাত্র দেখার অনুমতি)
-          </span>
-        );
       default:
-        return <span className="text-xs font-bold text-slate-600">{role}</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-bold bg-blue-100 text-blue-900 border border-blue-300">
+            👔 স্টাফ
+          </span>
+        );
     }
   };
 
@@ -232,7 +229,7 @@ export default function SettingsPage() {
             <SettingsIcon className="w-7 h-7 text-amber-600" />
             দোকান ও সিস্টেম সেটিংস
           </h2>
-          <p className="text-slate-500 text-sm font-semibold mt-1">ব্যবসার পরিচিতি ও ৩-স্তরের ব্যবহারকারী অ্যাক্সেস কন্ট্রোল</p>
+          <p className="text-slate-500 text-sm font-semibold mt-1">ব্যবসার পরিচিতি ও ব্যবহারকারী অ্যাকাউন্ট ব্যবস্থাপনা</p>
         </div>
 
         {/* 1. SHOP PROFILE CARD */}
@@ -329,17 +326,17 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* 2. USER & ROLE MANAGEMENT (3-TIER ACCESS) */}
+        {/* 2. USER & ROLE MANAGEMENT */}
         {isAdmin && (
           <Card className="border-slate-200 shadow-sm rounded-2xl overflow-hidden bg-white">
             <CardHeader className="bg-slate-50/50 border-b border-slate-100 py-4 px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <CardTitle className="flex items-center gap-2 text-base font-black text-slate-800">
                   <Users className="w-5 h-5 text-blue-600" />
-                  ব্যবহারকারী ও অ্যাক্সেস রোল ব্যবস্থাপনা (User & Role Management)
+                  ব্যবহারকারী ব্যবস্থাপনা (User Management)
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500 font-semibold mt-0.5">
-                  ৩ স্তরের ব্যবহারকারী রোল: <strong>অ্যাডমিন</strong> (সবকিছু), <strong>স্টাফ</strong> (চালান এডিট/ডিলিট ব্যতীত সব), <strong>ভিউয়ার</strong> (শুধুমাত্র দর্শন)
+                  অ্যাডমিন ও স্টাফ অ্যাকাউন্ট পরিচালনা
                 </CardDescription>
               </div>
 
@@ -358,7 +355,7 @@ export default function SettingsPage() {
                   <TableRow>
                     <TableHead className="font-bold text-slate-600 text-xs py-3 px-6">ব্যবহারকারী / নাম</TableHead>
                     <TableHead className="font-bold text-slate-600 text-xs py-3 px-4">ইউজারনেম</TableHead>
-                    <TableHead className="font-bold text-slate-600 text-xs py-3 px-4">অ্যাক্সেস রোল</TableHead>
+                    <TableHead className="font-bold text-slate-600 text-xs py-3 px-4">রোল</TableHead>
                     <TableHead className="font-bold text-slate-600 text-xs py-3 px-4">মোবাইল</TableHead>
                     <TableHead className="font-bold text-slate-600 text-xs py-3 px-6 text-right">অ্যাকশন</TableHead>
                   </TableRow>
@@ -436,53 +433,6 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         )}
-
-        {/* 3. ROLES EXPLANATION CARD */}
-        <Card className="border-slate-200 shadow-sm rounded-2xl overflow-hidden bg-white">
-          <CardHeader className="bg-slate-50/50 border-b border-slate-100 py-3.5 px-6">
-            <CardTitle className="flex items-center gap-2 text-sm font-black text-slate-800">
-              <Shield className="w-4 h-4 text-slate-700" />
-              রোল ও অনুমতি নির্দেশিকা (Permission Guide)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-            <div className="p-4 rounded-xl bg-amber-50/60 border border-amber-200/80 space-y-2">
-              <div className="flex items-center gap-1.5 font-black text-amber-900 text-sm">
-                <span>👑 অ্যাডমিন (Admin)</span>
-              </div>
-              <ul className="space-y-1.5 text-amber-950 font-medium leading-relaxed">
-                <li className="flex items-center gap-1.5">✓ নতুন বিক্রি ও ক্রয় চালান তৈরি</li>
-                <li className="flex items-center gap-1.5">✓ যেকোনো চালান এডিট বা মুছে ফেলা</li>
-                <li className="flex items-center gap-1.5">✓ ইউজার একাউন্ট তৈরি ও নিয়ন্ত্রণ</li>
-                <li className="flex items-center gap-1.5">✓ সেটিংস ও হিসাব পরিবর্তন</li>
-              </ul>
-            </div>
-
-            <div className="p-4 rounded-xl bg-blue-50/60 border border-blue-200/80 space-y-2">
-              <div className="flex items-center gap-1.5 font-black text-blue-900 text-sm">
-                <span>👔 স্টাফ (Staff)</span>
-              </div>
-              <ul className="space-y-1.5 text-blue-950 font-medium leading-relaxed">
-                <li className="flex items-center gap-1.5">✓ নতুন বিক্রি ও ক্রয় চালান তৈরি</li>
-                <li className="flex items-center gap-1.5">✓ পেমেন্ট ভাউচার ও খতিয়ান এন্ট্রি</li>
-                <li className="flex items-center gap-1.5">✓ কাস্টমার ও পণ্য পরিচালনা</li>
-                <li className="flex items-center gap-1.5 text-rose-700 font-bold">✗ কোনো চালান এডিট বা মুছতে পারবে না</li>
-              </ul>
-            </div>
-
-            <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200/80 space-y-2">
-              <div className="flex items-center gap-1.5 font-black text-emerald-900 text-sm">
-                <span>👁️ ভিউয়ার (Viewer)</span>
-              </div>
-              <ul className="space-y-1.5 text-emerald-950 font-medium leading-relaxed">
-                <li className="flex items-center gap-1.5">✓ সকল ড্যাশবোর্ড ও রিপোর্ট দর্শন</li>
-                <li className="flex items-center gap-1.5">✓ স্টক শিট ও খতিয়ান প্রিন্ট</li>
-                <li className="flex items-center gap-1.5 text-rose-700 font-bold">✗ নতুন কোনো ডাটা এন্ট্রি করতে পারবে না</li>
-                <li className="flex items-center gap-1.5 text-rose-700 font-bold">✗ কোনো কিছু পরিবর্তন বা মুছতে পারবে না</li>
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* CREATE / EDIT USER MODAL */}
@@ -501,7 +451,7 @@ export default function SettingsPage() {
               <Input
                 value={formData.full_name}
                 onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                placeholder="যেমন: মোঃ দেলোয়ার হোসেন"
+                placeholder="মোঃ দেলোয়ার হোসেন"
                 className="font-bold text-xs rounded-xl"
               />
             </div>
@@ -512,25 +462,24 @@ export default function SettingsPage() {
                 <Input
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  placeholder="যেমন: staff_manager"
+                  placeholder="staff_manager"
                   required
                   className="font-mono font-bold text-xs rounded-xl"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-700">অ্যাক্সেস রোল (Role) *</Label>
+                <Label className="text-xs font-bold text-slate-700">রোল (Role) *</Label>
                 <Select
-                  value={formData.role}
+                  value={formData.role === 'admin' ? 'admin' : 'staff'}
                   onValueChange={(val: any) => setFormData({ ...formData, role: val })}
                 >
                   <SelectTrigger className="font-bold text-xs rounded-xl h-9">
                     <SelectValue placeholder="রোল নির্বাচন করুন" />
                   </SelectTrigger>
                   <SelectContent className="font-bengali text-xs font-bold">
-                    <SelectItem value="admin">👑 অ্যাডমিন (সবকিছু)</SelectItem>
-                    <SelectItem value="staff">👔 স্টাফ (চালান এডিট/ডিলিট ছাড়া)</SelectItem>
-                    <SelectItem value="viewer">👁️ ভিউয়ার (শুধুমাত্র দেখা)</SelectItem>
+                    <SelectItem value="admin">👑 অ্যাডমিন (Admin)</SelectItem>
+                    <SelectItem value="staff">👔 স্টাফ (Staff)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

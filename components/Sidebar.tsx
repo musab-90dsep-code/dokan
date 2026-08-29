@@ -374,16 +374,16 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
               <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
                 <div className={cn(
                   "w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm text-white flex-shrink-0 shadow-2xs",
-                  role === 'admin' ? "bg-amber-500" : role === 'staff' ? "bg-blue-600" : "bg-emerald-600"
+                  role === 'staff' ? "bg-blue-600 shadow-blue-600/20" : "bg-amber-600 shadow-amber-600/20"
                 )}>
-                  {role === 'admin' ? '👑' : role === 'staff' ? '👔' : '👁️'}
+                  {role === 'staff' ? '👔' : '👑'}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-bold text-slate-800 truncate">
                     {user.full_name || user.username}
                   </p>
-                  <p className="text-[10px] font-semibold text-slate-500 truncate">
-                    {role === 'admin' ? 'অ্যাডমিন (সর্বোচ্চ ক্ষমতা)' : role === 'staff' ? 'স্টাফ (এডিট/ডিলিট বন্ধ)' : 'ভিউয়ার (রিড-অনলি)'}
+                  <p className="text-[10px] font-bold text-slate-500 truncate">
+                    {role === 'staff' ? 'স্টাফ' : 'অ্যাডমিন'}
                   </p>
                 </div>
               </div>

@@ -126,6 +126,19 @@
   html {
     @apply font-sans;
     }
+
+  /* Chrome, Safari, Edge, Opera: Hide number input spinner arrows */
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  /* Firefox: Hide number input spinner arrows */
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
 }
 
 .bg-blueprint-pattern {

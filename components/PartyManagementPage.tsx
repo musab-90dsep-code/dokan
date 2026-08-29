@@ -1014,7 +1014,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           required
                           value={formData.name}
                           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                          placeholder={isEngineer ? 'যেমন: ইঞ্জি. মাহফুজুর রহমান' : isCustomer ? 'যেমন: মোহাম্মদ রফিকুল ইসলাম' : 'যেমন: বিএসআরএম স্টিল মিলস'}
+                          placeholder={isEngineer ? 'ইঞ্জি. মাহফুজুর রহমান' : isCustomer ? 'মোহাম্মদ রফিকুল ইসলাম' : 'বিএসআরএম স্টিল মিলস'}
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1027,7 +1027,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           <Input
                             value={formData.businessName}
                             onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                            placeholder={isEngineer ? 'যেমন: রহমান ডিজাইন এন্ড বিল্ডার্স' : 'যেমন: রফিক ট্রেডার্স (ঐচ্ছিক)'}
+                            placeholder={isEngineer ? 'রহমান ডিজাইন এন্ড বিল্ডার্স' : 'রফিক ট্রেডার্স (ঐচ্ছিক)'}
                             className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                           />
                         </div>
@@ -1263,7 +1263,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         <Input
                           value={formData.postcode}
                           onChange={(e) => setFormData({ ...formData, postcode: e.target.value })}
-                          placeholder="যেমন: ১২১৬"
+                          placeholder="১২১৬"
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1321,7 +1321,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         <Input
                           value={formData.nid}
                           onChange={(e) => setFormData({ ...formData, nid: e.target.value })}
-                          placeholder={isEngineer ? 'যেমন: IEB M-34821 বা NID' : 'এনআইডি বা লাইসেন্স নম্বর'}
+                          placeholder={isEngineer ? 'IEB M-34821 বা NID' : 'এনআইডি বা লাইসেন্স নম্বর'}
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1363,7 +1363,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           onChange={(e) =>
                             setFormData({ ...formData, creditLimit: e.target.value })
                           }
-                          placeholder="যেমন: ৫০০০০০"
+                          placeholder="৫০০০০০"
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1423,7 +1423,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                                 step="0.01"
                                 value={formData.rodCommissionRate}
                                 onChange={(e) => setFormData({ ...formData, rodCommissionRate: e.target.value })}
-                                placeholder="যেমন: ০.৫০ (৫০ পয়সা/কেজি)"
+                                placeholder="০.৫০ (৫০ পয়সা/কেজি)"
                                 className="rounded-lg h-10 bg-slate-50 border-orange-200 font-black text-slate-900 text-sm pl-7"
                               />
                               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xs">৳</span>
@@ -1445,7 +1445,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                                 step="0.1"
                                 value={formData.cementCommissionRate}
                                 onChange={(e) => setFormData({ ...formData, cementCommissionRate: e.target.value })}
-                                placeholder="যেমন: ১০.০০ (১০ টাকা/বস্তা)"
+                                placeholder="১০.০০ (১০ টাকা/বস্তা)"
                                 className="rounded-lg h-10 bg-slate-50 border-orange-200 font-black text-slate-900 text-sm pl-7"
                               />
                               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xs">৳</span>
@@ -1465,7 +1465,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                       <Input
                         value={formData.note}
                         onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-                        placeholder={isEngineer ? 'যেমন: বসুন্ধরা ৩ তলা রেসিডেন্সিয়াল সাইট, প্রতি টন রডে ৫০ টাকা ও প্রতি ব্যাগ সিমেন্টে ২০ টাকা কমিশন' : 'গ্রাহক সম্পর্কে যেকোনো অতিরিক্ত তথ্য বা নোট লিখে রাখুন'}
+                        placeholder={isEngineer ? 'বসুন্ধরা ৩ তলা রেসিডেন্সিয়াল সাইট, প্রতি টন রডে ৫০ টাকা ও প্রতি ব্যাগ সিমেন্টে ২০ টাকা কমিশন' : 'গ্রাহক সম্পর্কে যেকোনো অতিরিক্ত তথ্য বা নোট লিখে রাখুন'}
                         className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                       />
                     </div>

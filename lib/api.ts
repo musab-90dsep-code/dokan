@@ -204,7 +204,7 @@ export interface AuthUserData {
   last_name?: string;
   full_name?: string;
   phone?: string;
-  role: 'admin' | 'staff' | 'viewer';
+  role: 'developer' | 'admin' | 'staff' | 'viewer';
   role_display?: string;
   role_badge?: string;
   is_active?: boolean;
@@ -624,10 +624,16 @@ export const api = {
 
   // Authentication & User Management
   auth: {
-    login: async (username: string, password?: string): Promise<AuthLoginResponse> => {
+    login: async (identifierOrEmail: string, password?: string): Promise<AuthLoginResponse> => {
+      const cleanIdentifier = (identifierOrEmail || '').trim();
       return request<AuthLoginResponse>('/auth/login/', {
         method: 'POST',
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ 
+          email: cleanIdentifier,
+          username: cleanIdentifier,
+          identifier: cleanIdentifier,
+          password 
+        }),
       });
     },
     me: async (): Promise<AuthUserData> => {

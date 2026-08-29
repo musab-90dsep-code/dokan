@@ -890,25 +890,22 @@ export function Shell({ children }: { children: ReactNode }) {
             </button>
 
             {/* User Avatar & Name & Role */}
-            <div className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-3 border-l border-slate-200">
+            <div className="flex items-center gap-2 sm:gap-2.5 pl-2 sm:pl-3 border-l border-slate-200">
               <div className={cn(
-                "h-8 w-8 sm:h-9 sm:w-9 rounded-xl flex items-center justify-center text-white font-black text-xs sm:text-sm shadow-md flex-shrink-0",
-                role === 'admin' ? "bg-gradient-to-tr from-[#8c6b1c] via-[#b88e2d] to-[#d4af37] shadow-amber-500/25" : role === 'staff' ? "bg-blue-600 shadow-blue-500/25" : "bg-emerald-600 shadow-emerald-500/25"
+                "h-8 w-8 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-sm flex-shrink-0",
+                role === 'staff' ? "bg-blue-600 shadow-blue-600/20" : "bg-amber-600 shadow-amber-600/20"
               )}>
-                {role === 'admin' ? '👑' : role === 'staff' ? '👔' : '👁️'}
+                {role === 'staff' ? '👔' : '👑'}
               </div>
               <div className="hidden md:block text-left font-bengali">
-                <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>{user?.full_name || user?.username || 'দোকান এডমিন'}</span>
+                <p className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  <span className="truncate max-w-[140px]">{user?.full_name || user?.username || 'ইউজার'}</span>
                   <span className={cn(
-                    "text-[10px] px-1.5 py-0.2 rounded-md font-extrabold uppercase",
-                    role === 'admin' ? "bg-amber-100 text-amber-900 border border-amber-300/80" : role === 'staff' ? "bg-blue-100 text-blue-900 border border-blue-300/80" : "bg-emerald-100 text-emerald-900 border border-emerald-300/80"
+                    "text-[10px] px-1.5 py-0.5 rounded-md font-bold",
+                    role === 'staff' ? "bg-blue-100 text-blue-900 border border-blue-300" : "bg-amber-100 text-amber-900 border border-amber-300"
                   )}>
-                    {role === 'admin' ? 'এডমিন' : role === 'staff' ? 'স্টাফ' : 'ভিউয়ার'}
+                    {role === 'staff' ? 'স্টাফ' : 'অ্যাডমিন'}
                   </span>
-                </p>
-                <p className="text-[10px] text-slate-500 font-medium">
-                  {role === 'admin' ? 'সব ক্ষমতার এক্সেস' : role === 'staff' ? 'ইনভয়েস এডিট/ডিলিট বন্ধ' : 'রিড-অনলি মোড'}
                 </p>
               </div>
             </div>
@@ -1208,7 +1205,7 @@ export function Shell({ children }: { children: ReactNode }) {
                         <label className="block text-xs text-slate-300 font-medium mb-1">ব্যক্তি / গ্রাহকের নাম</label>
                         <input
                           type="text"
-                          placeholder="যেমন: রহিম ভাই / নোট"
+                          placeholder="রহিম ভাই / ব্যক্তির নাম"
                           value={hawlatPersonName}
                           onChange={(e) => setHawlatPersonName(e.target.value)}
                           className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
@@ -1242,7 +1239,7 @@ export function Shell({ children }: { children: ReactNode }) {
                         <label className="block text-xs text-slate-300 font-medium mb-1">নোট / বিবরণ</label>
                         <input
                           type="text"
-                          placeholder="যেমন: জরুরি প্রয়োজনে দেয়া হলো"
+                          placeholder="জরুরি প্রয়োজনে দেয়া হলো / বিবরণ"
                           value={hawlatNote}
                           onChange={(e) => setHawlatNote(e.target.value)}
                           className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
