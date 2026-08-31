@@ -83,6 +83,11 @@ export interface PurchaseInvoice {
   items: PurchaseItem[];
   subtotal?: number;
   discount?: number;
+  commission?: number;
+  commissionRate?: number;
+  commissionType?: 'flat' | 'per_unit' | 'percentage';
+  commissionAdjustment?: 'pending' | 'deduct';
+  commissionStatus?: string;
   shippingCost?: number;
   laborCost?: number;
   totalAmount: number;
@@ -96,6 +101,7 @@ export interface PurchaseInvoice {
   driverName?: string;
   driverPhone?: string;
   deliveryAddress?: string;
+  note?: string;
 }
 
 export default function PurchasesPage() {
@@ -196,10 +202,12 @@ export default function PurchasesPage() {
     }
   };
 
-  // Billing & Payment Extension States
-  const [discountType, setDiscountType] = useState<'percentage' | 'flat'>('percentage');
-  const [discountPercent, setDiscountPercent] = useState<number>(0);
-  const [discountFlat, setDiscountFlat] = useState<number>(0);
+  // Billing, Commission & Payment Extension States
+  const [commissionType, setCommissionType] = useState<'flat' | 'per_unit' | 'percentage'>('flat');
+  const [commissionRate, setCommissionRate] = useState<number>(0);
+  const [commissionAmount, setCommissionAmount] = useState<number>(0);
+  const [commissionAdjustment, setCommissionAdjustment] = useState<'pending' | 'deduct'>('pending');
+  const [commissionNote, setCommissionNote] = useState<string>('');
   const [shippingCost, setShippingCost] = useState<number>(0);
   const [laborCost, setLaborCost] = useState<number>(0);
   const [shippingPaymentStatus, setShippingPaymentStatus] = useState<'pending' | 'paid' | 'partial' | 'overpaid'>('pending');
@@ -276,6 +284,11 @@ export default function PurchasesPage() {
           })),
           subtotal: p.subtotal || meta.subtotal,
           discount: p.discount !== undefined ? p.discount : (meta.discount || 0),
+          commission: meta.commission !== undefined ? Number(meta.commission) : (meta.commissionAmount !== undefined ? Number(meta.commissionAmount) : undefined),
+          commissionRate: meta.commissionRate !== undefined ? Number(meta.commissionRate) : undefined,
+          commissionType: meta.commissionType || 'flat',
+          commissionAdjustment: meta.commissionAdjustment || 'pending',
+          commissionStatus: meta.commissionStatus || 'pending',
           shippingCost: pAny.shipping_cost !== undefined ? pAny.shipping_cost : (meta.shippingCost || 0),
           laborCost: pAny.labor_cost !== undefined ? pAny.labor_cost : (meta.laborCost || 0),
           transportCost: meta.transportCost || meta.shippingCost || pAny.shipping_cost || 0,
@@ -380,13 +393,53 @@ export default function PurchasesPage() {
     });
   }, [suppliers, purchaseType]);
 
+  // Cart Quantities for Commission Helper Calculations
+  const rodTotalKg = useMemo(() => {
+    return cart.reduce((sum, item) => {
+      const n = (item.name || '').toLowerCase();
+      const isRod = n.includes('রড') || n.includes('rod') || n.includes('রিং') || item.category === 'রড' || item.unit === 'কেজি' || item.unit === 'টন';
+      if (isRod) {
+        if (item.unit === 'টন') return sum + (Number(item.quantity) || 0) * 1000;
+        return sum + (Number(item.quantity) || 0);
+      }
+      return sum;
+    }, 0);
+  }, [cart]);
+
+  const cementTotalBags = useMemo(() => {
+    return cart.reduce((sum, item) => {
+      const n = (item.name || '').toLowerCase();
+      const isCement = n.includes('সিমেন্ট') || n.includes('cement') || item.category === 'সিমেন্ট' || item.unit === 'বস্তা' || item.unit === 'ব্যাগ';
+      if (isCement) return sum + (Number(item.quantity) || 0);
+      return sum;
+    }, 0);
+  }, [cart]);
+
+  const totalCartUnits = useMemo(() => {
+    return cart.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  }, [cart]);
+
+  // Commission Computation
+  const computedCommission = useMemo(() => {
+    if (commissionType === 'flat') {
+      return Number(commissionAmount) || 0;
+    } else if (commissionType === 'percentage') {
+      return Math.round(((cart.reduce((a, i) => a + (i.price * i.quantity), 0) * (Number(commissionRate) || 0)) / 100) * 100) / 100;
+    } else if (commissionType === 'per_unit') {
+      if (purchaseType === 'rod' && rodTotalKg > 0) {
+        return Math.round(rodTotalKg * (Number(commissionRate) || 0) * 100) / 100;
+      } else if (purchaseType === 'cement' && cementTotalBags > 0) {
+        return Math.round(cementTotalBags * (Number(commissionRate) || 0) * 100) / 100;
+      }
+      return Math.round(totalCartUnits * (Number(commissionRate) || 0) * 100) / 100;
+    }
+    return Number(commissionAmount) || 0;
+  }, [commissionType, commissionAmount, commissionRate, cart, purchaseType, rodTotalKg, cementTotalBags, totalCartUnits]);
+
   // Cart Calculations
   const cartSubtotal = cart.reduce((a, i) => a + (i.price * i.quantity), 0);
-  const computedDiscount = discountType === 'percentage' 
-    ? (cartSubtotal * (discountPercent || 0)) / 100 
-    : (discountFlat || 0);
-  const cartTotalDiscount = computedDiscount + cart.reduce((a, i) => a + ((i.discount || 0) * i.quantity), 0);
-  const cartTotalAmount = Math.max(0, cartSubtotal - cartTotalDiscount + (shippingCost || 0) + (laborCost || 0));
+  const commissionDeduction = commissionAdjustment === 'deduct' ? computedCommission : 0;
+  const cartTotalAmount = Math.max(0, cartSubtotal - commissionDeduction + (shippingCost || 0) + (laborCost || 0));
   const cartDueAmount = paymentOption === 'now' ? Math.max(0, cartTotalAmount - paidAmount) : cartTotalAmount;
 
   // Existing Supplier Due Calculation
@@ -424,9 +477,11 @@ export default function PurchasesPage() {
     setSelectedProductId('');
     setItemQty(1);
     setItemPrice(0);
-    setDiscountType('percentage');
-    setDiscountPercent(0);
-    setDiscountFlat(0);
+    setCommissionType('flat');
+    setCommissionRate(0);
+    setCommissionAmount(0);
+    setCommissionAdjustment('pending');
+    setCommissionNote('');
 
     if (typeof window !== 'undefined') {
       try {
@@ -565,7 +620,7 @@ export default function PurchasesPage() {
       else if (pmLower.includes('cheque') || pmLower.includes('check')) effectivePaymentMethod = 'cheque';
       else if (pmLower.includes('mobile') || pmLower.includes('bkash') || pmLower.includes('nagad')) effectivePaymentMethod = 'mobile_banking';
 
-      const goodsTotal = Math.max(0, cartSubtotal - computedDiscount);
+      const goodsTotal = Math.max(0, cartSubtotal - (commissionAdjustment === 'deduct' ? computedCommission : 0));
       const supplierDueAmount = paymentOption === 'now' ? Math.max(0, goodsTotal - paidAmount) : goodsTotal;
 
       const finalShipCost = Number(shippingCost || 0);
@@ -677,10 +732,13 @@ export default function PurchasesPage() {
         shippingPaidAmount: finalShippingPaid,
         laborPaidAmount: finalLaborPaid,
         supplierDue: Math.round((Number(supplierDueAmount) || 0) * 100) / 100,
-        discount: computedDiscount || 0,
-        discountType: discountType,
-        discountPercent: discountPercent,
-        discountFlat: discountFlat,
+        commission: computedCommission || 0,
+        commissionAmount: computedCommission || 0,
+        commissionRate: commissionRate || 0,
+        commissionType: commissionType,
+        commissionAdjustment: commissionAdjustment,
+        commissionStatus: 'pending',
+        commissionNote: commissionNote || '',
         previousSupplierDue: selectedSupplierDue || 0,
         userNote: purchaseNote || ''
       };
@@ -798,8 +856,11 @@ export default function PurchasesPage() {
       setIsLandedCostAuto(true);
     }
 
-    setDiscountType('flat');
-    setDiscountFlat(p.discount || 0);
+    setCommissionType(meta.commissionType || 'flat');
+    setCommissionRate(meta.commissionRate !== undefined ? Number(meta.commissionRate) : 0);
+    setCommissionAmount(meta.commission !== undefined ? Number(meta.commission) : (meta.commissionAmount !== undefined ? Number(meta.commissionAmount) : (p.commission || 0)));
+    setCommissionAdjustment(meta.commissionAdjustment || 'pending');
+    setCommissionNote(meta.commissionNote || '');
     setShippingCost(p.shippingCost || pAny.shipping_cost || 0);
     setLaborCost(p.laborCost || pAny.labor_cost || 0);
     setVehicleNo(p.vehicleNo || pAny.vehicle_no || '');
@@ -1195,6 +1256,11 @@ export default function PurchasesPage() {
                           <div>
                             <p className="font-black text-slate-900 text-xs">{p.supplierName}</p>
                             {p.supplierPhone && <p className="text-[10px] text-slate-400 font-mono">{toBengaliDigits(p.supplierPhone)}</p>}
+                            {p.commission !== undefined && p.commission > 0 && (
+                              <span className="inline-flex items-center gap-1 mt-0.5 text-[9px] font-black bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded border border-emerald-200">
+                                ৳ {toBengaliDigits(p.commission.toLocaleString('en-IN'))} কমিশন ({p.commissionAdjustment === 'deduct' ? 'কর্তন' : 'পেন্ডিং'})
+                              </span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="py-3.5 px-4 text-right font-mono font-black text-slate-900">
@@ -1664,50 +1730,91 @@ export default function PurchasesPage() {
                 {/* STEP 4 & STEP 5 ROW */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   
-                  {/* STEP 4: Totals, Discount & Labor */}
+                  {/* STEP 4: Totals, Commission & Labor */}
                   <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
                     <CardContent className="p-5 space-y-4">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
                         <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">4</span>
-                        Totals, Discount & Charges (মোট, ছাড় ও খরচ)
+                        Commission & Charges (কমিশন ও খরচ)
                       </Label>
 
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Discount Type</Label>
-                          <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
-                            <SelectTrigger className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="font-bengali text-xs font-bold">
-                              <SelectItem value="percentage">Percentage (%)</SelectItem>
-                              <SelectItem value="flat">Flat (৳)</SelectItem>
-                            </SelectContent>
-                          </Select>
+                      {/* COMMISSION & PENDING COMMISSION INPUT SECTION */}
+                      <div className="p-3.5 bg-gradient-to-r from-emerald-50/70 to-teal-50/50 border border-emerald-200 rounded-xl space-y-3 font-bengali text-xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-emerald-950 font-bold">
+                            <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-black flex items-center justify-center">%</span>
+                            <span className="text-xs font-black text-emerald-900">কোম্পানি কমিশন / পেন্ডিং কমিশন (Commission)</span>
+                          </div>
+                          {computedCommission > 0 && (
+                            <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              মোট কমিশন: ৳ {toBengaliDigits(computedCommission.toLocaleString('en-IN'))}
+                            </span>
+                          )}
                         </div>
 
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Discount % / Amount</Label>
-                          <Input 
-                            type="number"
-                            value={discountType === 'percentage' ? (discountPercent || '') : (discountFlat || '')}
-                            onChange={e => {
-                              const val = parseFloat(e.target.value) || 0;
-                              if (discountType === 'percentage') setDiscountPercent(val);
-                              else setDiscountFlat(val);
-                            }}
-                            placeholder="0"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
-                          />
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] font-bold text-slate-600">কমিশন টাইপ</Label>
+                            <Select value={commissionType} onValueChange={(v: any) => setCommissionType(v)}>
+                              <SelectTrigger className="rounded-lg h-9 bg-white border-emerald-200 text-xs font-bold text-slate-800">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="font-bengali text-xs font-bold">
+                                <SelectItem value="flat">ফিক্সড মোট টাকা (৳)</SelectItem>
+                                <SelectItem value="per_unit">
+                                  {purchaseType === 'rod' ? 'প্রতি কেজি / টন রেট (৳)' : purchaseType === 'cement' ? 'প্রতি বস্তা রেট (৳)' : 'প্রতি একক রেট (৳)'}
+                                </SelectItem>
+                                <SelectItem value="percentage">শতকরা হার (%)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-[10px] font-bold text-slate-600">
+                              {commissionType === 'flat' ? 'কমিশন পরিমাণ (৳)' : commissionType === 'percentage' ? 'কমিশন হার (%)' : (purchaseType === 'rod' ? 'কমিশন রেট (৳/কেজি)' : 'কমিশন রেট (৳/বস্তা)')}
+                            </Label>
+                            <Input 
+                              type="number"
+                              step="0.01"
+                              value={commissionType === 'flat' ? (commissionAmount || '') : (commissionRate || '')}
+                              onChange={e => {
+                                const val = parseFloat(e.target.value) || 0;
+                                if (commissionType === 'flat') {
+                                  setCommissionAmount(val);
+                                } else {
+                                  setCommissionRate(val);
+                                }
+                              }}
+                              placeholder="০.০০"
+                              className="rounded-lg h-9 bg-white border-emerald-200 text-xs font-black text-emerald-700"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-[10px] font-bold text-slate-600">কমিশন সমন্বয় পদ্ধতি</Label>
+                            <Select value={commissionAdjustment} onValueChange={(v: any) => setCommissionAdjustment(v)}>
+                              <SelectTrigger className="rounded-lg h-9 bg-white border-emerald-200 text-xs font-bold text-slate-800">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="font-bengali text-xs font-bold">
+                                <SelectItem value="pending">🟡 পেন্ডিং কমিশনে যোগ হবে</SelectItem>
+                                <SelectItem value="deduct">✂️ চালান বিল থেকে কর্তন হবে</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
 
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Calculated Discount</Label>
-                          <Input 
-                            disabled
-                            value={`৳ ${computedDiscount.toLocaleString()}`}
-                            className="rounded-xl h-10 bg-slate-100 border-slate-200 text-xs font-black text-emerald-600 cursor-not-allowed"
-                          />
+                        {/* Helper info badge */}
+                        <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] text-slate-600 bg-white/80 p-1.5 rounded-lg border border-emerald-100">
+                          <span>
+                            {purchaseType === 'rod' && rodTotalKg > 0 && `রড মাল: ${toBengaliDigits(rodTotalKg)} কেজি`}
+                            {purchaseType === 'cement' && cementTotalBags > 0 && `সিমেন্ট মাল: ${toBengaliDigits(cementTotalBags)} বস্তা`}
+                            {!((purchaseType === 'rod' && rodTotalKg > 0) || (purchaseType === 'cement' && cementTotalBags > 0)) && `মোট পরিমাণ: ${toBengaliDigits(totalCartUnits)}`}
+                            {commissionType === 'per_unit' && commissionRate > 0 && ` × ৳${toBengaliDigits(commissionRate)}/একক`}
+                          </span>
+                          <span className="font-black text-emerald-800">
+                            {commissionAdjustment === 'pending' ? '📌 পেন্ডিং কমিশন তালিকায় জমা হবে' : '📉 ইনভয়েস নিট বিলে কর্তন হবে'}
+                          </span>
                         </div>
                       </div>
 
@@ -2165,13 +2272,6 @@ export default function PurchasesPage() {
                           <span className="font-bold text-slate-900">৳ {cartSubtotal.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
                         </div>
 
-                        {cartTotalDiscount > 0 && (
-                          <div className="flex justify-between text-emerald-600">
-                            <span>Discount</span>
-                            <span className="font-bold">- ৳ {cartTotalDiscount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
-                          </div>
-                        )}
-
                         {shippingCost > 0 && (
                           <div className="flex justify-between text-blue-600">
                             <span>Shipping / Freight</span>
@@ -2186,8 +2286,20 @@ export default function PurchasesPage() {
                           </div>
                         )}
 
+                        {computedCommission > 0 && (
+                          <div className="flex justify-between items-center text-emerald-700 bg-emerald-50/80 p-2 rounded-lg border border-emerald-200">
+                            <div>
+                              <span className="font-bold block text-xs">Company Commission</span>
+                              <span className="text-[10px] text-emerald-600 font-semibold">
+                                {commissionAdjustment === 'pending' ? 'পেন্ডিং কমিশন তালিকায় জমা হবে' : 'ইনভয়েস বিলে কর্তন'}
+                              </span>
+                            </div>
+                            <span className="font-black font-mono text-sm">৳ {computedCommission.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        )}
+
                         {(() => {
-                          const goodsTotal = Math.max(0, cartSubtotal - cartTotalDiscount);
+                          const goodsTotal = Math.max(0, cartSubtotal - (commissionAdjustment === 'deduct' ? computedCommission : 0));
                           const goodsSupplierDue = paymentOption === 'now' ? Math.max(0, goodsTotal - paidAmount) : goodsTotal;
                           return (
                             <>
@@ -2206,7 +2318,7 @@ export default function PurchasesPage() {
                       </div>
 
                       {(() => {
-                        const goodsTotal = Math.max(0, cartSubtotal - cartTotalDiscount);
+                        const goodsTotal = Math.max(0, cartSubtotal - (commissionAdjustment === 'deduct' ? computedCommission : 0));
                         const goodsSupplierDue = paymentOption === 'now' ? Math.max(0, goodsTotal - paidAmount) : goodsTotal;
                         return (
                           <div className="pt-3 border-t border-slate-100 flex justify-between items-baseline">
@@ -2239,7 +2351,7 @@ export default function PurchasesPage() {
                     </div>
 
                     {(() => {
-                      const goodsTotal = Math.max(0, cartSubtotal - cartTotalDiscount);
+                      const goodsTotal = Math.max(0, cartSubtotal - (commissionAdjustment === 'deduct' ? computedCommission : 0));
                       const goodsSupplierDue = paymentOption === 'now' ? Math.max(0, goodsTotal - paidAmount) : goodsTotal;
                       return (
                         <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-3">

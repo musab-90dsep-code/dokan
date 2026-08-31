@@ -78,7 +78,7 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
   const extraPerUnit = totalQtySum > 0 ? (totalExtra / totalQtySum) : 0;
 
   // Stored sum of item totals in record
-  const storedItemsSum = items.reduce((sum: number, i: any) => sum + ((Number(i.price || i.buyPrice || 0) - Number(i.discount || 0)) * Number(i.quantity || 0)), 0);
+  const storedItemsSum = items.reduce((sum: number, i: any) => sum + (Number(i.price || i.buyPrice || 0) * Number(i.quantity || 0)), 0);
   const invoiceTotalInRecord = Number(invoice.totalAmount || 0);
 
   // Detect if stored item price already contains landed cost (Base + Extra)
@@ -94,15 +94,16 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
     ? Math.max(0, storedItemsSum - totalExtra)
     : (invoice.subtotal ? Number(invoice.subtotal) : storedItemsSum);
 
-  // Discounts
-  const discountPercent = Number(meta.discountPercent || 0);
-  const discountFlat = Number(invoice.discount !== undefined ? invoice.discount : (meta.discountFlat || meta.discount || 0));
-  const discount = discountFlat > 0 ? discountFlat : (discountPercent > 0 ? (subtotal * discountPercent / 100) : 0);
+  const commission = Number(invoice.commission !== undefined ? invoice.commission : (meta.commission !== undefined ? meta.commission : (meta.commissionAmount || 0)));
+  const commissionRate = Number(invoice.commissionRate !== undefined ? invoice.commissionRate : (meta.commissionRate || 0));
+  const commissionAdjustment = invoice.commissionAdjustment || meta.commissionAdjustment || 'pending';
+  const commissionNote = meta.commissionNote || '';
+  const commissionDeduction = commissionAdjustment === 'deduct' ? commission : 0;
 
-  const totalAmount = Math.max(0, subtotal - discount + shippingCost + laborCost);
+  const totalAmount = Math.max(0, subtotal - commissionDeduction + shippingCost + laborCost);
 
   const paidAmount = Number(invoice.paidAmount || 0);
-  const goodsTotal = Math.max(0, subtotal - discount);
+  const goodsTotal = Math.max(0, subtotal - commissionDeduction);
   const supplierGoodsDue = meta.supplierDue !== undefined ? Number(meta.supplierDue) : Math.max(0, goodsTotal - paidAmount);
   const dueAmount = supplierGoodsDue;
 
@@ -523,10 +524,17 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
               <span className="font-mono font-bold text-slate-900">৳ {toBengaliDigits(subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
 
-            {discount > 0 && (
-              <div className="flex justify-between items-center text-rose-600">
-                <span className="text-slate-500">বিশেষ ছাড় {discountPercent > 0 ? `(${toBengaliDigits(discountPercent)}%)` : ''}</span>
-                <span className="font-mono font-bold">- ৳ {toBengaliDigits(discount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+            {commission > 0 && (
+              <div className="flex justify-between items-center text-emerald-800 bg-emerald-50/80 p-2 rounded-md border border-emerald-200">
+                <div>
+                  <span className="font-bold flex items-center gap-1 text-emerald-950">
+                    💰 কোম্পানি কমিশন {commissionRate > 0 ? `(রেট: ৳${toBengaliDigits(commissionRate)})` : ''}
+                  </span>
+                  <span className="text-[10px] text-emerald-700 font-semibold block">
+                    {commissionAdjustment === 'pending' ? '🟡 পেন্ডিং কমিশন তালিকায় জমা' : '✂️ চালান বিলে সরাসরি কর্তন/ছাড়'}
+                  </span>
+                </div>
+                <span className="font-mono font-black text-emerald-800">৳ {toBengaliDigits(commission.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
               </div>
             )}
 

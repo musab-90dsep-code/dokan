@@ -138,20 +138,23 @@ export function generateLedgerEntries(
   let cumulativeBalance = 0;
 
   // 1. Opening Balance
-  if (party && Number(party.openingBalance || 0) > 0) {
-    cumulativeBalance += Number(party.openingBalance);
+  if (party && Number(party.openingBalance || 0) !== 0) {
+    const opBal = Number(party.openingBalance);
+    cumulativeBalance += opBal;
     entries.push({
       id: 'opening-balance',
       date: new Date(party.joinedDate || party.createdAt || '2026-01-01'),
       refNo: 'OP-BAL',
       type: 'ADJUSTMENT',
-      description: isEngineer ? 'পূর্বের প্রারম্ভিক কমিশন পাওনা (Opening Balance)' : 'পূর্বের প্রারম্ভিক বকেয়া (Opening Balance)',
+      description: opBal < 0 
+        ? (isEngineer ? 'প্রারম্ভিক অগ্রিম কমিশন (Opening Advance)' : 'প্রারম্ভিক অগ্রিম জমা (Opening Advance)')
+        : (isEngineer ? 'পূর্বের প্রারম্ভিক কমিশন পাওনা (Opening Balance)' : 'পূর্বের প্রারম্ভিক বকেয়া (Opening Balance)'),
       invoiceNo: '—',
-      debit: Number(party.openingBalance),
-      credit: 0,
+      debit: opBal > 0 ? opBal : 0,
+      credit: opBal < 0 ? Math.abs(opBal) : 0,
       runningBalance: cumulativeBalance,
       paymentMethod: '—',
-      dueAmount: Number(party.openingBalance)
+      dueAmount: opBal > 0 ? opBal : 0
     });
   }
 
@@ -165,6 +168,22 @@ export function generateLedgerEntries(
     if (tx.status === 'cancelled' || tx.status === 'rejected') {
       return;
     }
+    
+    let userNote = tx.note || tx.notes || '';
+    if (userNote && typeof userNote === 'string' && userNote.trim().startsWith('{')) {
+      try {
+        const firstLine = userNote.split('\n')[0];
+        const parsed = JSON.parse(firstLine);
+        if (parsed.userNote !== undefined) {
+          userNote = parsed.userNote;
+        } else if (userNote.includes('\n')) {
+          userNote = userNote.substring(firstLine.length).trim();
+        } else {
+          userNote = '';
+        }
+      } catch {}
+    }
+
     const txDate = tx.createdAt ? new Date(tx.createdAt) : new Date();
     const txType = tx.transactionType;
 
@@ -182,7 +201,7 @@ export function generateLedgerEntries(
         const cemRate = Number(meta.engineerCementRate || (tx as any).engineerCementRate || 0);
 
         const effectiveComm = comm > 0 ? comm : (rodKg * rodRate + cemBags * cemRate);
-        if (effectiveComm > 0 || meta.engineerName || meta.engineerId) {
+        if (effectiveComm > 0) {
           cumulativeBalance += effectiveComm;
           const invNo = tx.invoiceNo || tx.orderId || `INV-${tx.id.slice(0, 5).toUpperCase()}`;
 
@@ -224,7 +243,7 @@ export function generateLedgerEntries(
           date: txDate,
           refNo: payNo,
           type: 'PAYMENT',
-          description: `কমিশন প্রদান / পরিশোধ [পদ্ধতি: ${pMethodLabel}]${tx.note ? ` - ${tx.note}` : ''}`,
+          description: `কমিশন প্রদান / পরিশোধ [পদ্ধতি: ${pMethodLabel}]${userNote ? ` - ${userNote}` : ''}`,
           invoiceNo: '—',
           debit: 0,
           credit: creditVal,
@@ -254,8 +273,8 @@ export function generateLedgerEntries(
         }
 
         const payDesc = isCustomer 
-          ? `টাকা প্রাপ্তি / পেমেন্ট জমা [পদ্ধতি: ${pMethodLabel}]${discountVal > 0 ? ` (ছাড়: ৳${toBnDigits(discountVal)})` : ''}${tx.note ? ` - ${tx.note}` : ''}`
-          : `পেমেন্ট পরিশোধ [পদ্ধতি: ${pMethodLabel}]${discountVal > 0 ? ` (ছাড়: ৳${toBnDigits(discountVal)})` : ''}${tx.note ? ` - ${tx.note}` : ''}`;
+          ? `টাকা প্রাপ্তি / পেমেন্ট জমা [পদ্ধতি: ${pMethodLabel}]${discountVal > 0 ? ` (ছাড়: ৳${toBnDigits(discountVal)})` : ''}${userNote ? ` - ${userNote}` : ''}`
+          : `পেমেন্ট পরিশোধ [পদ্ধতি: ${pMethodLabel}]${discountVal > 0 ? ` (ছাড়: ৳${toBnDigits(discountVal)})` : ''}${userNote ? ` - ${userNote}` : ''}`;
 
         entries.push({
           id: `${tx.id}-payment`,
@@ -488,35 +507,55 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           rawTxList = await api.transactions.list({ party: Number(id) }).catch(() => []);
         }
 
-        setTransactions(rawTxList.map(t => ({
-          id: String(t.id || t.invoice_no),
-          orderId: t.invoice_no || String(t.id),
-          invoiceNo: t.invoice_no || (isCustomer ? `INV-2026-${String(t.id).padStart(6, '0')}` : isEngineer ? `INV-2026-${String(t.id).padStart(6, '0')}` : `PUR-2026-${String(t.id).padStart(6, '0')}`),
-          customerName: t.party_name || p.name,
-          customerId: String(p.id),
-          customerPhone: p.phone || '',
-          customerAddress: p.address || '',
-          supplierName: t.party_name || p.name,
-          supplierId: String(p.id),
-          supplierPhone: p.phone || '',
-          supplierAddress: p.address || '',
-          totalAmount: Number(t.total_amount || 0),
-          paidAmount: Number(t.paid_amount || 0),
-          dueAmount: Number(t.due_amount || 0),
-          items: t.items || [],
-          paymentMethod: t.payment_method || 'cash',
-          chequeNo: t.cheque_number,
-          bankName: t.cheque_bank,
-          chequeStatus: t.cheque_status,
-          note: t.notes || (t as any).description || '',
-          notes: t.notes || (t as any).description || '',
-          transactionType: t.transaction_type || (isCustomer ? 'sale' : isEngineer ? 'sale' : 'purchase'),
-          subtotal: Number(t.subtotal || t.total_amount || 0),
-          discount: Number(t.discount || 0),
-          shippingCost: Number((t as any).shipping_cost || 0),
-          laborCost: Number((t as any).labor_cost || 0),
-          createdAt: t.created_at || new Date().toISOString()
-        })));
+        setTransactions(rawTxList.map(t => {
+          let meta: any = {};
+          if (t.notes && typeof t.notes === 'string' && t.notes.trim().startsWith('{')) {
+            try { meta = JSON.parse(t.notes.split('\n')[0]); } catch {}
+          }
+
+          const custName = isEngineer 
+            ? (t.party_name || (t as any).customer_name || meta.customerName || 'সম্মানিত গ্রাহক')
+            : (isCustomer ? (t.party_name || p.name) : (t.customer_name || ''));
+          const custPhone = isEngineer 
+            ? ((t as any).party_phone || (t as any).customer_phone || (t as any).phone || meta.customerPhone || '')
+            : (isCustomer ? (p.phone || '') : '');
+          const custAddr = isEngineer 
+            ? ((t as any).party_address || (t as any).customer_address || (t as any).address || meta.customerAddress || '')
+            : (isCustomer ? (p.address || '') : '');
+
+          const isPaymentTx = t.transaction_type === 'payment_out' || t.transaction_type === 'payment_in' || t.transaction_type === 'payment' || t.transaction_type === 'expense';
+          const defaultTxType = isCustomer ? 'sale' : isEngineer ? (isPaymentTx ? 'payment' : 'sale') : 'purchase';
+
+          return {
+            id: String(t.id || t.invoice_no),
+            orderId: t.invoice_no || String(t.id),
+            invoiceNo: t.invoice_no || (isCustomer ? `INV-2026-${String(t.id).padStart(6, '0')}` : isEngineer ? `INV-2026-${String(t.id).padStart(6, '0')}` : `PUR-2026-${String(t.id).padStart(6, '0')}`),
+            customerName: custName,
+            customerId: isEngineer ? String(t.party || '') : String(p.id),
+            customerPhone: custPhone,
+            customerAddress: custAddr,
+            supplierName: isSupplier ? (t.party_name || p.name) : '',
+            supplierId: isSupplier ? String(p.id) : '',
+            supplierPhone: isSupplier ? (p.phone || '') : '',
+            supplierAddress: isSupplier ? (p.address || '') : '',
+            totalAmount: Number(t.total_amount || 0),
+            paidAmount: Number(t.paid_amount || 0),
+            dueAmount: Number(t.due_amount || 0),
+            items: t.items || [],
+            paymentMethod: t.payment_method || 'cash',
+            chequeNo: t.cheque_number,
+            bankName: t.cheque_bank,
+            chequeStatus: t.cheque_status,
+            note: cleanNote,
+            notes: cleanNote,
+            transactionType: t.transaction_type || defaultTxType,
+            subtotal: Number(t.subtotal || t.total_amount || 0),
+            discount: Number(t.discount || 0),
+            shippingCost: Number((t as any).shipping_cost || 0),
+            laborCost: Number((t as any).labor_cost || 0),
+            createdAt: t.created_at || new Date().toISOString()
+          };
+        }));
       } catch (err) {
         console.error('Error loading party profile:', err);
       } finally {
@@ -524,7 +563,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
       }
     }
     if (id) loadData();
-  }, [id, isCustomer, isEngineer]);
+  }, [id, isCustomer, isSupplier, isEngineer]);
 
   const engineerTotalCommissionEarned = isEngineer
     ? transactions.reduce((sum, tx) => {
@@ -574,11 +613,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
     return a + Number(o.paidAmount || 0);
   }, 0);
 
-  const totalDue = isEngineer
-    ? Math.max(0, (party?.openingBalance || 0) + engineerTotalCommissionEarned - totalPaid)
-    : (party?.totalDue !== undefined && party?.totalDue > 0 
-        ? party.totalDue 
-        : Math.max(0, (party?.openingBalance || 0) + totalBill - totalPaid));
+
 
   const formatBnDate = (dateVal: Date | string | undefined | null, pattern: string = 'dd MMMM yyyy') => {
     if (!dateVal) return '—';
@@ -648,6 +683,13 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
 
   // Generate Chronological Ledger Entries
   const ledgerEntries = generateLedgerEntries(party, transactions, isCustomer, isEngineer);
+
+  const finalClosingBalance = ledgerEntries.length > 0
+    ? ledgerEntries[ledgerEntries.length - 1].runningBalance
+    : (Number(party?.openingBalance || 0));
+
+  const totalDue = finalClosingBalance > 0 ? finalClosingBalance : 0;
+  const advanceBalance = finalClosingBalance < 0 ? Math.abs(finalClosingBalance) : 0;
 
 
   const filteredLedgerEntries = ledgerEntries.filter(entry => {
@@ -862,15 +904,31 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
             </tbody>
             <tfoot>
               <tr className="bg-slate-100 font-black border-t-2 border-slate-800 text-xs">
-                <td colSpan={4} className="border border-slate-400 p-2 text-right">সর্বমোট জের (Total):</td>
+                <td colSpan={4} className="border border-slate-400 p-2 text-right">
+                  {isEngineer ? 'সর্বমোট জের (অবশিষ্ট পাওনা কমিশন):' : 'সর্বমোট জের (Total):'}
+                </td>
                 <td className="border border-slate-400 p-2 text-right">
                   ৳ {toBnDigits(totalBill.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
                 </td>
                 <td className="border border-slate-400 p-2 text-right text-emerald-800">
                   ৳ {toBnDigits(totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
                 </td>
-                <td className="border border-slate-400 p-2 text-right font-black text-rose-700">
-                  ৳ {toBnDigits((totalDue + (party?.openingBalance || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
+                <td className={cn(
+                  "border border-slate-400 p-2 text-right font-black",
+                  isEngineer 
+                    ? (finalClosingBalance >= 0 ? "text-emerald-800" : "text-blue-800")
+                    : (finalClosingBalance < 0 ? "text-emerald-800" : "text-rose-700")
+                )}>
+                  {isEngineer
+                    ? (finalClosingBalance >= 0 
+                        ? `৳ ${toBnDigits(finalClosingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 }))} (পাওনা)`
+                        : `৳ ${toBnDigits(Math.abs(finalClosingBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 }))} (অগ্রিম পরিশোধিত)`
+                      )
+                    : (finalClosingBalance < 0 
+                        ? `-৳ ${toBnDigits(Math.abs(finalClosingBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 }))} (অগ্রিম)`
+                        : `৳ ${toBnDigits(finalClosingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}`
+                      )
+                  }
                 </td>
               </tr>
             </tfoot>
@@ -1014,9 +1072,25 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                 {/* 4. DUE & TOTAL SALES */}
                 <div className="border-t lg:border-t-0 lg:border-l border-slate-200/80 px-4 lg:px-5 py-0.5 self-stretch flex flex-col justify-center gap-1.5">
                   <div>
-                    <span className="text-[11px] font-medium text-slate-400 block">{isEngineer ? 'মোট পাওনা / কমিশন' : 'মোট বকেয়া'}</span>
-                    <span className="text-xs font-black text-rose-600 block mt-0.5">
-                      ৳ {toBnDigits(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
+                    <span className="text-[11px] font-medium text-slate-400 block">
+                      {isEngineer ? 'মোট পাওনা কমিশন' : advanceBalance > 0 ? 'মোট অগ্রিম জমা' : 'মোট বকেয়া'}
+                    </span>
+                    <span className={cn(
+                      "text-xs font-black block mt-0.5",
+                      isEngineer 
+                        ? (finalClosingBalance >= 0 ? "text-emerald-700" : "text-blue-600")
+                        : (advanceBalance > 0 ? "text-emerald-600" : "text-rose-600")
+                    )}>
+                      {isEngineer
+                        ? (finalClosingBalance >= 0 
+                            ? `৳ ${toBnDigits(finalClosingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}`
+                            : `৳ ${toBnDigits(Math.abs(finalClosingBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 }))} (অগ্রিম পরিশোধিত)`
+                          )
+                        : (advanceBalance > 0 
+                            ? `-৳ ${toBnDigits(advanceBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}` 
+                            : `৳ ${toBnDigits(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}`
+                          )
+                      }
                     </span>
                   </div>
                   <div>
@@ -1483,22 +1557,31 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                               </span>
                             </TableCell>
 
-                            <TableCell className="py-3.5 px-4 text-left text-slate-800 font-bold max-w-sm">
+                            <TableCell className="py-3.5 px-4 text-left text-slate-800 font-bold max-w-md break-words">
                               <div className="leading-snug">
                                 {entry.description}
                               </div>
                             </TableCell>
 
-                            <TableCell className="py-3.5 px-4 text-right font-bold text-rose-600">
-                              {entry.credit > 0 ? `৳ ${toBnDigits(entry.credit.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}` : '—'}
-                            </TableCell>
-
-                            <TableCell className="py-3.5 px-4 text-right font-bold text-emerald-600">
+                            {/* DEBIT COLUMN */}
+                            <TableCell className="py-3.5 px-4 text-right font-bold text-rose-600 whitespace-nowrap">
                               {entry.debit > 0 ? `৳ ${toBnDigits(entry.debit.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}` : '—'}
                             </TableCell>
 
-                            <TableCell className="py-3.5 px-4 text-right font-black text-rose-600">
-                              ৳ {toBnDigits(entry.runningBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
+                            {/* CREDIT COLUMN */}
+                            <TableCell className="py-3.5 px-4 text-right font-bold text-emerald-600 whitespace-nowrap">
+                              {entry.credit > 0 ? `৳ ${toBnDigits(entry.credit.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}` : '—'}
+                            </TableCell>
+
+                            {/* RUNNING BALANCE COLUMN */}
+                            <TableCell className={cn(
+                              "py-3.5 px-4 text-right font-black whitespace-nowrap",
+                              entry.runningBalance < 0 ? "text-emerald-700 font-black" : "text-rose-600 font-black"
+                            )}>
+                              {entry.runningBalance < 0
+                                ? `-৳ ${toBnDigits(Math.abs(entry.runningBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 }))}`
+                                : `৳ ${toBnDigits(entry.runningBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}`
+                              }
                             </TableCell>
 
                             <TableCell className="py-3.5 px-4 text-center">
@@ -2076,23 +2159,23 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   );
                 }
 
-                if (isCustomer) {
+                if (isCustomer || isEngineer || selectedInvoiceTx.transactionType === 'sale') {
                   const invoiceData = {
                     id: selectedInvoiceTx.id,
                     invoiceNo: selectedInvoiceTx.orderId || selectedInvoiceTx.invoiceNo || `INV-${String(selectedInvoiceTx.id).slice(0, 6).toUpperCase()}`,
                     orderId: selectedInvoiceTx.orderId || selectedInvoiceTx.id,
-                    customerName: selectedInvoiceTx.customerName || party?.name || 'সম্মানিত গ্রাহক',
-                    customerPhone: party?.phone || '',
-                    customerAddress: party?.address || '',
+                    customerName: selectedInvoiceTx.customerName || (isCustomer ? (party?.name || 'সম্মানিত গ্রাহক') : 'সম্মানিত গ্রাহক'),
+                    customerPhone: selectedInvoiceTx.customerPhone || (isCustomer ? (party?.phone || '') : ''),
+                    customerAddress: selectedInvoiceTx.customerAddress || (isCustomer ? (party?.address || '') : ''),
                     totalAmount: selectedInvoiceTx.totalAmount,
                     paidAmount: selectedInvoiceTx.paidAmount,
                     dueAmount: selectedInvoiceTx.dueAmount,
                     items: (selectedInvoiceTx.items || []).map((it: any) => ({
-                      name: it.name || 'পণ্য',
+                      name: it.name || it.product_name || 'পণ্য',
                       quantity: Number(it.quantity || 1),
                       price: Number(it.price || it.rate || 0),
                       unit: it.unit || 'টি',
-                      totalPrice: Number(it.totalPrice || (it.quantity * it.price) || 0)
+                      totalPrice: Number(it.totalPrice || (it.quantity * (it.price || it.rate)) || 0)
                     })),
                     createdAt: selectedInvoiceTx.createdAt,
                     paymentMethod: selectedInvoiceTx.paymentMethod || 'cash',
@@ -2101,7 +2184,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                     discount: selectedInvoiceTx.discount || 0,
                     shippingCost: selectedInvoiceTx.shippingCost || 0,
                     laborCost: selectedInvoiceTx.laborCost || 0,
-                    previousBalance: Number(party?.openingBalance || 0)
+                    previousBalance: isCustomer ? Number(party?.openingBalance || 0) : 0
                   };
 
                   return (

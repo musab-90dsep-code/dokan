@@ -20,6 +20,7 @@ import { format } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { generateLedgerEntries } from '@/components/PartyProfilePage';
 
 interface CustomerDueItem {
   id: string;
@@ -65,30 +66,70 @@ export default function CustomerDuesPage() {
     try {
       setLoading(true);
       const partyList = await api.parties.list({ party_type: 'customer' });
-      const transactions = await api.transactions.list({ transaction_type: 'sale' });
+      const transactions = await api.transactions.list().catch(() => []);
 
-      // Build customer due records
+      // Build customer due records matching exact ledger logic
       const mapped: CustomerDueItem[] = partyList.map(c => {
-        const cOrders = transactions.filter(t => 
+        const cTransactions = transactions.filter(t => 
           String(t.party) === String(c.id) || 
-          String(t.party_name).trim().toLowerCase() === String(c.name).trim().toLowerCase()
+          (t.party_name && String(t.party_name).trim().toLowerCase() === String(c.name).trim().toLowerCase())
         );
-        const totalSales = cOrders.reduce((a, o) => a + Number(o.total_amount || 0), 0);
-        const totalPaid = cOrders.reduce((a, o) => a + Number(o.paid_amount || 0), 0);
-        
-        const rawDue = Number(c.total_due || 0);
-        const calculatedDue = rawDue !== 0 
-          ? rawDue 
-          : (Number(c.opening_balance || 0) + totalSales - totalPaid);
+
+        const formattedTx = cTransactions.map(t => ({
+          id: String(t.id || t.invoice_no),
+          orderId: t.invoice_no || String(t.id),
+          invoiceNo: t.invoice_no || `INV-2026-${String(t.id).padStart(6, '0')}`,
+          customerName: t.party_name || c.name,
+          customerId: String(c.id),
+          customerPhone: c.phone || '',
+          customerAddress: c.address || '',
+          supplierName: t.party_name || c.name,
+          supplierId: String(c.id),
+          supplierPhone: c.phone || '',
+          supplierAddress: c.address || '',
+          totalAmount: Number(t.total_amount || 0),
+          paidAmount: Number(t.paid_amount || 0),
+          dueAmount: Number(t.due_amount || 0),
+          items: t.items || [],
+          paymentMethod: t.payment_method || 'cash',
+          chequeNo: t.cheque_number,
+          bankName: t.cheque_bank,
+          chequeStatus: t.cheque_status,
+          note: t.notes || (t as any).description || '',
+          notes: t.notes || (t as any).description || '',
+          transactionType: t.transaction_type || 'sale',
+          subtotal: Number(t.subtotal || t.total_amount || 0),
+          discount: Number(t.discount || 0),
+          shippingCost: Number((t as any).shipping_cost || 0),
+          laborCost: Number((t as any).labor_cost || 0),
+          createdAt: t.created_at || (t as any).date || new Date().toISOString()
+        }));
+
+        const partyProfile = {
+          id: String(c.id),
+          name: c.name,
+          openingBalance: Number(c.opening_balance || 0),
+          createdAt: (c as any).created_at || '',
+          joinedDate: c.joined_date
+        };
+
+        const ledger = generateLedgerEntries(partyProfile as any, formattedTx as any, true, false);
+        const finalBalance = ledger.length > 0
+          ? ledger[ledger.length - 1].runningBalance
+          : Number(c.opening_balance || 0);
 
         let dueAmount = 0;
         let advanceAmount = 0;
 
-        if (calculatedDue > 0) {
-          dueAmount = calculatedDue;
-        } else if (calculatedDue < 0) {
-          advanceAmount = Math.abs(calculatedDue);
+        if (finalBalance > 0) {
+          dueAmount = finalBalance;
+        } else if (finalBalance < 0) {
+          advanceAmount = Math.abs(finalBalance);
         }
+
+        const salesTx = formattedTx.filter(t => t.transactionType === 'sale');
+        const totalSales = salesTx.reduce((a, o) => a + Number(o.totalAmount || 0), 0);
+        const totalPaid = formattedTx.reduce((a, o) => a + Number(o.paidAmount || 0), 0);
 
         const addressParts = [
           c.address,
@@ -107,7 +148,7 @@ export default function CustomerDuesPage() {
           advanceAmount,
           totalSales: totalSales || Number(c.total_sales || 0),
           totalPaid,
-          invoiceCount: cOrders.length,
+          invoiceCount: salesTx.length,
           customerType: c.customer_type || 'খুচরা গ্রাহক',
           joinedDate: c.joined_date
         };

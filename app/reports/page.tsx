@@ -80,6 +80,7 @@ interface Order {
   paidAmount: number;
   dueAmount: number;
   items?: OrderItem[];
+  notes?: string;
   createdAt: any;
 }
 
@@ -93,12 +94,14 @@ interface PurchaseItem {
 
 interface Purchase {
   id: string;
+  invoiceNo?: string;
   supplierName?: string;
   totalPrice?: number;
   totalAmount?: number;
   paidAmount?: number;
   dueAmount?: number;
   items?: PurchaseItem[];
+  notes?: string;
   createdAt: any;
 }
 
@@ -212,17 +215,13 @@ function MasterReportsContent() {
 
   const [tradeTab, setTradeTab] = useState<'rod_buy' | 'rod_sell' | 'cement_buy' | 'cement_sell'>('rod_buy');
 
-  const [commissionModalOpen, setCommissionModalOpen] = useState(false);
-  const [editingCommission, setEditingCommission] = useState<Commission | null>(null);
-  const [commAgentName, setCommAgentName] = useState('');
-  const [commRate, setCommRate] = useState<number>(0);
-  const [commTotal, setCommTotal] = useState<number>(0);
-  const [commNote, setCommNote] = useState('');
+
 
   const [journalModalOpen, setJournalModalOpen] = useState(false);
   const [journalCommission, setJournalCommission] = useState<Commission | null>(null);
   const [journalAccountType, setJournalAccountType] = useState<'cash' | 'bank'>('cash');
   const [journalBankId, setJournalBankId] = useState<string>('');
+  const [journalConfirmText, setJournalConfirmText] = useState<string>('');
   const [isSubmittingJournal, setIsSubmittingJournal] = useState(false);
 
   // Bank Management States & Handlers
@@ -328,22 +327,26 @@ function MasterReportsContent() {
         })));
         setOrders(safeTxList.filter(t => t.transaction_type === 'sale').map(t => ({
           id: String(t.id || t.invoice_no),
+          orderId: t.invoice_no,
           customerName: t.party_name || '',
           customerPhone: t.party_phone || '',
           totalAmount: t.total_amount,
           paidAmount: t.paid_amount,
           dueAmount: t.due_amount,
           items: (t.items || []).map(i => ({ name: i.product_name, price: i.price, quantity: i.quantity, unit: i.unit || 'পিস' })),
+          notes: (t as any).notes || '',
           createdAt: t.created_at
         })));
         setPurchases(safeTxList.filter(t => t.transaction_type === 'purchase').map(t => ({
           id: String(t.id || t.invoice_no),
+          invoiceNo: t.invoice_no,
           supplierName: t.party_name || '',
           totalPrice: t.total_amount,
           totalAmount: t.total_amount,
           paidAmount: t.paid_amount,
           dueAmount: t.due_amount,
           items: (t.items || []).map(i => ({ name: i.product_name, price: i.price, quantity: i.quantity, unit: i.unit || 'পিস' })),
+          notes: (t as any).notes || '',
           createdAt: t.created_at
         })));
 
@@ -413,27 +416,97 @@ function MasterReportsContent() {
     loadReportsData();
   }, []);
 
-  // Derived commissions list
+  // Derived commissions list (Both Purchases and Sales)
   const activeCommissions = useMemo(() => {
     if (commissions.length > 0) return commissions;
-    if (orders.length === 0) return [];
-    const autoCommEntries: Commission[] = [];
-    orders.forEach((o, index) => {
-      let rodQty = 0;
-      let cementQty = 0;
-      (o.items || []).forEach(item => {
-        const cat = item.category || (item.name.includes('রড') ? 'রড' : item.name.includes('সিমেন্ট') ? 'সিমেন্ট' : '');
-        if (cat === 'রড' || item.unit === 'টন') rodQty += item.quantity || 1;
-        else if (cat === 'সিমেন্ট' || item.unit === 'বস্তা') cementQty += item.quantity || 10;
-      });
+    const allCommEntries: Commission[] = [];
 
-      if (rodQty > 0 || cementQty > 0 || index < 5) {
+    // 1. Process Purchases with Commission (Company/Supplier Pending Commission)
+    purchases.forEach(p => {
+      let meta: any = {};
+      if (p.notes && typeof p.notes === 'string' && p.notes.trim().startsWith('{')) {
+        try { meta = JSON.parse(p.notes.split('\n')[0]); } catch {}
+      }
+      const commAmt = Number(meta.commission !== undefined ? meta.commission : (meta.commissionAmount !== undefined ? meta.commissionAmount : 0));
+      if (commAmt > 0) {
+        let totalQty = 0;
+        let detectedCategory = meta.purchaseType === 'rod' ? 'রড' : meta.purchaseType === 'cement' ? 'সিমেন্ট' : '';
+        (p.items || []).forEach(item => {
+          totalQty += Number(item.quantity || 0);
+          if (!detectedCategory) {
+            const n = (item.name || '').toLowerCase();
+            if (n.includes('রড') || n.includes('rod')) detectedCategory = 'রড';
+            else if (n.includes('সিমেন্ট') || n.includes('cement')) detectedCategory = 'সিমেন্ট';
+          }
+        });
+        if (!detectedCategory) detectedCategory = 'ক্রয় সামগ্রী';
+
+        const invNo = p.invoiceNo || (p.id.startsWith('PUR') || p.id.startsWith('INV') ? p.id : `PUR-${p.id.slice(-6).toUpperCase()}`);
+        allCommEntries.push({
+          id: `comm_purchase_${p.id}`,
+          orderId: invNo,
+          customerName: p.supplierName || 'কোম্পানি/সরবরাহকারী',
+          agentName: p.supplierName || 'কোম্পানি/সরবরাহকারী',
+          productCategory: `${detectedCategory} (ক্রয়)`,
+          salesVolume: p.totalAmount || 0,
+          quantity: totalQty || 1,
+          rate: Number(meta.commissionRate || 0),
+          ratePercent: meta.commissionType === 'percentage' ? Number(meta.commissionRate || 0) : undefined,
+          totalAmount: commAmt,
+          paidAmount: 0,
+          pendingAmount: commAmt,
+          status: meta.commissionStatus === 'journalized' ? 'journalized' : 'pending',
+          note: meta.commissionNote || `ক্রয় চালান কমিশন (${p.supplierName || 'সরবরাহকারী'})`,
+          createdAt: p.createdAt || new Date()
+        });
+      }
+    });
+
+    // 2. Process Sales Orders with Engineer Commission
+    orders.forEach((o, index) => {
+      let meta: any = {};
+      const oAny = o as any;
+      if (oAny.notes && typeof oAny.notes === 'string' && oAny.notes.trim().startsWith('{')) {
+        try { meta = JSON.parse(oAny.notes.split('\n')[0]); } catch {}
+      }
+      const engComm = Number(meta.engineerTotalCommission || oAny.engineerTotalCommission || 0);
+      if (engComm > 0 || meta.engineerName) {
+        allCommEntries.push({
+          id: `comm_sale_${o.id}`,
+          orderId: o.orderId || (o.id.startsWith('INV') ? o.id : `INV-${o.id.slice(-6).toUpperCase()}`),
+          customerName: o.customerName || 'গ্রাহক',
+          agentName: meta.engineerName || 'ইঞ্জিনিয়ার/প্রতিনিধি',
+          productCategory: (meta.engineerRodKg ? 'রড' : '') + (meta.engineerCementBags ? ' সিমেন্ট' : '') || 'বিক্রয় সামগ্রী',
+          salesVolume: o.totalAmount || 0,
+          quantity: (meta.engineerRodKg || 0) + (meta.engineerCementBags || 0) || 1,
+          rate: meta.engineerRodRate || meta.engineerCementRate || 0,
+          totalAmount: engComm,
+          paidAmount: 0,
+          pendingAmount: engComm,
+          status: 'pending',
+          note: `বিক্রয় চালান কমিশন (${meta.engineerName || 'ইঞ্জিনিয়ার'})`,
+          createdAt: o.createdAt || new Date()
+        });
+      }
+    });
+
+    // 3. If still no commissions found, provide sample derived entries only if orders exist and no real commissions found
+    if (allCommEntries.length === 0 && orders.length > 0) {
+      orders.slice(0, 3).forEach((o, index) => {
+        let rodQty = 0;
+        let cementQty = 0;
+        (o.items || []).forEach(item => {
+          const cat = item.category || (item.name.includes('রড') ? 'রড' : item.name.includes('সিমেন্ট') ? 'সিমেন্ট' : '');
+          if (cat === 'রড' || item.unit === 'টন') rodQty += item.quantity || 1;
+          else if (cat === 'সিমেন্ট' || item.unit === 'বস্তা') cementQty += item.quantity || 10;
+        });
+
         const cat = rodQty > 0 ? 'রড' : cementQty > 0 ? 'সিমেন্ট' : 'সাধারণ পন্য';
         const qty = rodQty > 0 ? rodQty : cementQty > 0 ? cementQty : 5;
         const rate = cat === 'রড' ? 300 : cat === 'সিমেন্ট' ? 10 : 50;
         const vol = o.totalAmount || 1245800;
         const commAmt = qty * rate;
-        autoCommEntries.push({
+        allCommEntries.push({
           id: `comm_${o.id}`,
           orderId: o.orderId || `INV-2026-${o.id.slice(-5)}`,
           customerName: o.customerName || 'সম্মানিত কাস্টমার',
@@ -450,66 +523,67 @@ function MasterReportsContent() {
           note: `${cat} বিক্রয়ের উপর কমিশন`,
           createdAt: o.createdAt || new Date()
         });
-      }
-    });
-    return autoCommEntries;
-  }, [commissions, orders]);
-
-  // Edit Commission
-  const handleOpenEditCommission = (comm: Commission) => {
-    setEditingCommission(comm);
-    setCommAgentName(comm.agentName || '');
-    setCommRate(comm.rate || 0);
-    setCommTotal(comm.totalAmount || 0);
-    setCommNote(comm.note || '');
-    setCommissionModalOpen(true);
-  };
-
-  const handleSaveCommission = async () => {
-    if (!editingCommission) return;
-    try {
-      const updatedData = {
-        agentName: commAgentName,
-        rate: Number(commRate),
-        totalAmount: Number(commTotal),
-        note: commNote
-      };
-      
-      setCommissions(prev => prev.map(c => c.id === editingCommission.id ? { ...c, ...updatedData } : c));
-      toast.success('কমিশনের তথ্য সফলভাবে আপডেট হয়েছে!');
-      setCommissionModalOpen(false);
-    } catch (err) {
-      toast.error('কমিশন আপডেট করতে সমস্যা হয়েছে');
+      });
     }
-  };
+
+    return allCommEntries;
+  }, [commissions, orders, purchases]);
+
+
 
   // Auto-Journal Execution
   const handleOpenAutoJournal = (comm: Commission) => {
     setJournalCommission(comm);
     setJournalAccountType('cash');
+    setJournalConfirmText('');
     if (banks.length > 0) setJournalBankId(banks[0].id);
     setJournalModalOpen(true);
   };
 
   const handleExecuteAutoJournal = async () => {
     if (!journalCommission) return;
+    if (journalConfirmText.trim().toLowerCase() !== 'confirm') {
+      toast.error("নিশ্চিত করতে অনুগ্রহ করে 'confirm' লিখুন");
+      return;
+    }
     setIsSubmittingJournal(true);
     try {
-      await api.expenses.create({
-        title: `কমিশন পরিশোধ: ${journalCommission.agentName} (মেমো: ${journalCommission.orderId || '—'})`,
-        category_name: 'কমিশন খরচ',
-        amount: journalCommission.totalAmount,
-        date: new Date().toISOString().split('T')[0],
-        payment_method: journalAccountType,
-        notes: journalCommission.note || 'Auto Journalized Commission'
-      });
+      const isPurchaseComm = journalCommission.id.startsWith('comm_purchase_');
+      const bankAccId = journalAccountType === 'bank' && journalBankId ? Number(journalBankId) : undefined;
+      
+      if (isPurchaseComm) {
+        await api.expenses.create({
+          title: `কোম্পানি কমিশন সমন্বয়/প্রাপ্তি: ${journalCommission.agentName} (চালান: ${journalCommission.orderId || '—'})`,
+          category_name: 'কমিশন আয়/সমন্বয়',
+          amount: journalCommission.totalAmount,
+          date: new Date().toISOString().split('T')[0],
+          payment_method: journalAccountType,
+          bank_account: bankAccId,
+          notes: journalCommission.note || 'Company Purchase Commission Adjusted'
+        });
+      } else {
+        await api.expenses.create({
+          title: `কমিশন পরিশোধ: ${journalCommission.agentName} (মেমো: ${journalCommission.orderId || '—'})`,
+          category_name: 'কমিশন খরচ',
+          amount: journalCommission.totalAmount,
+          date: new Date().toISOString().split('T')[0],
+          payment_method: journalAccountType,
+          bank_account: bankAccId,
+          notes: journalCommission.note || 'Commission Approved and Paid'
+        });
+      }
 
-      setCommissions(prev => prev.map(c => c.id === journalCommission.id ? { ...c, status: 'journalized' } : c));
-      toast.success('অটো-জার্নাল এন্ট্রি সফলভাবে সম্পন্ন হয়েছে!');
+      setCommissions(prev => {
+        const base = prev.length > 0 ? prev : activeCommissions;
+        return base.map(c => c.id === journalCommission.id ? { ...c, status: 'journalized', pendingAmount: 0 } : c);
+      });
+      fetchBankList();
+      toast.success('কমিশন সফলভাবে অনুমোদিত (Approve) হয়েছে!');
       setJournalModalOpen(false);
+      setJournalConfirmText('');
     } catch (err) {
       console.error(err);
-      toast.error('অটো-জার্নাল সম্পন্ন করতে ব্যর্থ হয়েছে');
+      toast.error('কমিশন অনুমোদন করতে ব্যর্থ হয়েছে');
     } finally {
       setIsSubmittingJournal(false);
     }
@@ -606,8 +680,8 @@ function MasterReportsContent() {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      setFilterStartDate('01/05/2026');
-                      setFilterEndDate('28/05/2026');
+                      setFilterStartDate(format(new Date(), 'yyyy-MM-01'));
+                      setFilterEndDate(format(new Date(), 'yyyy-MM-dd'));
                       setFilterBranch('all');
                       setFilterProduct('all');
                       setFilterCustomer('all');
@@ -3405,8 +3479,20 @@ function MasterReportsContent() {
                             <TableCell className="text-center"><span className={cn("px-2.5 py-0.5 rounded-lg text-[10px] font-black border inline-block", r.status === 'journalized' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-amber-100 text-amber-700 border-amber-200')}>{r.status === 'journalized' ? 'পরিশোধিত' : 'পেন্ডিং'}</span></TableCell>
                             <TableCell className="text-center">
                               <div className="flex items-center justify-center gap-1">
-                                <button onClick={() => handleOpenEditCommission(r)} className="w-7 h-7 rounded bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-100 transition-colors" title="এডিট"><Edit2 className="w-3.5 h-3.5" /></button>
-                                <button onClick={() => handleOpenAutoJournal(r)} className="w-7 h-7 rounded bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100 transition-colors" title="অটো জার্নাল"><DollarSign className="w-3.5 h-3.5" /></button>
+                                {r.status === 'journalized' ? (
+                                  <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" /> অনুমোদিত
+                                  </span>
+                                ) : (
+                                  <button 
+                                    onClick={() => handleOpenAutoJournal(r)} 
+                                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer" 
+                                    title="কমিশন অনুমোদন করুন"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Approve</span>
+                                  </button>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -3559,43 +3645,14 @@ function MasterReportsContent() {
           </div>
         )}
 
-        {/* EDIT COMMISSION MODAL */}
-        <Dialog open={commissionModalOpen} onOpenChange={setCommissionModalOpen}>
-          <DialogContent className="max-w-md font-bengali rounded-3xl">
-            <DialogHeader>
-              <DialogTitle className="font-black text-slate-900 text-lg flex items-center gap-2">
-                <Edit2 className="w-5 h-5 text-indigo-600" /> কমিশনের তথ্য এডিট করুন
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div>
-                <Label className="text-xs font-bold text-slate-700">এজেন্টের নাম</Label>
-                <Input value={commAgentName} onChange={e => setCommAgentName(e.target.value)} className="mt-1 font-bold text-xs rounded-xl" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-xs font-bold text-slate-700">রেট (৳)</Label>
-                  <Input type="number" value={commRate} onChange={e => setCommRate(Number(e.target.value))} className="mt-1 font-bold text-xs rounded-xl" />
-                </div>
-                <div>
-                  <Label className="text-xs font-bold text-slate-700">মোট কমিশন (৳)</Label>
-                  <Input type="number" value={commTotal} onChange={e => setCommTotal(Number(e.target.value))} className="mt-1 font-black text-xs rounded-xl text-emerald-600" />
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCommissionModalOpen(false)} className="rounded-xl text-xs font-bold">বাতিল</Button>
-              <Button onClick={handleSaveCommission} className="rounded-xl text-xs font-black bg-orange-500 hover:bg-orange-600 text-white">সেভ করুন</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
-        {/* AUTO-JOURNAL MODAL */}
-        <Dialog open={journalModalOpen} onOpenChange={setJournalModalOpen}>
+
+        {/* COMMISSION APPROVAL MODAL */}
+        <Dialog open={journalModalOpen} onOpenChange={(open) => { setJournalModalOpen(open); if (!open) setJournalConfirmText(''); }}>
           <DialogContent className="max-w-md font-bengali rounded-3xl">
             <DialogHeader>
               <DialogTitle className="font-black text-slate-900 text-lg flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-amber-500" /> অটো জার্নাল নিশ্চিতকরণ
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" /> কমিশন অনুমোদন (Approve Commission)
               </DialogTitle>
             </DialogHeader>
             {journalCommission && (
@@ -3608,7 +3665,11 @@ function MasterReportsContent() {
                 <div className="space-y-2">
                   <Label className="font-bold">টাকা কাটার মাধ্যম:</Label>
                   <Select value={journalAccountType} onValueChange={(v: any) => setJournalAccountType(v)}>
-                    <SelectTrigger className="h-10 rounded-xl font-bold"><SelectValue placeholder="একাউন্ট টাইপ" /></SelectTrigger>
+                    <SelectTrigger className="h-10 rounded-xl font-bold bg-white border-slate-200">
+                      <span className="flex-1 text-left truncate">
+                        {journalAccountType === 'bank' ? '🏦 ব্যাংক একাউন্ট' : '💵 ক্যাশ ড্রয়ার'}
+                      </span>
+                    </SelectTrigger>
                     <SelectContent className="font-bengali">
                       <SelectItem value="cash">💵 ক্যাশ ড্রয়ার</SelectItem>
                       <SelectItem value="bank">🏦 ব্যাংক একাউন্ট</SelectItem>
@@ -3619,22 +3680,55 @@ function MasterReportsContent() {
                 {journalAccountType === 'bank' && (
                   <div className="space-y-2">
                     <Label className="font-bold">ব্যাংক নির্বাচন করুন:</Label>
-                    <Select value={journalBankId} onValueChange={(val: any) => setJournalBankId(val || '')}>
-                      <SelectTrigger className="h-10 rounded-xl font-bold"><SelectValue placeholder="ব্যাংক বেছে নিন" /></SelectTrigger>
+                    <Select value={String(journalBankId)} onValueChange={(val: any) => setJournalBankId(String(val || ''))}>
+                      <SelectTrigger className="h-10 rounded-xl font-bold bg-white border-slate-200">
+                        <span className="flex-1 text-left truncate">
+                          {(() => {
+                            const b = banks.find(item => String(item.id) === String(journalBankId));
+                            if (!b) return 'ব্যাংক বেছে নিন';
+                            return b.accNo ? `${b.name} (${b.accNo})` : b.name;
+                          })()}
+                        </span>
+                      </SelectTrigger>
                       <SelectContent className="font-bengali">
                         {banks.map(b => (
-                          <SelectItem key={b.id} value={b.id}>{b.name} ({b.accNo}) - ৳ {b.balance.toLocaleString()}</SelectItem>
+                          <SelectItem key={b.id} value={String(b.id)}>
+                            {b.accNo ? `${b.name} (${b.accNo})` : b.name}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                 )}
+
+                {/* Confirm Text Input */}
+                <div className="space-y-1.5 p-3.5 bg-amber-50/80 border border-amber-200 rounded-2xl">
+                  <Label className="text-xs font-black text-amber-950 block">
+                    কমিশন অনুমোদন নিশ্চিত করতে নিচে <span className="font-mono text-rose-600 font-black bg-white px-1.5 py-0.5 rounded border border-amber-300">confirm</span> লিখুন:
+                  </Label>
+                  <Input
+                    value={journalConfirmText}
+                    onChange={(e) => setJournalConfirmText(e.target.value)}
+                    placeholder="এখানে confirm লিখুন..."
+                    className="h-10 rounded-xl bg-white border-amber-300 font-mono text-xs font-black text-slate-900 focus:border-amber-500 focus:ring-amber-500"
+                  />
+                  {journalConfirmText && journalConfirmText.trim().toLowerCase() !== 'confirm' && (
+                    <p className="text-[11px] font-bold text-rose-600 mt-1">
+                      ⚠️ অনুগ্রহ করে হুবহু &apos;confirm&apos; লিখুন
+                    </p>
+                  )}
+                </div>
               </div>
             )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setJournalModalOpen(false)} className="rounded-xl text-xs font-bold">বাতিল</Button>
-              <Button onClick={handleExecuteAutoJournal} disabled={isSubmittingJournal} className="rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white">
-                {isSubmittingJournal ? 'জার্নাল হচ্ছে...' : 'অটো জার্নাল সম্পন্ন করুন'}
+              <Button variant="outline" onClick={() => { setJournalModalOpen(false); setJournalConfirmText(''); }} className="rounded-xl text-xs font-bold">বাতিল</Button>
+              <Button 
+                onClick={handleExecuteAutoJournal} 
+                disabled={isSubmittingJournal || journalConfirmText.trim().toLowerCase() !== 'confirm'} 
+                className="rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                {isSubmittingJournal ? 'অনুমোদন হচ্ছে...' : 'Approve সম্পন্ন করুন'}
               </Button>
             </DialogFooter>
           </DialogContent>

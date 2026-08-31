@@ -89,11 +89,13 @@ interface Supplier {
 
 interface OrderInvoice {
   id: string;
+  invoiceNo?: string;
   orderId?: string;
   purchaseId?: string;
   customerName?: string;
   supplierName?: string;
   engineerName?: string;
+  engineerCommission?: number;
   partyName?: string;
   customerId?: string;
   supplierId?: string;
@@ -455,19 +457,93 @@ function TransactionsContent() {
         address: p.address,
         totalDue: Number(p.total_due || 0)
       }));
-      const loadedEngineers = safePartyList.filter((p: any) => p.party_type === 'engineer').map((p: any) => ({
-        id: String(p.id),
-        name: p.name,
-        phone: p.phone,
-        businessName: p.business_name,
-        address: p.address,
-        supplyType: p.supply_type || p.customer_type || 'ইঞ্জিনিয়ার',
-        totalDue: Number(p.total_due || 0)
-      }));
+      const loadedEngineers = safePartyList.filter((p: any) => p.party_type === 'engineer').map((p: any) => {
+        // Calculate dynamic engineer commission
+        const engineerSales = safeOrderList.filter((s: any) => {
+          let meta: any = {};
+          if (s.notes && typeof s.notes === 'string' && s.notes.trim().startsWith('{')) {
+            try { meta = JSON.parse(s.notes.split('\n')[0]); } catch {}
+          }
+          const matchId = String(meta.engineerId) === String(p.id) || String(s.engineer_id) === String(p.id);
+          const matchName = meta.engineerName && p.name && meta.engineerName.trim().toLowerCase() === p.name.trim().toLowerCase();
+          const isDirect = String(s.party) === String(p.id);
+          return matchId || matchName || isDirect;
+        });
+
+        const totalCommission = engineerSales.reduce((sum: number, s: any) => {
+          let meta: any = {};
+          if (s.notes && typeof s.notes === 'string' && s.notes.trim().startsWith('{')) {
+            try { meta = JSON.parse(s.notes.split('\n')[0]); } catch {}
+          }
+          const comm = Number(meta.engineerTotalCommission || s.engineerTotalCommission || 0);
+          const rodKg = Number(meta.engineerRodKg || s.engineerRodKg || 0);
+          const rRate = Number(meta.engineerRodRate || s.engineerRodRate || 0);
+          const cemBags = Number(meta.engineerCementBags || s.engineerCementBags || 0);
+          const cRate = Number(meta.engineerCementRate || s.engineerCementRate || 0);
+          const eff = comm > 0 ? comm : (rodKg * rRate + cemBags * cRate);
+          return sum + eff;
+        }, 0);
+
+        const engineerPayments = safeTxList.filter((t: any) => 
+          String(t.party) === String(p.id) && 
+          (t.transaction_type === 'payment_out' || t.transaction_type === 'payment_in' || t.transaction_type === 'payment' || t.transaction_type === 'expense')
+        );
+        const totalPaid = engineerPayments.reduce((sum: number, t: any) => sum + Number(t.paid_amount || t.total_amount || 0), 0);
+        const effectiveDue = Math.max(0, Number(p.opening_balance || 0) + totalCommission - totalPaid);
+
+        return {
+          id: String(p.id),
+          name: p.name,
+          phone: p.phone,
+          businessName: p.business_name,
+          address: p.address,
+          supplyType: p.supply_type || p.customer_type || 'ইঞ্জিনিয়ার',
+          totalDue: effectiveDue
+        };
+      });
 
       setCustomers(loadedCusts);
       setSuppliers(loadedSupps);
       setEngineers(loadedEngineers);
+
+      setOrders(safeOrderList.map((o: any) => {
+        let meta: any = {};
+        if (o.notes && typeof o.notes === 'string' && o.notes.trim().startsWith('{')) {
+          try { meta = JSON.parse(o.notes.split('\n')[0]); } catch {}
+        }
+        const comm = Number(meta.engineerTotalCommission || o.engineerTotalCommission || 0);
+        const rodKg = Number(meta.engineerRodKg || o.engineerRodKg || 0);
+        const rRate = Number(meta.engineerRodRate || o.engineerRodRate || 0);
+        const cemBags = Number(meta.engineerCementBags || o.engineerCementBags || 0);
+        const cRate = Number(meta.engineerCementRate || o.engineerCementRate || 0);
+        const engineerCommission = comm > 0 ? comm : (rodKg * rRate + cemBags * cRate);
+
+        return {
+          id: String(o.id),
+          invoiceNo: o.invoice_no || `INV-${o.id}`,
+          customerId: String(o.party || ''),
+          customerName: o.party_name || meta.customerName || '',
+          engineerId: String(meta.engineerId || o.engineer_id || ''),
+          engineerName: meta.engineerName || o.engineer_name || '',
+          engineerCommission: engineerCommission,
+          totalAmount: Number(o.total_amount || 0),
+          paidAmount: Number(o.paid_amount || 0),
+          dueAmount: Number(o.due_amount || 0),
+          createdAt: o.created_at
+        };
+      }));
+
+      setPurchases(safePurchaseList.map((p: any) => ({
+        id: String(p.id),
+        invoiceNo: p.invoice_no || `PUR-${p.id}`,
+        supplierId: String(p.party || ''),
+        supplierName: p.party_name || '',
+        totalAmount: Number(p.total_amount || 0),
+        paidAmount: Number(p.paid_amount || 0),
+        dueAmount: Number(p.due_amount || 0),
+        createdAt: p.created_at
+      })));
+
       return { loadedCusts, loadedSupps, loadedEngineers };
     } catch (err) {
       console.error('Error loading transactions page:', err);
@@ -824,11 +900,16 @@ function TransactionsContent() {
   // Update Invoice Selection
   const handleSelectInvoice = (invId: string) => {
     setSelectedInvoiceId(invId);
-    const invList = paymentType === 'income' ? orders : purchases;
+    const invList = (paymentType === 'income' || expensePartyType === 'engineer') ? orders : purchases;
     const inv = invList.find(i => i.id === invId) || null;
     setSelectedInvoice(inv);
     if (inv) {
-      setPaidAmount(inv.dueAmount || inv.totalAmount || 0);
+      if (expensePartyType === 'engineer') {
+        const commAmt = (inv as any).engineerCommission || inv.dueAmount || 0;
+        setPaidAmount(commAmt);
+      } else {
+        setPaidAmount(inv.dueAmount || inv.totalAmount || 0);
+      }
     }
   };
 
@@ -1912,9 +1993,12 @@ function TransactionsContent() {
                           {/* Due Balance */}
                           <div className="sm:col-span-2 space-y-1 text-right">
                             <Label className="text-xs font-bold text-slate-500">
-                              {expensePartyType === 'engineer' ? 'পাওনা / কমিশন' : 'বকেয়া পরিমাণ'}
+                              {expensePartyType === 'engineer' ? 'মোট পাওনা কমিশন' : 'বকেয়া পরিমাণ'}
                             </Label>
-                            <p className="text-base font-black text-rose-600 pt-1">
+                            <p className={cn(
+                              "text-base font-black pt-1",
+                              expensePartyType === 'engineer' ? "text-emerald-700 font-black" : "text-rose-600 font-black"
+                            )}>
                               ৳ {toBengaliDigits((selectedParty?.totalDue || 0).toLocaleString('bn-BD'))}
                             </p>
                           </div>
@@ -1935,7 +2019,11 @@ function TransactionsContent() {
                               <SelectContent className="font-bengali text-xs font-bold max-h-60 z-[99999]">
                                 {availableInvoices.map(inv => (
                                   <SelectItem key={inv.id} value={inv.id}>
-                                    {toBengaliDigits(`INV-2026-${inv.id.slice(-6)}`)} — ৳ {toBengaliDigits((inv.totalAmount || 0).toLocaleString('bn-BD'))} (বকেয়া: ৳{toBengaliDigits((inv.dueAmount || 0).toLocaleString('bn-BD'))})
+                                    {toBengaliDigits(inv.invoiceNo || `INV-2026-${inv.id.slice(-6)}`)} — 
+                                    {expensePartyType === 'engineer'
+                                      ? ` কমিশন: ৳ ${toBengaliDigits(((inv as any).engineerCommission || inv.totalAmount || 0).toLocaleString('bn-BD'))} (চালান মোট: ৳${toBengaliDigits((inv.totalAmount || 0).toLocaleString('bn-BD'))})`
+                                      : ` ৳ ${toBengaliDigits((inv.totalAmount || 0).toLocaleString('bn-BD'))} (বকেয়া: ৳${toBengaliDigits((inv.dueAmount || 0).toLocaleString('bn-BD'))})`
+                                    }
                                   </SelectItem>
                                 ))}
                               </SelectContent>

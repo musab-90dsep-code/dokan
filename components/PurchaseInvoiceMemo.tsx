@@ -205,7 +205,7 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
   const totalQtySum = items.reduce((a, i) => a + Number(i.quantity || 0), 0);
   const extraPerUnit = totalQtySum > 0 ? (totalExtra / totalQtySum) : 0;
 
-  const storedItemsSum = items.reduce((sum, i) => sum + ((Number(i.price || 0) - Number(i.discount || 0)) * Number(i.quantity || 0)), 0);
+  const storedItemsSum = items.reduce((sum, i) => sum + (Number(i.price || 0) * Number(i.quantity || 0)), 0);
   const invoiceTotalInRecord = Number(invoice.totalAmount || 0);
 
   let isStoredAsLandedCost = false;
@@ -219,11 +219,12 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
     ? Math.max(0, storedItemsSum - totalExtra)
     : (invoice.subtotal ? Number(invoice.subtotal) : storedItemsSum);
 
-  const discountPercent = Number(meta.discountPercent || 0);
-  const discountFlat = Number(invoice.discount !== undefined ? invoice.discount : (meta.discountFlat || meta.discount || 0));
-  const effectiveDiscount = discountFlat > 0 ? discountFlat : (discountPercent > 0 ? (subtotal * discountPercent / 100) : 0);
+  const commission = Number((invoice as any).commission !== undefined ? (invoice as any).commission : (meta.commission !== undefined ? meta.commission : (meta.commissionAmount || 0)));
+  const commissionRate = Number((invoice as any).commissionRate !== undefined ? (invoice as any).commissionRate : (meta.commissionRate || 0));
+  const commissionAdjustment = (invoice as any).commissionAdjustment || meta.commissionAdjustment || 'pending';
+  const commissionDeduction = commissionAdjustment === 'deduct' ? commission : 0;
 
-  const totalAmount = Math.max(0, subtotal - effectiveDiscount + effectiveShippingCost + effectiveLaborCost);
+  const totalAmount = Math.max(0, subtotal - commissionDeduction + effectiveShippingCost + effectiveLaborCost);
   const paidAmount = Number(invoice.paidAmount !== undefined ? invoice.paidAmount : 0);
   const dueAmount = Number(invoice.dueAmount !== undefined ? invoice.dueAmount : Math.max(0, totalAmount - paidAmount));
   const grandTotalPayable = totalAmount + effectivePreviousSupplierDue;
@@ -645,10 +646,14 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
                 </div>
               )}
 
-              {effectiveDiscount > 0 && (
-                <div className="flex justify-between items-center p-1.5 px-2 text-rose-600">
-                  <span className="text-slate-800 font-medium">- বিশেষ ছাড়</span>
-                  <span className="font-mono">- ৳ {toBengaliDigits(effectiveDiscount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+              {commission > 0 && (
+                <div className="flex justify-between items-center p-1.5 px-2 text-emerald-800 bg-emerald-50/60">
+                  <span className="text-slate-800 font-medium">
+                    {commissionAdjustment === 'pending' ? 'কোম্পানি কমিশন (পেন্ডিং)' : '- কোম্পানি কমিশন (কর্তন)'}
+                  </span>
+                  <span className="font-mono font-bold text-emerald-800">
+                    {commissionAdjustment === 'pending' ? '' : '- '}৳ {toBengaliDigits(commission.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
+                  </span>
                 </div>
               )}
 

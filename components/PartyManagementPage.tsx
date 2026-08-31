@@ -253,6 +253,11 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       setLoading(true);
       const data = await api.parties.list({ party_type: type });
       const safeData = Array.isArray(data) ? data : [];
+      let transactions: any[] = [];
+      try {
+        transactions = await api.transactions.list();
+      } catch {}
+
       const partyList: Party[] = safeData.map((p) => {
         let rodCommissionRate = 0;
         let cementCommissionRate = 0;
@@ -264,6 +269,56 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
             cementCommissionRate = Number(parsed.cementCommissionRate || 0);
             cleanNote = parsed.userNote !== undefined ? parsed.userNote : (p.note.includes('\n') ? p.note.substring(p.note.indexOf('\n') + 1) : '');
           } catch {}
+        }
+
+        let calculatedDue = Number(p.total_due || 0);
+
+        if (isEngineer) {
+          // Engineer commission calculation matching PartyProfilePage
+          const engineerSales = transactions.filter(s => {
+            if (s.transaction_type !== 'sale' && s.transaction_type) return false;
+            let meta: any = {};
+            if (s.notes && typeof s.notes === 'string' && s.notes.trim().startsWith('{')) {
+              try { meta = JSON.parse(s.notes.split('\n')[0]); } catch {}
+            }
+            const matchId = String(meta.engineerId) === String(p.id) || String((s as any).engineer_id) === String(p.id);
+            const matchName = meta.engineerName && p.name && meta.engineerName.trim().toLowerCase() === p.name.trim().toLowerCase();
+            const isDirect = String(s.party) === String(p.id);
+            return matchId || matchName || isDirect;
+          });
+
+          const totalCommission = engineerSales.reduce((sum, s) => {
+            let meta: any = {};
+            if (s.notes && typeof s.notes === 'string' && s.notes.trim().startsWith('{')) {
+              try { meta = JSON.parse(s.notes.split('\n')[0]); } catch {}
+            }
+            const comm = Number(meta.engineerTotalCommission || (s as any).engineerTotalCommission || 0);
+            const rodKg = Number(meta.engineerRodKg || (s as any).engineerRodKg || 0);
+            const rRate = Number(meta.engineerRodRate || (s as any).engineerRodRate || 0);
+            const cemBags = Number(meta.engineerCementBags || (s as any).engineerCementBags || 0);
+            const cRate = Number(meta.engineerCementRate || (s as any).engineerCementRate || 0);
+            const eff = comm > 0 ? comm : (rodKg * rRate + cemBags * cRate);
+            return sum + eff;
+          }, 0);
+
+          const engineerPayments = transactions.filter(t => 
+            String(t.party) === String(p.id) && 
+            (t.transaction_type === 'payment_out' || t.transaction_type === 'payment_in' || t.transaction_type === 'payment' || t.transaction_type === 'expense')
+          );
+          const totalPaid = engineerPayments.reduce((sum, t) => sum + Number(t.paid_amount || t.total_amount || 0), 0);
+
+          calculatedDue = Math.max(0, Number(p.opening_balance || 0) + totalCommission - totalPaid);
+        } else if (isCustomer) {
+          const custTx = transactions.filter(t => 
+            String(t.party) === String(p.id) || 
+            (t.party_name && String(t.party_name).trim().toLowerCase() === String(p.name).trim().toLowerCase())
+          );
+          if (custTx.length > 0) {
+            const totalSales = custTx.filter(t => t.transaction_type === 'sale').reduce((sum, t) => sum + Number(t.total_amount || 0), 0);
+            const totalPaid = custTx.reduce((sum, t) => sum + Number(t.paid_amount || 0), 0);
+            const totalReturns = custTx.filter(t => t.transaction_type === 'sale_return').reduce((sum, t) => sum + Number(t.total_amount || 0), 0);
+            calculatedDue = Number(p.opening_balance || 0) + totalSales - totalPaid - totalReturns;
+          }
         }
 
         return {
@@ -293,7 +348,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
           joinedDate: p.joined_date || '',
           note: cleanNote,
           photoUrl: p.photo_url || '',
-          totalDue: Number(p.total_due || 0),
+          totalDue: calculatedDue,
           totalPurchase: Number(p.total_purchases || 0)
         };
       });
@@ -305,7 +360,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
     } finally {
       setLoading(false);
     }
-  }, [type]);
+  }, [type, isEngineer, isCustomer]);
 
   useEffect(() => {
     let ignore = false;
@@ -886,8 +941,18 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                             )}
                           </TableCell>
 
-                          <TableCell className="py-3.5 px-4 text-right font-bold text-rose-600">
-                            ৳ {toBnDigits((p.totalDue || 0).toLocaleString('en-IN'))}
+                          <TableCell className={cn(
+                            "py-3.5 px-4 text-right font-black",
+                            isEngineer 
+                              ? "text-emerald-700" 
+                              : (p.totalDue || 0) < 0 ? "text-emerald-600" : "text-rose-600"
+                          )}>
+                            {isEngineer
+                              ? `৳ ${toBnDigits((p.totalDue || 0).toLocaleString('en-IN'))}`
+                              : (p.totalDue || 0) < 0
+                                ? `-৳ ${toBnDigits(Math.abs(p.totalDue || 0).toLocaleString('en-IN'))}`
+                                : `৳ ${toBnDigits((p.totalDue || 0).toLocaleString('en-IN'))}`
+                            }
                           </TableCell>
 
                           <TableCell className="py-3.5 px-4 text-left">
