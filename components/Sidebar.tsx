@@ -7,10 +7,9 @@ import {
   LayoutDashboard, Package, ShoppingCart, Users, Settings, LogOut,
   TrendingUp, ChevronDown, ChevronRight, Truck, BarChart3,
   AlertTriangle, FileText, Receipt, RotateCcw, Building2,
-  DollarSign, PieChart, Landmark, ArrowUpCircle, ArrowDownCircle, PlusCircle, BookOpen, ArrowRightLeft, Scale, PanelLeftClose, PanelLeftOpen, Wallet, Percent, HardHat
+  DollarSign, PieChart, Landmark, ArrowUpCircle, ArrowDownCircle, PlusCircle, BookOpen, ArrowRightLeft, Scale, PanelLeftClose, PanelLeftOpen, Wallet, Percent, HardHat, Download
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 type MenuItem = {
   name: string;
@@ -199,7 +198,7 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
           )}
         >
           {/* LOGO HEADER */}
-          <div className="p-3.5 sm:p-4 border-b border-amber-800/30 bg-gradient-to-br from-[#8c6b1c] via-[#b88e2d] to-[#d4af37] relative overflow-hidden flex items-center justify-between min-h-[64px] shadow-sm">
+          <div className="p-3.5 sm:p-4 border-b border-amber-800/30 bg-gradient-to-br from-[#8c6b1c] via-[#b88e2d] to-[#d4af37] relative overflow-hidden flex items-center justify-between min-h-[64px] flex-shrink-0 shadow-sm">
             <div className="flex items-center gap-3 overflow-hidden">
               <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-0.5 flex-shrink-0 shadow-md border border-white/40 overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -223,7 +222,7 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
                 <button 
                   onClick={() => setIsPinned(!isPinned)}
                   title={isPinned ? 'সাইডবার পিন খুলুন' : 'সাইডবার পিন করুন'}
-                  className="hidden md:flex text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+                  className="hidden md:flex text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
                 >
                   {isPinned ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
                 </button>
@@ -233,7 +232,7 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
               {mobileOpen && (
                 <button
                   onClick={onCloseMobile}
-                  className="md:hidden text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                  className="md:hidden text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
                   title="মেনু বন্ধ করুন"
                 >
                   <PanelLeftClose className="w-5 h-5" />
@@ -243,7 +242,7 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
           </div>
 
           {/* MENU SCROLL AREA */}
-          <ScrollArea className="flex-1 px-2.5 py-3">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2.5 py-3 custom-scrollbar">
             <nav className="space-y-1">
               {menuStructure.map((item) => {
                 const isOpen = openMenus.includes(item.name);
@@ -366,10 +365,10 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
                 );
               })}
             </nav>
-          </ScrollArea>
+          </div>
 
           {/* FOOTER USER INFO & LOGOUT */}
-          <div className="p-3 border-t border-slate-100 bg-slate-50/50 space-y-2">
+          <div className="p-3 border-t border-slate-100 bg-slate-50/50 space-y-2 flex-shrink-0">
             {(isExpanded || mobileOpen) && user && (
               <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
                 <div className={cn(
@@ -388,6 +387,25 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
                 </div>
               </div>
             )}
+
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('trigger-pwa-install'));
+                }
+              }}
+              title={!isExpanded && !mobileOpen ? 'অ্যাপ ডাউনলোড / ইনস্টল করুন' : undefined}
+              className="w-full flex items-center justify-start gap-3 px-3 py-2 rounded-xl text-amber-700 hover:text-amber-800 bg-amber-50/80 hover:bg-amber-100/80 transition-colors text-xs font-bold relative group cursor-pointer border border-amber-200/60"
+            >
+              <Download className="w-4 h-4 flex-shrink-0 text-amber-600" />
+              {(isExpanded || mobileOpen) && <span className="whitespace-nowrap">অ্যাপ ডাউনলোড করুন</span>}
+
+              {!isExpanded && !mobileOpen && (
+                <div className="hidden md:block absolute left-full ml-2 px-2.5 py-1 bg-amber-900 text-white text-xs font-medium rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg z-50">
+                  অ্যাপ ডাউনলোড করুন
+                </div>
+              )}
+            </button>
 
             <button
               onClick={handleLogout}

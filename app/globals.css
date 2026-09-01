@@ -159,6 +159,26 @@
   background-size: 32px 32px;
 }
 
+/* Custom sleek scrollbar for sidebar & scrollable containers */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(184, 142, 45, 0.25);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(184, 142, 45, 0.55);
+}
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(184, 142, 45, 0.25) transparent;
+}
+
 @media print {
   @page {
     size: A4 portrait;

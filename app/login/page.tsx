@@ -97,8 +97,13 @@ export default function LoginPage() {
         <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-8 shadow-xl shadow-slate-900/5">
           {/* Header & Brand */}
           <div className="text-center mb-7">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-amber-600 text-white mb-3 shadow-md shadow-amber-600/20">
-              <Store className="w-6 h-6" />
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white border border-slate-200/80 shadow-md mb-3 p-1.5 overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img 
+                src="/logo.png" 
+                alt="মেসার্স দেলোয়ার এন্ড ব্রাদার্স" 
+                className="w-full h-full object-contain"
+              />
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
               মেসার্স দেলোয়ার এন্ড ব্রাদার্স
