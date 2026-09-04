@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/utils';
 import { AuthProvider } from '@/lib/authContext';
 import { PwaManager } from '@/components/PwaManager';
+import { NumberInputWheelDisable } from '@/components/NumberInputWheelDisable';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -55,6 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body suppressHydrationWarning className="bg-[#faf8f5] text-[#2e2316] min-h-screen antialiased">
         <AuthProvider>
           {children}
+          <NumberInputWheelDisable />
           <PwaManager />
           <Toaster position="top-center" richColors />
         </AuthProvider>
