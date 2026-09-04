@@ -74,39 +74,37 @@ const ROD_MM_OPTIONS = [
   '১২ মিলি',
   '১৬ মিলি',
   '২০ মিলি',
+  '২২ মিলি',
   '২৫ মিলি',
   '৩২ মিলি',
 ];
 
 const ROD_BRAND_OPTIONS = [
   'BSRM',
-  'KSRM',
-  'AKS',
-  'GPH Ispat',
-  'Baizid',
-  'Anwar Ispat',
-  'Metrocem',
-  'RSRM',
+  'SCRM',
+  'SCRM TMX',
+  'KSML',
+  'HKG',
+  'DSRM',
 ];
 
 const CEMENT_BRAND_OPTIONS = [
-  'শাহ সিমেন্ট',
-  'সেভেন রিংস',
-  'বসুন্ধরা সিমেন্ট',
-  'ফ্রেশ সিমেন্ট',
-  'ক্রাউন সিমেন্ট',
-  'প্রিমিয়ার সিমেন্ট',
-  'হোলসিম সিমেন্ট',
-  'আকিজ সিমেন্ট',
+  'Holcim Strong structure',
+  'Holcim Supercrete',
+  'Holcim Supercrete Plus',
+  'Holcim Coastal Guard',
+  'Holcim Waterprotect',
+  'King Brand',
+  'Aman',
 ];
 
 const RING_SIZE_OPTIONS = [
-  '৭″ × ৭″',
-  '৭″ × ৯″',
-  '৮″ × ৮″',
-  '৮″ × ১০″',
-  '৬″ × ৬″',
-  '১০″ × ১০″',
+  '3-3',
+  '3-4',
+  '3-7',
+  '7-7',
+  '7-9',
+  'Pistol ring',
 ];
 
 const RING_BRAND_OPTIONS = [
@@ -161,10 +159,10 @@ export function CascadingProductSelector({
     : initialCategory;
 
   const [selectedMm, setSelectedMm] = useState<string>(
-    initialCategory === 'রিং' ? '৭″ × ৭″' : initialCategory === 'সিমেন্ট' ? '' : '১০ মিলি'
+    initialCategory === 'রিং' ? '3-3' : initialCategory === 'সিমেন্ট' ? '' : '১০ মিলি'
   );
   const [selectedBrand, setSelectedBrand] = useState<string>(
-    initialCategory === 'সিমেন্ট' ? 'শাহ সিমেন্ট' : initialCategory === 'রিং' ? '৮ মিলি রিং' : 'BSRM'
+    initialCategory === 'সিমেন্ট' ? 'Holcim Supercrete' : initialCategory === 'রিং' ? '৮ মিলি রিং' : 'BSRM'
   );
   const [otherProductId, setOtherProductId] = useState<string>('');
   const [customName, setCustomName] = useState<string>('');
@@ -246,16 +244,20 @@ export function CascadingProductSelector({
     });
 
     const filtered = RING_SIZE_OPTIONS.filter(sz => {
-      const digits = sz.match(/[0-9]+/g) || sz.match(/[০-৯]+/g) || [];
       return ringItems.some(p => {
         const name = p.name.toLowerCase();
         if (name.includes(sz.toLowerCase())) return true;
-        if (digits.length >= 2 && digits.every(d => name.includes(d))) return true;
+        const parts = sz.split('-');
+        if (parts.length === 2 && name.includes(parts[0]) && name.includes(parts[1])) return true;
         return false;
       });
     });
 
-    return filtered;
+    const customSizes = ringItems
+      .map(p => p.name)
+      .filter((s): s is string => !!s && !filtered.includes(s));
+
+    return Array.from(new Set([...filtered, ...customSizes]));
   }, [onlyInStock, inStockProducts]);
 
   const availableRingBrands = useMemo(() => {
@@ -282,12 +284,12 @@ export function CascadingProductSelector({
       setSelectedBrand(defaultBrand);
       if (onUnitChange) onUnitChange('কেজি');
     } else if (cat === 'সিমেন্ট') {
-      const defaultBrand = onlyInStock ? (availableCementBrands[0] || '') : 'শাহ সিমেন্ট';
+      const defaultBrand = onlyInStock ? (availableCementBrands[0] || '') : 'Holcim Supercrete';
       setSelectedMm('');
       setSelectedBrand(defaultBrand);
       if (onUnitChange) onUnitChange('বস্তা');
     } else if (cat === 'রিং') {
-      const defaultSz = onlyInStock ? (availableRingSizes[0] || '') : '৭″ × ৭″';
+      const defaultSz = onlyInStock ? (availableRingSizes[0] || '') : '3-3';
       const defaultBrand = onlyInStock ? (availableRingBrands[0] || '') : '৮ মিলি রিং';
       setSelectedMm(defaultSz);
       setSelectedBrand(defaultBrand);
@@ -316,7 +318,7 @@ export function CascadingProductSelector({
     }
     if (category === 'সিমেন্ট') {
       if (!availableCementBrands.includes(selectedBrand)) {
-        return availableCementBrands[0] || 'শাহ সিমেন্ট';
+        return availableCementBrands[0] || 'Holcim Supercrete';
       }
     } else if (category === 'রড') {
       if (!availableRodBrands.includes(selectedBrand)) {
@@ -383,7 +385,11 @@ export function CascadingProductSelector({
       constructedName = activeBrand ? (activeBrand.endsWith('সিমেন্ট') ? activeBrand : `${activeBrand} সিমেন্ট`) : '';
       defaultUnit = 'বস্তা';
     } else if (category === 'রিং') {
-      constructedName = activeMm ? `${activeMm} রিং ${activeBrand ? `(${activeBrand})` : ''}`.trim() : '';
+      if (activeMm.toLowerCase().includes('pistol')) {
+        constructedName = activeBrand && activeBrand !== 'সাইট মেইড' ? `Pistol Ring (${activeBrand})` : 'Pistol Ring';
+      } else {
+        constructedName = activeMm ? `${activeMm} রিং ${activeBrand && activeBrand !== 'সাইট মেইড' ? `(${activeBrand})` : ''}`.trim() : '';
+      }
       defaultUnit = 'পিস';
     }
 
@@ -399,11 +405,21 @@ export function CascadingProductSelector({
     }
 
     // Exact match search in searchPool
-    const exact = searchPool.find(p => 
-      p.name.toLowerCase() === constructedName.toLowerCase() ||
-      p.name.toLowerCase() === `${activeMm} ${activeBrand} রড`.toLowerCase() ||
-      p.name.toLowerCase() === `${activeBrand} ${activeMm} রড`.toLowerCase()
-    );
+    const exact = searchPool.find(p => {
+      const pName = p.name.toLowerCase();
+      const cName = constructedName.toLowerCase();
+      if (pName === cName) return true;
+      if (category === 'রড') {
+        return pName === `${activeMm} ${activeBrand} রড`.toLowerCase() || pName === `${activeBrand} ${activeMm} রড`.toLowerCase();
+      }
+      if (category === 'সিমেন্ট' && activeBrand) {
+        return pName === activeBrand.toLowerCase() || pName === `${activeBrand} সিমেন্ট`.toLowerCase();
+      }
+      if (category === 'রিং' && activeMm) {
+        return pName === activeMm.toLowerCase() || pName === `${activeMm} রিং`.toLowerCase();
+      }
+      return false;
+    });
     if (exact) {
       const buyP = Number(exact.buyPrice || 0);
       const sellP = Number(exact.sellPrice || 0);

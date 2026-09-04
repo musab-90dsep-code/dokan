@@ -117,7 +117,9 @@ export function parseProductDetails(item: { name: string; category?: string; bra
   let brandName = item.brand || '';
   if (!brandName) {
     const knownBrands = [
-      'BSRM', 'KSRM', 'AKS', 'GPH Ispat', 'Anwar Ispat', 'RSRM', 'Baizid', 'Metrocem', 'SSRM', 'HKG',
+      'BSRM', 'SCRM TMX', 'SCRM', 'KSML', 'HKG', 'DSRM',
+      'Holcim Strong structure', 'Holcim Supercrete Plus', 'Holcim Supercrete', 'Holcim Coastal Guard', 'Holcim Waterprotect', 'King Brand', 'Aman',
+      'KSRM', 'AKS', 'GPH Ispat', 'Anwar Ispat', 'RSRM', 'Baizid', 'Metrocem', 'SSRM',
       'শাহ সিমেন্ট', 'সেভেন রিংস', 'বসুন্ধরা সিমেন্ট', 'ফ্রেশ সিমেন্ট', 'ক্রাউন সিমেন্ট', 'প্রিমিয়ার সিমেন্ট',
       'হোলসিম সিমেন্ট', 'আকিজ সিমেন্ট', 'শাহ', 'সেভেন রিং', 'বসুন্ধরা', 'ফ্রেশ', 'ক্রাউন', 'প্রিমিয়ার', 'হোলসিম', 'আকিজ'
     ];
@@ -143,8 +145,11 @@ export function parseProductDetails(item: { name: string; category?: string; bra
       const numPart = (mmMatch[1] || mmMatch[0]).replace(/(?:মিলি|mm|রড)/gi, '').trim();
       sizeName = numPart ? `${numPart} মিলি` : mmMatch[0];
     } else {
+      const ringDashMatch = name.match(/\b([0-9০-৯]+-[0-9০-৯]+)\b/) || name.match(/Pistol\s*ring/i) || name.match(/পিস্তল\s*রিং/i);
       const ringMatch = name.match(/([0-9০-৯]+["″]?\s*[\*×xX]\s*[0-9০-৯]+["″]?)/);
-      if (ringMatch) {
+      if (ringDashMatch) {
+        sizeName = ringDashMatch[0];
+      } else if (ringMatch) {
         sizeName = ringMatch[1].replace(/[*xX]/g, '″ × ') + (ringMatch[1].includes('″') ? '' : '″');
       }
     }

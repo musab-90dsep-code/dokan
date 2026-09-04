@@ -55,11 +55,6 @@ const menuStructure: MenuItem[] = [
     ],
   },
   {
-    name: 'ইঞ্জিনিয়ার',
-    icon: HardHat,
-    href: '/engineers',
-  },
-  {
     name: 'লেনদেন',
     icon: ArrowUpCircle,
     href: '/transactions',
@@ -91,6 +86,11 @@ const menuStructure: MenuItem[] = [
       { name: 'রড সিমেন্ট ক্রয় বিক্রয় স্টেটমেন্ট', href: '/reports?tab=trade_register', icon: Truck },
       { name: 'পেন্ডিং কমিশন তালিকা', href: '/reports?tab=commissions', icon: Percent },
     ]
+  },
+  {
+    name: 'ইঞ্জিনিয়ার',
+    icon: HardHat,
+    href: '/engineers',
   },
   {
     name: 'সেটিংস',
