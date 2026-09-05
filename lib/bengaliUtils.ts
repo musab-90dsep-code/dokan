@@ -93,9 +93,18 @@ export interface ParsedProductInfo {
   categoryName: string;
   brandName: string;
   sizeName: string;
+  cementType?: 'OPC' | 'PCC' | '';
 }
 
-export function parseProductDetails(item: { name: string; category?: string; brand?: string; mmSize?: string; size?: string }): ParsedProductInfo {
+export function parseProductDetails(item: { 
+  name: string; 
+  category?: string; 
+  brand?: string; 
+  mmSize?: string; 
+  size?: string; 
+  variant?: string;
+  cementType?: string;
+}): ParsedProductInfo {
   const name = item.name || '';
   const lowerName = name.toLowerCase();
 
@@ -111,6 +120,18 @@ export function parseProductDetails(item: { name: string; category?: string; bra
     } else {
       categoryName = name || 'অন্যান্য';
     }
+  }
+
+  // Detect cement type if present
+  let detectedCementType: 'OPC' | 'PCC' | '' = '';
+  if (item.cementType === 'OPC' || item.cementType === 'PCC') {
+    detectedCementType = item.cementType;
+  } else if (item.variant === 'OPC' || item.variant === 'PCC') {
+    detectedCementType = item.variant;
+  } else if (/\bopc\b|\(opc\)|ওপিসি/i.test(lowerName)) {
+    detectedCementType = 'OPC';
+  } else if (/\bpcc\b|\(pcc\)|পিসিসি/i.test(lowerName)) {
+    detectedCementType = 'PCC';
   }
 
   // 2. Brand (ব্র্যান্ড)
@@ -130,27 +151,33 @@ export function parseProductDetails(item: { name: string; category?: string; bra
       }
     }
     if (!brandName && categoryName === 'সিমেন্ট') {
-      const cleaned = name.trim();
+      const cleaned = name.replace(/\((?:OPC|PCC|ওপিসি|পিসিসি)\)/gi, '').replace(/\b(?:OPC|PCC|ওপিসি|পিসিসি)\b/gi, '').trim();
       if (cleaned) brandName = cleaned;
     }
   }
 
-  // 3. Size (সাইজ)
-  let sizeName = item.mmSize || item.size || '';
-  if (!sizeName) {
-    const mmMatch = name.match(/([0-9০-৯]+(?:\.[0-9০-৯]+)?\s*(?:মিলি|mm))/i) 
-                 || name.match(/([0-9০-৯]+)\s*(?:মিলি|mm)/i)
-                 || name.match(/\b(8|10|12|16|20|22|25|28|32|৮|১০|১২|১৬|২০|২২|২৫|২৮|৩২)\s*(?:মিলি|mm|রড)?/i);
-    if (mmMatch) {
-      const numPart = (mmMatch[1] || mmMatch[0]).replace(/(?:মিলি|mm|রড)/gi, '').trim();
-      sizeName = numPart ? `${numPart} মিলি` : mmMatch[0];
+  // 3. Size / Variant (সাইজ / গ্রেড / টাইপ)
+  let sizeName = item.mmSize || item.size || item.variant || '';
+  if (categoryName === 'সিমেন্ট' && detectedCementType) {
+    sizeName = detectedCementType;
+  } else if (!sizeName) {
+    if (detectedCementType) {
+      sizeName = detectedCementType;
     } else {
-      const ringDashMatch = name.match(/\b([0-9০-৯]+-[0-9০-৯]+)\b/) || name.match(/Pistol\s*ring/i) || name.match(/পিস্তল\s*রিং/i);
-      const ringMatch = name.match(/([0-9০-৯]+["″]?\s*[\*×xX]\s*[0-9০-৯]+["″]?)/);
-      if (ringDashMatch) {
-        sizeName = ringDashMatch[0];
-      } else if (ringMatch) {
-        sizeName = ringMatch[1].replace(/[*xX]/g, '″ × ') + (ringMatch[1].includes('″') ? '' : '″');
+      const mmMatch = name.match(/([0-9০-৯]+(?:\.[0-9০-৯]+)?\s*(?:মিলি|mm))/i) 
+                   || name.match(/([0-9০-৯]+)\s*(?:মিলি|mm)/i)
+                   || name.match(/\b(8|10|12|16|20|22|25|28|32|৮|১০|১২|১৬|২০|২২|২৫|২৮|৩২)\s*(?:মিলি|mm|রড)?/i);
+      if (mmMatch) {
+        const numPart = (mmMatch[1] || mmMatch[0]).replace(/(?:মিলি|mm|রড)/gi, '').trim();
+        sizeName = numPart ? `${numPart} মিলি` : mmMatch[0];
+      } else {
+        const ringDashMatch = name.match(/\b([0-9০-৯]+-[0-9০-৯]+)\b/) || name.match(/Pistol\s*ring/i) || name.match(/পিস্তল\s*রিং/i);
+        const ringMatch = name.match(/([0-9০-৯]+["″]?\s*[\*×xX]\s*[0-9০-৯]+["″]?)/);
+        if (ringDashMatch) {
+          sizeName = ringDashMatch[0];
+        } else if (ringMatch) {
+          sizeName = ringMatch[1].replace(/[*xX]/g, '″ × ') + (ringMatch[1].includes('″') ? '' : '″');
+        }
       }
     }
   }
@@ -158,6 +185,8 @@ export function parseProductDetails(item: { name: string; category?: string; bra
   return {
     categoryName: categoryName || 'পণ্য',
     brandName: brandName || '—',
-    sizeName: sizeName || '—'
+    sizeName: sizeName || '—',
+    cementType: detectedCementType
   };
 }
+

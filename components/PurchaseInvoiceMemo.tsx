@@ -7,7 +7,7 @@ import {
   FileText, Edit3, CheckCircle2 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { toBengaliDigits, numberToBengaliWords } from '@/lib/bengaliUtils';
+import { toBengaliDigits, numberToBengaliWords, parseProductDetails } from '@/lib/bengaliUtils';
 import { printElement } from '@/lib/printUtils';
 
 export interface PurchaseItem {
@@ -480,7 +480,14 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
                         {item.bundle && <span className="text-[10px] text-slate-500 block">({toBengaliDigits(item.bundle)} বান্ডিল)</span>}
                       </td>
                       <td className="border border-slate-300 py-1.5 px-2 text-center">{item.brand || '—'}</td>
-                      <td className="border border-slate-300 py-1.5 px-2 text-center">{item.variant || '—'}</td>
+                      <td className="border border-slate-300 py-1.5 px-2 text-center font-bold">
+                        {(() => {
+                          const v = item.variant || parseProductDetails(item).sizeName;
+                          if (v === 'OPC') return <span className="text-blue-700 font-extrabold">OPC</span>;
+                          if (v === 'PCC') return <span className="text-emerald-700 font-extrabold">PCC</span>;
+                          return v || '—';
+                        })()}
+                      </td>
                       <td className="border border-slate-300 py-1.5 px-2 text-center font-mono font-bold">{toBengaliDigits(itemQty.toLocaleString('en-IN'))}</td>
                       <td className="border border-slate-300 py-1.5 px-2 text-center">{item.unit || 'পিস'}</td>
                       <td className="border border-slate-300 py-1.5 px-2 text-right font-mono">

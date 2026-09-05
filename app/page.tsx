@@ -471,56 +471,76 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* ==================== QUICK SHORTCUTS ROW (MINI COMPACT SQUARE TILES) ==================== */}
-        <div className="rounded-2xl bg-white border border-slate-200/80 p-3 sm:p-3.5 shadow-sm space-y-2.5 font-bengali">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-[#8c6b1c] via-[#b88e2d] to-[#d4af37] text-white flex items-center justify-center font-bold shadow-xs">
-                <Zap className="w-3.5 h-3.5" />
+        {/* ==================== QUICK SHORTCUTS ROW (FULL WIDTH BALANCED 6-COL TILES) ==================== */}
+        <div className="rounded-2xl bg-white border border-slate-200/80 p-4 sm:p-4.5 shadow-sm space-y-3 font-bengali w-full">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-[#8c6b1c] via-[#b88e2d] to-[#d4af37] text-white flex items-center justify-center font-bold shadow-xs flex-shrink-0">
+                <Zap className="w-4 h-4 fill-white/20" />
               </div>
-              <h3 className="text-xs sm:text-sm font-black text-slate-900 leading-tight">দ্রুত শর্টকাট</h3>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900 leading-none">দ্রুত শর্টকাট ও কার্যক্রম</h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200/70">
+                    {toBnNum(allShortcuts.length)}টি অ্যাকশন
+                  </span>
+                </div>
+                <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium mt-1">দোকানের প্রধান ও নিয়মিত কার্যক্রমগুলো এক ক্লিকে সম্পন্ন করুন</p>
+              </div>
             </div>
-            <span className="text-[10px] text-slate-400 font-medium">দৈনন্দিন প্রয়োজনীয় অ্যাকশন</span>
+            <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-slate-400 font-medium">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200/60">
+                <Sparkles className="w-3 h-3 text-[#b88e2d]" /> এক ক্লিকে সরাসরি প্রবেশ
+              </span>
+            </div>
           </div>
 
-          {/* Mini Compact Square Tiles Grid */}
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-2.5 max-w-3xl">
+          {/* Full-width Balanced Grid - 6 columns on lg, 3 on sm, 2 on xs - ZERO empty space */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3 w-full">
             {allShortcuts.map((action) => (
               <Link 
                 key={action.href} 
                 href={action.href}
                 className={cn(
-                  "group relative aspect-square flex flex-col items-center justify-center p-2 rounded-xl border bg-gradient-to-b transition-all duration-200 shadow-2xs hover:shadow-md hover:-translate-y-0.5 overflow-hidden text-center",
+                  "group relative flex flex-col justify-between p-3 sm:p-3.5 rounded-xl sm:rounded-2xl border bg-gradient-to-b transition-all duration-300 shadow-2xs hover:shadow-md hover:-translate-y-0.5 overflow-hidden",
                   action.accentBg,
                   action.accentBorder
                 )}
               >
-                {/* Micro Hover Corner Indicator */}
-                <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-slate-100 group-hover:bg-slate-900 group-hover:text-white flex items-center justify-center text-slate-400 opacity-0 group-hover:opacity-100 transition-all duration-200">
-                  <ArrowUpRight className="w-2.5 h-2.5" />
+                {/* Top subtle accent highlight bar */}
+                <div className={cn("absolute top-0 left-0 right-0 h-1 transition-all duration-300 opacity-60 group-hover:opacity-100", action.accentLine)} />
+
+                {/* Top Row: Icon + Tag Badge */}
+                <div className="flex items-center justify-between gap-1.5 mb-2.5">
+                  <div className={cn(
+                    "w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white shadow-xs transition-transform duration-300 group-hover:scale-110 bg-gradient-to-br flex-shrink-0",
+                    action.gradient,
+                    action.iconShadow
+                  )}>
+                    <action.icon className="w-4 h-4" />
+                  </div>
+
+                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/90 text-slate-600 border border-slate-200/70 shadow-2xs group-hover:border-slate-300 transition-colors">
+                    {action.tag}
+                  </span>
                 </div>
 
-                {/* Mini Center Icon */}
-                <div className={cn(
-                  "w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-xs transition-transform duration-200 group-hover:scale-110 bg-gradient-to-br mb-1.5 flex-shrink-0",
-                  action.gradient,
-                  action.iconShadow
-                )}>
-                  <action.icon className="w-4 h-4" />
+                {/* Bottom Content: Title + Subtitle + Micro hover arrow */}
+                <div className="space-y-0.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <h4 className={cn(
+                      "text-xs sm:text-[13px] font-black text-slate-900 tracking-tight transition-colors leading-snug truncate",
+                      action.accentText
+                    )}>
+                      {action.label}
+                    </h4>
+                    <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-900 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-200 opacity-0 group-hover:opacity-100 flex-shrink-0" />
+                  </div>
+
+                  <p className="text-[9.5px] sm:text-[10px] text-slate-400 group-hover:text-slate-600 font-medium leading-tight truncate">
+                    {action.sub}
+                  </p>
                 </div>
-
-                {/* Title */}
-                <h4 className={cn(
-                  "text-[11px] sm:text-xs font-bold text-slate-900 tracking-tight transition-colors leading-tight truncate max-w-full px-0.5",
-                  action.accentText
-                )}>
-                  {action.label}
-                </h4>
-
-                {/* Micro Subtitle */}
-                <p className="text-[9px] text-slate-400 group-hover:text-slate-600 font-medium leading-tight mt-0.5 truncate max-w-full px-0.5">
-                  {action.sub}
-                </p>
               </Link>
             ))}
           </div>

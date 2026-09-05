@@ -8,7 +8,7 @@ import {
   Receipt, User, Truck, ClipboardList, CreditCard, Trash2, CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { toBengaliDigits } from '@/lib/bengaliUtils';
+import { toBengaliDigits, parseProductDetails } from '@/lib/bengaliUtils';
 import { printElement } from '@/lib/printUtils';
 import { useAuth } from '@/lib/authContext';
 
@@ -477,7 +477,14 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
                         {item.bundle && <span className="text-[11px] font-normal text-slate-500 block">({toBengaliDigits(item.bundle)} বান্ডিল)</span>}
                       </td>
                       <td className="py-2.5 px-3 text-center text-slate-600">{item.brand || '—'}</td>
-                      <td className="py-2.5 px-3 text-center text-slate-600">{item.variant || '—'}</td>
+                      <td className="py-2.5 px-3 text-center text-slate-600 font-bold">
+                        {(() => {
+                          const v = item.variant || parseProductDetails(item).sizeName;
+                          if (v === 'OPC') return <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-200">OPC</span>;
+                          if (v === 'PCC') return <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">PCC</span>;
+                          return v || '—';
+                        })()}
+                      </td>
                       <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-900">
                         {toBengaliDigits(itemQty.toLocaleString('en-IN'))}
                       </td>

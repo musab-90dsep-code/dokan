@@ -43,6 +43,8 @@ export interface PurchaseItem {
   category?: string;
   brand?: string;
   mmSize?: string;
+  variant?: string;
+  cementType?: 'OPC' | 'PCC' | '';
   unit: string;
   price: number;
   sellPrice?: number;
@@ -169,6 +171,8 @@ export default function PurchasesPage() {
       category: selectedCascadingProduct?.category,
       brand: selectedCascadingProduct?.brand,
       mmSize: selectedCascadingProduct?.mmSize,
+      variant: selectedCascadingProduct?.variant || selectedCascadingProduct?.cementType || selectedCascadingProduct?.mmSize,
+      cementType: selectedCascadingProduct?.cementType,
       unit: unitToUse,
       price: itemPrice,
       sellPrice: itemSellPrice > 0 ? itemSellPrice : undefined,
@@ -1595,7 +1599,7 @@ export default function PurchasesPage() {
                             <TableHead className="w-10 text-center font-black">#</TableHead>
                             <TableHead className="font-black">পণ্যের নাম</TableHead>
                             <TableHead className="text-center font-black">ব্র্যান্ড</TableHead>
-                            <TableHead className="text-center font-black">সাইজ</TableHead>
+                            <TableHead className="text-center font-black">সাইজ / টাইপ</TableHead>
                             <TableHead className="text-center font-black">পরিমাণ</TableHead>
                             <TableHead className="text-right font-black">মোট ক্রয় মূল্য (৳)</TableHead>
                             <TableHead className="w-10 text-center font-black">🗑️</TableHead>
@@ -1616,7 +1620,19 @@ export default function PurchasesPage() {
                                 <TableCell className="text-center font-bold text-slate-400">{toBengaliDigits(idx + 1)}</TableCell>
                                 <TableCell className="font-bold text-slate-900">{parsed.categoryName}</TableCell>
                                 <TableCell className="text-center font-bold text-slate-700">{parsed.brandName}</TableCell>
-                                <TableCell className="text-center font-bold text-slate-700">{parsed.sizeName}</TableCell>
+                                <TableCell className="text-center font-bold text-slate-700">
+                                  {parsed.sizeName === 'OPC' ? (
+                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-200 shadow-2xs">
+                                      OPC
+                                    </span>
+                                  ) : parsed.sizeName === 'PCC' ? (
+                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                      PCC
+                                    </span>
+                                  ) : (
+                                    parsed.sizeName
+                                  )}
+                                </TableCell>
                                 <TableCell className="text-center">
                                   <div className="inline-flex items-center gap-1.5">
                                     <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity - 1, idx)} className="w-6 h-6 rounded bg-slate-100 font-bold hover:bg-slate-200">-</button>
