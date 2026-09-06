@@ -84,7 +84,7 @@ const COMMON_REASONS = [
 ];
 
 export default function SalesReturnsPage() {
-  const { canEditInvoice, canDeleteInvoice, canCreateInvoice } = useAuth();
+  const { canEditInvoice, canDeleteInvoice, canCreateInvoice, canApproveInvoice } = useAuth();
   const [returns, setReturns] = useState<ReturnEntry[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -670,6 +670,7 @@ export default function SalesReturnsPage() {
             onPrint={() => printElement('printable-memo-wrapper')}
             onEdit={(r) => handleEditReturn(r)}
             onDelete={(r) => { setDeletingReturn(r); setIsDeleteDialogOpen(true); }}
+            onApprove={canApproveInvoice ? (r) => handleApproveReturn(r) : undefined}
           />
 
           {/* Hidden Print Container */}
@@ -973,7 +974,7 @@ export default function SalesReturnsPage() {
                           onPrint={() => handleDirectPrintReturn(r)}
                           onEdit={() => handleEditReturn(r)}
                           onDelete={() => { setDeletingReturn(r); setIsDeleteDialogOpen(true); }}
-                          onApprove={() => handleApproveReturn(r)}
+                          onApprove={canApproveInvoice ? () => handleApproveReturn(r) : undefined}
                           isPending={r.status === 'pending' || r.status === 'draft' || r.status === 'অপেক্ষমান'}
                           canEdit={canEditInvoice}
                           canDelete={canDeleteInvoice}

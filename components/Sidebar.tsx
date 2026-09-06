@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { 
   LayoutDashboard, Package, ShoppingCart, Users, Settings, LogOut,
@@ -30,7 +30,6 @@ const menuStructure: MenuItem[] = [
     href: '/inventory',
     children: [
       { name: 'সব পণ্য', href: '/inventory', icon: Package },
-      { name: 'স্টক শিট', href: '/reports/stock-sheet', icon: FileText },
       { name: 'কম স্টক', href: '/inventory/low-stock', icon: AlertTriangle },
     ],
   },
@@ -80,7 +79,7 @@ const menuStructure: MenuItem[] = [
       { name: 'বাকি কাস্টমার তালিকা', href: '/customers/dues', icon: Receipt },
       { name: 'ব্যাংক এর তালিকা', href: '/reports?tab=bank_list', icon: Landmark },
       { name: 'ডেইলী টপসিট', href: '/reports?tab=daily_topsheet', icon: FileText },
-      { name: 'ডেইলী সেলস স্টেটমেন্ট', href: '/reports?tab=daily_sales', icon: ShoppingCart },
+      { name: 'ডেইলি রিপোর্ট', href: '/reports?tab=daily_sales', icon: FileText },
       { name: 'ইনকাম বিবরণী (Profit/Loss)', href: '/reports?tab=profit_loss', icon: TrendingUp },
       { name: 'ব্যালেন্স স্টেটমেন্ট', href: '/reports?tab=balance_sheet', icon: Scale },
       { name: 'রড সিমেন্ট ক্রয় বিক্রয় স্টেটমেন্ট', href: '/reports?tab=trade_register', icon: Truck },
@@ -110,8 +109,8 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, role, logout } = useAuth();
-  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const currentType = searchParams.get('type');
+  const searchParams = useSearchParams();
+  const currentType = searchParams?.get('type');
   
   // State for hover-expand sidebar (Off/Collapsed by default, opens on mouse hover)
   const [isHovered, setIsHovered] = useState(false);
@@ -155,12 +154,16 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
       const [baseHref, query] = c.href.split('?');
       if (pathname === baseHref) {
         if (query) {
-          const childType = new URLSearchParams(query).get('type');
-          return currentType === childType;
+          const childParams = new URLSearchParams(query);
+          let matches = true;
+          childParams.forEach((val, key) => {
+            if (searchParams?.get(key) !== val) matches = false;
+          });
+          return matches;
         }
         return true;
       }
-      return baseHref !== '/' && pathname.startsWith(baseHref + '/');
+      return !query && baseHref !== '/' && pathname.startsWith(baseHref + '/');
     });
 
   return (
@@ -333,16 +336,22 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
                               const childParams = new URLSearchParams(query);
                               let matches = true;
                               childParams.forEach((val, key) => {
-                                if (searchParams.get(key) !== val) matches = false;
+                                if (searchParams?.get(key) !== val) matches = false;
                               });
                               isActive = matches;
                             } else {
-                              const currentTab = searchParams.get('tab');
-                              const currentTypeParam = searchParams.get('type');
+                              const currentTab = searchParams?.get('tab');
+                              const currentTypeParam = searchParams?.get('type');
                               isActive = !currentTab && !currentTypeParam;
                             }
-                          } else if (baseHref !== '/' && pathname.startsWith(baseHref + '/')) {
-                            isActive = true;
+                          } else if (!query && baseHref !== '/' && pathname.startsWith(baseHref + '/')) {
+                            const hasCloserSibling = item.children?.some(other => {
+                              const [otherBase] = other.href.split('?');
+                              return otherBase !== baseHref && pathname.startsWith(otherBase);
+                            });
+                            if (!hasCloserSibling) {
+                              isActive = true;
+                            }
                           }
                           
                           return (

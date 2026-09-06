@@ -107,7 +107,7 @@ export interface PurchaseInvoice {
 }
 
 export default function PurchasesPage() {
-  const { canEditInvoice, canDeleteInvoice, canCreateInvoice } = useAuth();
+  const { canEditInvoice, canDeleteInvoice, canCreateInvoice, canApproveInvoice } = useAuth();
   const [purchases, setPurchases] = useState<PurchaseInvoice[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -978,7 +978,7 @@ export default function PurchasesPage() {
             onPrint={() => printElement('printable-memo-wrapper')}
             onEdit={(p) => handleEditPurchase(p)}
             onDelete={(p) => handleDeletePurchase(p)}
-            onApprove={(p) => handleApprovePurchase(p)}
+            onApprove={canApproveInvoice ? (p) => handleApprovePurchase(p) : undefined}
           />
 
           {/* Hidden Print Container for iframe printing */}
@@ -1302,7 +1302,7 @@ export default function PurchasesPage() {
                             onPrint={() => handleDirectPrintPurchase(p)}
                             onEdit={() => handleEditPurchase(p)}
                             onDelete={() => handleDeletePurchase(p)}
-                            onApprove={() => handleApprovePurchase(p)}
+                            onApprove={canApproveInvoice ? () => handleApprovePurchase(p) : undefined}
                             isPending={p.status === 'pending' || p.status === 'draft' || p.status === 'অপেক্ষমান'}
                             canEdit={canEditInvoice}
                             canDelete={canDeleteInvoice}

@@ -134,7 +134,7 @@ interface Invoice {
 
 function InvoicesContent() {
   const router = useRouter();
-  const { canEditInvoice, canDeleteInvoice, canCreateInvoice, isViewer } = useAuth();
+  const { canEditInvoice, canDeleteInvoice, canCreateInvoice, canApproveInvoice, isViewer } = useAuth();
   const searchParams = useSearchParams();
   const convertOrderId = searchParams ? (searchParams.get('fromOrder') || searchParams.get('convert')) : null;
   const fromOrderId = convertOrderId;
@@ -1260,7 +1260,7 @@ function InvoicesContent() {
               setSelectedInvoice(null);
               handleEditInvoice(current || inv);
             }}
-            onApprove={(inv) => handleApproveInvoice(inv)}
+            onApprove={canApproveInvoice ? (inv) => handleApproveInvoice(inv) : undefined}
             onPrint={() => printElement('printable-memo-wrapper')}
           />
 
@@ -1674,7 +1674,7 @@ function InvoicesContent() {
                           onPrint={() => handleDirectPrintInvoice(inv)}
                           onEdit={() => handleEditInvoice(inv)}
                           onDelete={() => { setDeletingInvoice(inv); setIsDeleteDialogOpen(true); }}
-                          onApprove={() => handleApproveInvoice(inv)}
+                          onApprove={canApproveInvoice ? () => handleApproveInvoice(inv) : undefined}
                           isPending={inv.status === 'pending' || inv.status === 'draft' || inv.status === 'অপেক্ষমান'}
                           canEdit={canEditInvoice}
                           canDelete={canDeleteInvoice}

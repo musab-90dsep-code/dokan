@@ -19,6 +19,7 @@ export interface AuthContextType {
   canEditInvoice: boolean;
   canDeleteInvoice: boolean;
   canCreateInvoice: boolean;
+  canApproveInvoice: boolean;
   canModifyData: boolean;
   login: (usernameOrPhone: string, password?: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -151,6 +152,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const canEditInvoice = isDeveloper;
   const canDeleteInvoice = isDeveloper;
   const canCreateInvoice = isAdmin || isDeveloper;
+  const canApproveInvoice = isAdmin || isDeveloper;
   const canModifyData = isAdmin || isDeveloper;
 
   return (
@@ -168,6 +170,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         canEditInvoice,
         canDeleteInvoice,
         canCreateInvoice,
+        canApproveInvoice,
         canModifyData,
         login,
         logout,

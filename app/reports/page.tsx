@@ -145,6 +145,7 @@ interface Product {
   buyPrice: number;
   sellPrice: number;
   unit: string;
+  brand?: string;
 }
 
 interface Bank {
@@ -395,7 +396,8 @@ function MasterReportsContent() {
           stock: Number(p.stock || 0),
           buyPrice: Number(p.purchase_price || 0),
           sellPrice: Number(p.sell_price || 0),
-          unit: p.unit || 'পিস'
+          unit: p.unit || 'পিস',
+          brand: p.brand || ''
         })));
 
         const bankList = await api.banks.list();
@@ -820,11 +822,11 @@ function MasterReportsContent() {
                     <TrendingUp className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="font-black text-slate-900 text-lg group-hover:text-orange-600 transition-colors">
-                      ৪. ডেইলী সেলস স্টীট
+                    <h3 className="font-black text-slate-900 text-lg group-hover:text-purple-600 transition-colors">
+                      ৪. ডেইলি রিপোর্ট (Daily Report)
                     </h3>
                     <p className="text-xs text-slate-500 font-semibold mt-1 line-clamp-2">
-                      ডেইলী সেলস এর বিবরণ কাস্টমারের ব্যালেন্স সহ
+                      মেসার্স দেলোয়ার এন্ড ব্রাদার্স (গোপালগঞ্জ শাখা) — ক্যাশ, চেক, সিমেন্ট ও রড স্টক ক্লোজিং রিপোর্ট
                     </p>
                   </div>
                 </div>
@@ -833,7 +835,7 @@ function MasterReportsContent() {
                   <Button
                     onClick={() => setActiveTab('daily_sales')}
                     variant="outline"
-                    className="h-9 px-3 rounded-xl text-xs font-bold border-slate-200 text-slate-700 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200"
+                    className="h-9 px-3 rounded-xl text-xs font-bold border-slate-200 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200"
                   >
                     রিপোর্ট দেখুন <ArrowRight className="w-3.5 h-3.5 ml-1" />
                   </Button>
@@ -1339,15 +1341,26 @@ function MasterReportsContent() {
               );
             })()}
 
-            {/* 4. ডেইলী সেলস স্টেটমেন্ট (Daily Sales Statement) */}
+            {/* 4. ডেইলি রিপোর্ট (Daily Report) */}
             {activeTab === 'daily_sales' && (() => {
               const selectedDateStr = salesStatementDate || format(new Date(), 'yyyy-MM-dd');
               
+              const safeParseDate = (dateVal: any): Date | null => {
+                if (!dateVal) return null;
+                if (dateVal instanceof Date) return isNaN(dateVal.getTime()) ? null : dateVal;
+                let str = String(dateVal).trim();
+                if (str.includes(' ') && !str.includes('T')) {
+                  str = str.replace(' ', 'T');
+                }
+                const d = new Date(str);
+                return isNaN(d.getTime()) ? null : d;
+              };
+
               // Filter sales orders for selected date and category
               const dayOrders = orders.filter(o => {
-                if (!o.createdAt) return false;
-                const d = new Date(o.createdAt);
-                const matchesDate = !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === selectedDateStr;
+                const d = safeParseDate(o.createdAt);
+                if (!d) return false;
+                const matchesDate = format(d, 'yyyy-MM-dd') === selectedDateStr;
                 if (!matchesDate) return false;
 
                 if (salesCategoryFilter === 'rod') {
@@ -1361,110 +1374,56 @@ function MasterReportsContent() {
                   return (o.items || []).some(i => {
                     const n = (i.name || '').toLowerCase();
                     const u = (i.unit || '').toLowerCase();
-                    return n.includes('সিমেন্ট') || n.includes('cement') || u.includes('বস্তা') || u.includes('bag');
+                    return n.includes('সিমেন্ট') || n.includes('cement') || u.includes('ব্যাগ') || u.includes('বস্তা');
                   });
                 }
                 return true;
               });
 
-              const totalSalesVal = dayOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-              const totalPaidVal = dayOrders.reduce((sum, o) => sum + (o.paidAmount || 0), 0);
-              const totalDueVal = dayOrders.reduce((sum, o) => sum + (o.dueAmount || 0), 0);
-              const invoiceCount = dayOrders.length;
-
-              // Product-wise summary calculation
-              const productSummaryMap: { [key: string]: { name: string; qty: number; unit: string; totalVal: number } } = {};
-              dayOrders.forEach(o => {
-                (o.items || []).forEach(i => {
-                  const key = `${i.name}_${i.unit || 'পিস'}`;
-                  if (!productSummaryMap[key]) {
-                    productSummaryMap[key] = { name: i.name, qty: 0, unit: i.unit || 'পিস', totalVal: 0 };
-                  }
-                  productSummaryMap[key].qty += i.quantity;
-                  productSummaryMap[key].totalVal += (i.price * i.quantity);
-                });
+              // Day all orders (for master closing report calculations)
+              const dayAllOrders = orders.filter(o => {
+                const d = safeParseDate(o.createdAt);
+                return d ? format(d, 'yyyy-MM-dd') === selectedDateStr : false;
               });
-              const productSummaryList = Object.values(productSummaryMap);
 
-              // Daily Report Calculations (দেলোয়ার এন্ড ব্রাদার্স - গোপালগঞ্জ শাখা)
-              const dateFormattedBn = (() => {
-                try {
-                  const d = new Date(selectedDateStr);
-                  if (isNaN(d.getTime())) return `${toBengaliDigits(selectedDateStr)} ইং`;
-                  return `${toBengaliDigits(format(d, 'dd/MM/yyyy'))} ইং`;
-                } catch {
-                  return `${toBengaliDigits(selectedDateStr)} ইং`;
-                }
-              })();
+              // Day all purchases
+              const dayAllPurchases = purchases.filter(p => {
+                const dt = p.createdAt || (p as any).purchaseDate || (p as any).date;
+                const d = safeParseDate(dt);
+                return d ? format(d, 'yyyy-MM-dd') === selectedDateStr : false;
+              });
 
-              const isItemOnDate = (dateVal: any) => {
-                if (!dateVal) return false;
-                try {
-                  const d = typeof dateVal === 'string' ? new Date(dateVal) : dateVal;
-                  if (isNaN(d.getTime())) {
-                    return String(dateVal).slice(0, 10) === selectedDateStr;
-                  }
-                  return format(d, 'yyyy-MM-dd') === selectedDateStr;
-                } catch {
-                  return false;
-                }
-              };
+              // Format date in Bengali: e.g. ২৪/০৮/২০২৬ ইং
+              const parts = selectedDateStr ? selectedDateStr.split('-') : [];
+              const dateFormattedBn = parts.length === 3
+                ? `${toBengaliDigits(parts[2])}/${toBengaliDigits(parts[1])}/${toBengaliDigits(parts[0])} ইং`
+                : toBengaliDigits(selectedDateStr);
 
-              const dayAllOrders = orders.filter(o => isItemOnDate(o.createdAt));
-              const dayAllPurchases = purchases.filter(p => isItemOnDate(p.createdAt));
-
-              // 1. Cash & Cheque Calculations (100% Real from Database Transactions & Orders)
+              // 1. Cash and Cheque collection
               let dayCashCollected = 0;
               let dayChequeAmount = 0;
-
-              const dayAllTx = (transactions || []).filter(t => isItemOnDate(t.createdAt));
-
-              dayAllTx.forEach(t => {
-                const method = String(t.paymentMethod || (t as any).payment_method || '').toLowerCase();
-                const hasCheque = method.includes('cheque') || method.includes('check') || Boolean(t.chequeNo || (t as any).cheque_number);
-
-                if (t.type === 'sale') {
-                  if (hasCheque) {
-                    dayChequeAmount += Number(t.paidAmount || 0);
-                  } else if (method === 'bank') {
-                    // bank
-                  } else {
-                    dayCashCollected += Number(t.paidAmount || 0);
-                  }
-                } else if (t.type === 'payment_in') {
-                  if (hasCheque) {
-                    dayChequeAmount += Number(t.amount || 0);
-                  } else if (method === 'bank') {
-                    // bank
-                  } else {
-                    dayCashCollected += Number(t.amount || 0);
-                  }
+              dayAllOrders.forEach(o => {
+                const pMethod = ((o.paymentMethod || '') as string).toLowerCase();
+                const pAmt = Number(o.paidAmount) || 0;
+                if (pMethod.includes('cheque') || pMethod.includes('check') || pMethod.includes('চেক') || o.chequeNo) {
+                  dayChequeAmount += pAmt;
+                } else {
+                  dayCashCollected += pAmt;
                 }
               });
 
-              if (dayCashCollected === 0 && dayChequeAmount === 0 && dayAllOrders.length > 0) {
-                dayAllOrders.forEach(o => {
-                  const method = String(o.paymentMethod || '').toLowerCase();
-                  const hasCheque = method.includes('cheque') || method.includes('check') || Boolean(o.chequeNo);
-                  if (hasCheque) {
-                    dayChequeAmount += Number(o.paidAmount || 0);
-                  } else {
-                    dayCashCollected += Number(o.paidAmount || 0);
-                  }
-                });
-              }
-
-              // 2. Cement Calculations (Real from sales, purchases, and products inventory)
+              // 2. Cement Calculations (Sales, Purchases, Direct Delivery, Stock)
               let cementSoldBags = 0;
               let cementDirectBags = 0;
               dayAllOrders.forEach(o => {
                 (o.items || []).forEach(i => {
                   const n = (i.name || '').toLowerCase();
                   const u = (i.unit || '').toLowerCase();
-                  if (n.includes('সিমেন্ট') || n.includes('cement') || u.includes('বস্তা') || u.includes('bag')) {
-                    cementSoldBags += Number(i.quantity) || 0;
-                    if (n.includes('সরাসরি') || (o.notes || '').toLowerCase().includes('সরাসরি') || (o.notes || '').toLowerCase().includes('direct') || (o as any).deliveryType === 'direct') {
-                      cementDirectBags += Number(i.quantity) || 0;
+                  if (n.includes('সিমেন্ট') || n.includes('cement') || u.includes('ব্যাগ') || u.includes('বস্তা')) {
+                    const qty = Number(i.quantity) || 0;
+                    cementSoldBags += qty;
+                    if (n.includes('সরাসরি') || (o.notes || '').toLowerCase().includes('সরাসরি') || (o.notes || '').toLowerCase().includes('direct') || o.deliveryType === 'direct') {
+                      cementDirectBags += qty;
                     }
                   }
                 });
@@ -1475,13 +1434,13 @@ function MasterReportsContent() {
                 (p.items || []).forEach(i => {
                   const n = (i.name || '').toLowerCase();
                   const u = (i.unit || '').toLowerCase();
-                  if (n.includes('সিমেন্ট') || n.includes('cement') || u.includes('বস্তা') || u.includes('bag')) {
+                  if (n.includes('সিমেন্ট') || n.includes('cement') || u.includes('ব্যাগ') || u.includes('বস্তা')) {
                     cementBoughtBags += Number(i.quantity) || 0;
                   }
                 });
               });
 
-              // Strictly real cement products from current inventory
+              // Real cement products from inventory
               const cementProducts = products.filter(p => {
                 const n = (p.name || '').toLowerCase();
                 const c = (p.category || '').toLowerCase();
@@ -1491,13 +1450,57 @@ function MasterReportsContent() {
 
               const totalCementStockBags = cementProducts.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
 
-              // Group stock by actual product names from database (NO HARDCODED / DUMMY NAMES)
-              const cementBrandMap: { [name: string]: number } = {};
+              // Strictly real cement products from current database inventory (NO DUMMY DATA)
+              const realCementList: { name: string; stock: number }[] = [];
               cementProducts.forEach(p => {
-                cementBrandMap[p.name] = (cementBrandMap[p.name] || 0) + (Number(p.stock) || 0);
+                const brand = (p.brand || '').trim();
+                const name = (p.name || '').trim();
+                const displayName = (brand && !name.toLowerCase().includes(brand.toLowerCase()))
+                  ? `${brand} ${name}`
+                  : name;
+                const stock = Number(p.stock) || 0;
+                const existing = realCementList.find(b => b.name.toLowerCase() === displayName.toLowerCase());
+                if (existing) {
+                  existing.stock += stock;
+                } else {
+                  realCementList.push({ name: displayName, stock });
+                }
               });
 
-              const cementBrandList = Object.entries(cementBrandMap).map(([name, stock]) => ({ name, stock }));
+              const formatQtyOrZero = (qty: number) => (qty > 0 ? toBengaliDigits(qty) : '০০');
+
+              // Formatters specifically matching user's template
+              const formatRodSold = (val: number) => {
+                if (!val || val === 0) return '০০কেজি';
+                const formatted = val % 1 === 0 
+                  ? val.toLocaleString('en-IN') 
+                  : val.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+                return `${toBengaliDigits(formatted)}কেজি`;
+              };
+
+              const formatRodBought = (val: number) => {
+                if (!val || val === 0) return '০০ কেজি ';
+                const formatted = val % 1 === 0 
+                  ? val.toLocaleString('en-IN') 
+                  : val.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+                return `${toBengaliDigits(formatted)} কেজি `;
+              };
+
+              const formatRodDirect = (val: number) => {
+                if (!val || val === 0) return '০০ কেজি';
+                const formatted = val % 1 === 0 
+                  ? val.toLocaleString('en-IN') 
+                  : val.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+                return `${toBengaliDigits(formatted)} কেজি`;
+              };
+
+              const formatRodStock = (val: number) => {
+                if (!val || val === 0) return '০০ কেজি';
+                const formatted = val % 1 === 0 
+                  ? val.toLocaleString('en-IN') 
+                  : val.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+                return `${toBengaliDigits(formatted)} কেজি`;
+              };
 
               // 3. Rod Calculations (Real from sales, purchases, and products inventory)
               let rodSoldKg = 0;
@@ -1539,34 +1542,68 @@ function MasterReportsContent() {
                 return sum + (u.includes('টন') ? (Number(p.stock) || 0) * 1000 : (Number(p.stock) || 0));
               }, 0);
 
-              const handleCopyDailyReport = () => {
-                const brandLines = cementBrandList.length > 0 
-                  ? cementBrandList.map(b => `${b.name}= ${toBengaliDigits(b.stock)} ব্যাগ`).join('\n')
-                  : '';
+              const realRodList: { name: string; stock: number }[] = rodProducts.map(p => {
+                const u = (p.unit || '').toLowerCase();
+                const qtyKg = u.includes('টন') ? (Number(p.stock) || 0) * 1000 : (Number(p.stock) || 0);
+                return { name: p.name, stock: qtyKg };
+              });
 
-                const text = `===দেলোয়ার এন্ড ব্রাদার্স ===
+              const cementBrandLines = realCementList.map(b => `${b.name}= ${formatQtyOrZero(b.stock)} ব্যাগ`);
+
+              const cementBlockLines = [
+                `সিমেন্ট বিক্রয় = ${formatQtyOrZero(cementSoldBags)} ব্যাগ`,
+                `সিমেন্ট প্রাপ্তি = ${formatQtyOrZero(cementBoughtBags)} ব্যাগ`,
+                `সিমেন্ট সরাসরি= ${formatQtyOrZero(cementDirectBags)} ব্যাগ`,
+                `সিমেন্ট স্টক= ${formatQtyOrZero(totalCementStockBags)} ব্যাগ`,
+                ...cementBrandLines
+              ];
+
+              // Exact text format strictly as requested by the user
+              const fullDailyReportText = `===দেলোয়ার এন্ড ব্রাদার্স ===
          গোপালগঞ্জ শাখা
 ==== ডেইলি রিপোর্ট ====
-তারিখ - ${dateFormattedBn} 
+তারিখ - ${dateFormattedBn}
 
-১/ ক্যাশ = ${toBengaliDigits(dayCashCollected.toLocaleString('en-IN'))} ৳
-২/ চেক = ${dayChequeAmount > 0 ? `${toBengaliDigits(dayChequeAmount.toLocaleString('en-IN'))} ৳` : '০/'}
+১/ ক্যাশ = ${dayCashCollected > 0 ? toBengaliDigits(dayCashCollected.toLocaleString('en-IN')) : '০০'} ৳
+২/ চেক = ${dayChequeAmount > 0 ? `${toBengaliDigits(dayChequeAmount.toLocaleString('en-IN'))} ৳/` : '০/'}
     =====সিমেন্ট =====
-সিমেন্ট বিক্রয় = ${toBengaliDigits(cementSoldBags)} ব্যাগ
-সিমেন্ট প্রাপ্তি = ${toBengaliDigits(cementBoughtBags)} ব্যাগ
-সিমেন্ট সরাসরি= ${toBengaliDigits(cementDirectBags)} ব্যাগ
-সিমেন্ট স্টক= ${toBengaliDigits(totalCementStockBags)} ব্যাগ
-${brandLines ? `${brandLines}\n` : ''}
+${cementBlockLines.join('\n')}
+
        ===== রড=====
 
-রড বিক্রয় = ${toBengaliDigits(rodSoldKg % 1 === 0 ? rodSoldKg.toLocaleString('en-IN') : rodSoldKg.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))}কেজি
-রড প্রাপ্তি = ${toBengaliDigits(rodBoughtKg % 1 === 0 ? rodBoughtKg.toLocaleString('en-IN') : rodBoughtKg.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))} কেজি 
-রড সরাসরি= ${toBengaliDigits(rodDirectKg % 1 === 0 ? rodDirectKg.toLocaleString('en-IN') : rodDirectKg.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))} কেজি
-রড স্টক = ${toBengaliDigits(totalRodStockKg % 1 === 0 ? totalRodStockKg.toLocaleString('en-IN') : totalRodStockKg.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))} কেজি`;
+রড বিক্রয় = ${formatRodSold(rodSoldKg)}
+রড প্রাপ্তি = ${formatRodBought(rodBoughtKg)}
+রড সরাসরি= ${formatRodDirect(rodDirectKg)}
+রড স্টক = ${formatRodStock(totalRodStockKg)}`;
 
-                navigator.clipboard.writeText(text);
-                toast.success('মেসেজ ফরম্যাটের ডেইলি রিপোর্ট কপি করা হয়েছে!');
+              const handleCopyDailyReport = () => {
+                navigator.clipboard.writeText(fullDailyReportText);
+                toast.success('ডেইলি রিপোর্ট টেক্সট সফলভাবে কপি করা হয়েছে!');
               };
+
+              // Variables for Summary Cards and Tables
+              const totalSalesVal = dayOrders.reduce((acc, o) => acc + (Number(o.totalAmount) || 0), 0);
+              const totalPaidVal = dayOrders.reduce((acc, o) => acc + (Number(o.paidAmount) || 0), 0);
+              const totalDueVal = dayOrders.reduce((acc, o) => acc + (Number(o.dueAmount) || 0), 0);
+              const invoiceCount = dayOrders.length;
+
+              const productSummaryMap: { [name: string]: { name: string; qty: number; unit: string; totalVal: number } } = {};
+              dayOrders.forEach(o => {
+                (o.items || []).forEach(item => {
+                  const key = item.name || 'অজানা পণ্য';
+                  if (!productSummaryMap[key]) {
+                    productSummaryMap[key] = {
+                      name: key,
+                      qty: 0,
+                      unit: item.unit || 'টি',
+                      totalVal: 0,
+                    };
+                  }
+                  productSummaryMap[key].qty += Number(item.quantity) || 0;
+                  productSummaryMap[key].totalVal += (Number(item.quantity) || 0) * (Number(item.price) || 0);
+                });
+              });
+              const productSummaryList = Object.values(productSummaryMap);
 
               return (
                 <div className="space-y-6 animate-in fade-in duration-300 font-bengali">
@@ -1578,9 +1615,9 @@ ${brandLines ? `${brandLines}\n` : ''}
                           <TrendingUp className="w-5 h-5" />
                         </div>
                         <div>
-                          <h1 className="text-2xl font-black text-slate-900 tracking-tight">ডেইলী সেলস স্টেটমেন্ট (Daily Sales Statement)</h1>
+                          <h1 className="text-2xl font-black text-slate-900 tracking-tight">ডেইলি রিপোর্ট (Daily Report)</h1>
                           <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                            মেসার্স দেলোয়ার এন্ড ব্রাদার্স (গোপালগঞ্জ শাখা) — দৈনিক ক্লোজিং ও বিক্রয় বিবরণী
+                            মেসার্স দেলোয়ার এন্ড ব্রাদার্স (গোপালগঞ্জ শাখা) — দৈনিক ক্লোজিং ও সারসংক্ষেপ রিপোর্ট
                           </p>
                         </div>
                       </div>
@@ -1594,6 +1631,14 @@ ${brandLines ? `${brandLines}\n` : ''}
                         placeholder="তারিখ নির্বাচন"
                         className="w-40"
                       />
+
+                      <Button
+                        variant="outline"
+                        onClick={() => setSalesStatementDate(format(new Date(), 'yyyy-MM-dd'))}
+                        className="h-9 px-3 rounded-xl text-xs font-bold border-slate-200 text-slate-700 bg-white hover:bg-slate-50 cursor-pointer"
+                      >
+                        আজকের দিন
+                      </Button>
 
                       {/* CATEGORY FILTER */}
                       <Select value={salesCategoryFilter} onValueChange={(val: any) => setSalesCategoryFilter(val || 'all')}>
@@ -1625,13 +1670,6 @@ ${brandLines ? `${brandLines}\n` : ''}
                       >
                         <Printer className="w-3.5 h-3.5" />
                         <span>প্রিন্ট ডেইলি রিপোর্ট</span>
-                      </Button>
-
-                      <Button
-                        onClick={() => printElement('printable-sales-statement-wrapper')}
-                        className="h-9 px-3.5 rounded-xl text-xs font-black bg-slate-900 hover:bg-slate-800 text-white shadow-xs flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-amber-400" /> প্রিন্ট স্টেটমেন্ট
                       </Button>
 
                       <button onClick={() => setActiveTab('hub')} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1">
@@ -1672,10 +1710,10 @@ ${brandLines ? `${brandLines}\n` : ''}
                         <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
                           <span className="font-black text-slate-900 text-sm flex items-center gap-2">
                             <Wallet className="w-4 h-4 text-emerald-600" />
-                            ক্যাশ ও চেক কালেকশন
+                            ১/ ক্যাশ ও ২/ চেক আদায়
                           </span>
                           <span className="text-[11px] font-bold text-slate-400">
-                            আজকের আদায়
+                            আজকের কালেকশন
                           </span>
                         </div>
 
@@ -1688,7 +1726,7 @@ ${brandLines ? `${brandLines}\n` : ''}
                               <div>
                                 <p className="text-xs font-bold text-slate-500">ক্যাশ</p>
                                 <p className="text-lg font-black text-emerald-700">
-                                  {toBengaliDigits(dayCashCollected.toLocaleString('en-IN'))} ৳
+                                  {dayCashCollected > 0 ? toBengaliDigits(dayCashCollected.toLocaleString('en-IN')) : '০০'} ৳
                                 </p>
                               </div>
                             </div>
@@ -1705,7 +1743,7 @@ ${brandLines ? `${brandLines}\n` : ''}
                               <div>
                                 <p className="text-xs font-bold text-slate-500">চেক</p>
                                 <p className="text-lg font-black text-indigo-700">
-                                  {dayChequeAmount > 0 ? `${toBengaliDigits(dayChequeAmount.toLocaleString('en-IN'))} ৳` : '০/'}
+                                  {dayChequeAmount > 0 ? `${toBengaliDigits(dayChequeAmount.toLocaleString('en-IN'))} ৳/` : '০/'}
                                 </p>
                               </div>
                             </div>
@@ -1732,39 +1770,39 @@ ${brandLines ? `${brandLines}\n` : ''}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                           <div className="bg-white border border-blue-200 rounded-xl p-3 text-center shadow-2xs">
                             <p className="text-[11px] font-bold text-slate-500">সিমেন্ট বিক্রয়</p>
-                            <p className="text-lg font-black text-blue-700 mt-0.5">{toBengaliDigits(cementSoldBags)} <span className="text-xs font-normal">ব্যাগ</span></p>
+                            <p className="text-lg font-black text-blue-700 mt-0.5">{formatQtyOrZero(cementSoldBags)} <span className="text-xs font-normal">ব্যাগ</span></p>
                           </div>
                           <div className="bg-white border border-emerald-200 rounded-xl p-3 text-center shadow-2xs">
                             <p className="text-[11px] font-bold text-slate-500">সিমেন্ট প্রাপ্তি</p>
-                            <p className="text-lg font-black text-emerald-700 mt-0.5">{toBengaliDigits(cementBoughtBags)} <span className="text-xs font-normal">ব্যাগ</span></p>
+                            <p className="text-lg font-black text-emerald-700 mt-0.5">{formatQtyOrZero(cementBoughtBags)} <span className="text-xs font-normal">ব্যাগ</span></p>
                           </div>
                           <div className="bg-white border border-amber-200 rounded-xl p-3 text-center shadow-2xs">
                             <p className="text-[11px] font-bold text-slate-500">সিমেন্ট সরাসরি</p>
-                            <p className="text-lg font-black text-amber-700 mt-0.5">{toBengaliDigits(cementDirectBags)} <span className="text-xs font-normal">ব্যাগ</span></p>
+                            <p className="text-lg font-black text-amber-700 mt-0.5">{formatQtyOrZero(cementDirectBags)} <span className="text-xs font-normal">ব্যাগ</span></p>
                           </div>
-                          <div className="bg-white border-2 border-indigo-300 rounded-xl p-3 text-center shadow-2xs bg-indigo-50/40">
+                          <div className="border-2 border-indigo-300 rounded-xl p-3 text-center shadow-2xs bg-indigo-50/40">
                             <p className="text-[11px] font-bold text-indigo-900">সিমেন্ট স্টক</p>
-                            <p className="text-xl font-black text-indigo-700 mt-0.5">{toBengaliDigits(totalCementStockBags)} <span className="text-xs font-normal">ব্যাগ</span></p>
+                            <p className="text-xl font-black text-indigo-700 mt-0.5">{formatQtyOrZero(totalCementStockBags)} <span className="text-xs font-normal">ব্যাগ</span></p>
                           </div>
                         </div>
 
-                        {/* Brand Breakdown List (Strictly Real Inventory) */}
+                        {/* Real Cement Products from Inventory (NO DUMMY BRANDS) */}
                         <div className="bg-white border border-blue-100 rounded-xl p-4 shadow-2xs space-y-2.5">
                           <p className="text-xs font-black text-slate-700 border-b border-slate-100 pb-1.5 flex items-center justify-between">
-                            <span>ব্র্যান্ড অনুযায়ী সিমেন্ট মজুদ:</span>
-                            <span className="text-[10px] text-slate-400 font-semibold">মজুদকৃত রিয়েল ডাটা ({toBengaliDigits(cementBrandList.length)} টি ব্র্যান্ড)</span>
+                            <span>ব্র্যান্ড অনুযায়ী সিমেন্ট মজুদ তালিকা:</span>
+                            <span className="text-[10px] text-slate-400 font-semibold">{toBengaliDigits(realCementList.length)} টি পণ্য</span>
                           </p>
-                          {cementBrandList.length === 0 ? (
-                            <p className="text-xs text-slate-400 font-bold py-2 text-center">
+                          {realCementList.length === 0 ? (
+                            <div className="p-3 text-center text-xs text-slate-400 font-bold bg-slate-50 rounded-xl border border-slate-200">
                               ইনভেন্টরিতে কোনো সিমেন্ট পণ্য পাওয়া যায়নি
-                            </p>
+                            </div>
                           ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-                              {cementBrandList.map((b, idx) => (
+                              {realCementList.map((b, idx) => (
                                 <div key={idx} className="flex items-center justify-between bg-slate-50/80 hover:bg-blue-50/50 border border-slate-200/80 rounded-lg px-3 py-2 text-xs transition-colors">
                                   <span className="font-bold text-slate-800">{b.name}</span>
                                   <span className="font-black text-blue-700 bg-white border border-blue-100 px-2 py-0.5 rounded shadow-2xs">
-                                    {toBengaliDigits(b.stock)} ব্যাগ
+                                    {formatQtyOrZero(b.stock)} ব্যাগ
                                   </span>
                                 </div>
                               ))}
@@ -1790,28 +1828,70 @@ ${brandLines ? `${brandLines}\n` : ''}
                           <div className="bg-white border border-orange-200 rounded-xl p-3 text-center shadow-2xs">
                             <p className="text-[11px] font-bold text-slate-500">রড বিক্রয়</p>
                             <p className="text-base sm:text-lg font-black text-orange-700 mt-0.5">
-                              {toBengaliDigits(rodSoldKg % 1 === 0 ? rodSoldKg.toLocaleString('en-IN') : rodSoldKg.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))} <span className="text-xs font-normal">কেজি</span>
+                              {formatRodSold(rodSoldKg)}
                             </p>
                           </div>
                           <div className="bg-white border border-emerald-200 rounded-xl p-3 text-center shadow-2xs">
                             <p className="text-[11px] font-bold text-slate-500">রড প্রাপ্তি</p>
                             <p className="text-base sm:text-lg font-black text-emerald-700 mt-0.5">
-                              {toBengaliDigits(rodBoughtKg % 1 === 0 ? rodBoughtKg.toLocaleString('en-IN') : rodBoughtKg.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))} <span className="text-xs font-normal">কেজি</span>
+                              {formatRodBought(rodBoughtKg)}
                             </p>
                           </div>
                           <div className="bg-white border border-amber-200 rounded-xl p-3 text-center shadow-2xs">
                             <p className="text-[11px] font-bold text-slate-500">রড সরাসরি</p>
                             <p className="text-base sm:text-lg font-black text-amber-700 mt-0.5">
-                              {toBengaliDigits(rodDirectKg % 1 === 0 ? rodDirectKg.toLocaleString('en-IN') : rodDirectKg.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))} <span className="text-xs font-normal">কেজি</span>
+                              {formatRodDirect(rodDirectKg)}
                             </p>
                           </div>
-                          <div className="bg-white border-2 border-indigo-300 rounded-xl p-3 text-center shadow-2xs bg-indigo-50/40">
+                          <div className="bg-indigo-50/40 border-2 border-indigo-300 rounded-xl p-3 text-center shadow-2xs">
                             <p className="text-[11px] font-bold text-indigo-900">রড স্টক</p>
                             <p className="text-base sm:text-lg font-black text-indigo-700 mt-0.5">
-                              {toBengaliDigits(totalRodStockKg % 1 === 0 ? totalRodStockKg.toLocaleString('en-IN') : totalRodStockKg.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))} <span className="text-xs font-normal">কেজি</span>
+                              {formatRodStock(totalRodStockKg)}
                             </p>
                           </div>
                         </div>
+
+                        {/* Real Rod Products List */}
+                        {realRodList.length > 0 && (
+                          <div className="bg-white border border-orange-100 rounded-xl p-4 shadow-2xs space-y-2.5">
+                            <p className="text-xs font-black text-slate-700 border-b border-slate-100 pb-1.5 flex items-center justify-between">
+                              <span>ইনভেন্টরির রড মজুদ তালিকা:</span>
+                              <span className="text-[10px] text-slate-400 font-semibold">{toBengaliDigits(realRodList.length)} টি পণ্য</span>
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                              {realRodList.map((b, idx) => (
+                                <div key={idx} className="flex items-center justify-between bg-slate-50/80 hover:bg-orange-50/50 border border-slate-200/80 rounded-lg px-3 py-2 text-xs transition-colors">
+                                  <span className="font-bold text-slate-800">{b.name}</span>
+                                  <span className="font-black text-orange-700 bg-white border border-orange-100 px-2 py-0.5 rounded shadow-2xs">
+                                    {formatRodStock(b.stock)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* RAW TEXT MESSAGE PREVIEW (WhatsApp & SMS) */}
+                      <div className="bg-slate-900 border-2 border-slate-800 rounded-2xl p-5 space-y-3 font-mono shadow-inner text-slate-100">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                          <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
+                            <Copy className="w-4 h-4" />
+                            <span>মেসেজ ফরম্যাট প্রিভিউ (WhatsApp / SMS এর জন্য হুবহু টেক্সট):</span>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleCopyDailyReport}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs h-7 px-3 rounded-lg flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>কপি করুন</span>
+                          </Button>
+                        </div>
+                        <pre className="text-xs sm:text-sm font-bold text-emerald-400 whitespace-pre-wrap leading-relaxed select-all">
+                          {fullDailyReportText}
+                        </pre>
                       </div>
 
                       {/* Copy Action Banner */}
@@ -1832,224 +1912,57 @@ ${brandLines ? `${brandLines}\n` : ''}
                     </div>
                   </Card>
 
-                  {/* 4 SUMMARY CARDS */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-center">
-                    <Card className="p-5 border-emerald-200 bg-emerald-50/40 rounded-3xl shadow-xs">
-                      <p className="text-xs font-bold text-emerald-800">আজকের মোট বিক্রয় (Total Sales)</p>
-                      <p className="text-2xl font-black text-emerald-600 mt-1">{formatBnCurrency(totalSalesVal)}</p>
-                    </Card>
-
-                    <Card className="p-5 border-blue-200 bg-blue-50/40 rounded-3xl shadow-xs">
-                      <p className="text-xs font-bold text-blue-800">আজকের নগদ আদায় (Cash Received)</p>
-                      <p className="text-2xl font-black text-blue-600 mt-1">{formatBnCurrency(totalPaidVal)}</p>
-                    </Card>
-
-                    <Card className="p-5 border-rose-200 bg-rose-50/40 rounded-3xl shadow-xs">
-                      <p className="text-xs font-bold text-rose-800">আজকের মোট বাকী (Due Created)</p>
-                      <p className="text-2xl font-black text-rose-600 mt-1">{formatBnCurrency(totalDueVal)}</p>
-                    </Card>
-
-                    <Card className="p-5 border-purple-200 bg-purple-50/40 rounded-3xl shadow-xs">
-                      <p className="text-xs font-bold text-purple-800">মোট ইনভয়েস সংখ্যা</p>
-                      <p className="text-2xl font-black text-purple-600 mt-1">{toBnNum(invoiceCount)} টি</p>
-                    </Card>
-                  </div>
-
-                  {/* PRODUCT BREAKDOWN SUMMARY TABLE */}
-                  {productSummaryList.length > 0 && (
-                    <Card className="border-slate-200/90 rounded-3xl bg-white p-5 shadow-xs space-y-3">
-                      <h3 className="font-black text-slate-900 text-sm flex items-center gap-2">
-                        <ShoppingBag className="w-4 h-4 text-purple-600" /> পণ্যভিত্তিক বিক্রয় সারসংক্ষেপ (Product Category Summary)
-                      </h3>
-                      <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                        <Table>
-                          <TableHeader className="bg-slate-50">
-                            <TableRow>
-                              <TableHead className="font-black text-xs">পণ্যের নাম</TableHead>
-                              <TableHead className="font-black text-xs text-center">মোট পরিমাণ</TableHead>
-                              <TableHead className="font-black text-xs text-right px-6">মোট বিক্রি মূল্য (৳)</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {productSummaryList.map((p, i) => (
-                              <TableRow key={i} className="border-b border-slate-100 text-xs">
-                                <TableCell className="font-bold text-slate-800">{p.name}</TableCell>
-                                <TableCell className="text-center font-bold text-purple-700">
-                                  {p.unit.includes('কেজি') ? formatDualStock(p.qty, p.unit, p.name).main : `${toBnNum(p.qty)} ${p.unit}`}
-                                </TableCell>
-                                <TableCell className="text-right font-black text-slate-900 px-6">{formatBnCurrency(p.totalVal)}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </Card>
-                  )}
-
-                  {/* INVOICE WISE DETAILED SALES TABLE */}
-                  <Card className="border-slate-200/90 rounded-3xl bg-white overflow-hidden shadow-xs">
-                    <div className="p-4 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
-                      <h3 className="font-black text-slate-900 text-sm">ইনভয়েস ভিত্তিক বিস্তারিত বিক্রীত চালানের তালিকা</h3>
-                      <span className="text-xs font-bold text-slate-500">মোট {toBnNum(invoiceCount)} টি চালান</span>
-                    </div>
-                    <Table>
-                      <TableHeader className="bg-slate-50 border-b border-slate-200">
-                        <TableRow>
-                          <TableHead className="font-black text-xs text-center w-16">ক্রমিক</TableHead>
-                          <TableHead className="font-black text-xs">চালান নং</TableHead>
-                          <TableHead className="font-black text-xs">কাস্টমারের নাম</TableHead>
-                          <TableHead className="font-black text-xs">পণ্য বিবরণ</TableHead>
-                          <TableHead className="font-black text-xs text-right">মোট বিল (৳)</TableHead>
-                          <TableHead className="font-black text-xs text-right">নগদ জমা (৳)</TableHead>
-                          <TableHead className="font-black text-xs text-right px-6">বাকী (৳)</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {dayOrders.length === 0 ? (
-                          <TableRow><TableCell colSpan={7} className="text-center py-10 text-slate-400 font-bengali font-bold">এই তারিখে কোনো বিক্রয় চালান পাওয়া যায়নি</TableCell></TableRow>
-                        ) : dayOrders.map((s, idx) => (
-                          <TableRow key={s.id} className="border-b border-slate-100 text-xs hover:bg-slate-50/50">
-                            <TableCell className="text-center font-bold text-slate-500">{toBnNum(idx + 1)}</TableCell>
-                            <TableCell className="font-mono font-bold text-slate-800">{s.id}</TableCell>
-                            <TableCell className="font-black text-slate-900">{s.customerName || 'সাধারণ কাস্টমার'}</TableCell>
-                            <TableCell className="text-slate-600 text-[11px]">
-                              {(s.items || []).map(i => `${i.name} (${i.quantity} ${i.unit})`).join(', ')}
-                            </TableCell>
-                            <TableCell className="text-right font-bold">{formatBnCurrency(s.totalAmount)}</TableCell>
-                            <TableCell className="text-right font-bold text-emerald-600">{formatBnCurrency(s.paidAmount)}</TableCell>
-                            <TableCell className="text-right font-black text-rose-600 px-6">{formatBnCurrency(s.dueAmount)}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-
-                    <div className="p-4 bg-slate-100/80 border-t border-slate-200 flex justify-between items-center text-xs font-black text-slate-900">
-                      <span>সর্বমোট:</span>
-                      <div className="flex gap-6">
-                        <span>বিক্রি: <span className="text-emerald-700">{formatBnCurrency(totalSalesVal)}</span></span>
-                        <span>জমা: <span className="text-blue-700">{formatBnCurrency(totalPaidVal)}</span></span>
-                        <span>বাকী: <span className="text-rose-700">{formatBnCurrency(totalDueVal)}</span></span>
-                      </div>
-                    </div>
-                  </Card>
-
-                  {/* PRINTABLE SALES STATEMENT WRAPPER */}
+                  {/* PRINTABLE DAILY REPORT SLIP (দেলোয়ার এন্ড ব্রাদার্স - গোপালগঞ্জ শাখা) */}
                   <div className="hidden">
-                    <div id="printable-sales-statement-wrapper" className="p-8 bg-white text-black font-bengali space-y-6">
+                    <div id="printable-daily-report-sheet" className="p-8 bg-white text-black font-bengali space-y-6 max-w-xl mx-auto">
                       <div className="text-center border-b-2 border-black pb-4">
-                        <div className="flex items-center justify-center gap-3 mb-1">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src="/logo.png" alt="মেসার্স দেলোয়ার এন্ড ব্রাদার্স" className="w-10 h-10 object-contain rounded-md border border-slate-300" />
-                          <h1 className="text-2xl font-black uppercase tracking-wide">মেসার্স দেলোয়ার এন্ড ব্রাদার্স</h1>
-                        </div>
-                        <p className="text-xs font-semibold">রড, সিমেন্ট ও নির্মাণ সামগ্রী সরবরাহ কেন্দ্র</p>
-                        <h2 className="text-lg font-black mt-2 underline">দৈনিক সেলস স্টেটমেন্ট (DAILY SALES STATEMENT)</h2>
-                        <p className="text-xs font-bold mt-1">তারিখ: {selectedDateStr}</p>
+                        <h1 className="text-2xl font-black tracking-wide">===দেলোয়ার এন্ড ব্রাদার্স ===</h1>
+                        <p className="text-base font-bold mt-1">গোপালগঞ্জ শাখা</p>
+                        <h2 className="text-lg font-black mt-2">==== ডেইলি রিপোর্ট ====</h2>
+                        <p className="text-sm font-bold mt-1">তারিখ - {dateFormattedBn}</p>
                       </div>
 
-                      <div>
-                        <h3 className="font-bold text-xs mb-2">পণ্যভিত্তিক বিক্রয় সারসংক্ষেপ:</h3>
-                        <table className="w-full text-xs border border-black text-center mb-4">
-                          <thead className="bg-gray-100 border-b border-black">
-                            <tr>
-                              <th className="p-1 border-r border-black">পণ্যের নাম</th>
-                              <th className="p-1 border-r border-black">মোট পরিমাণ</th>
-                              <th className="p-1">মোট বিক্রয়মূল্য</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {productSummaryList.map((p, idx) => (
-                              <tr key={idx} className="border-b border-black">
-                                <td className="p-1 border-r border-black text-left font-bold">{p.name}</td>
-                                <td className="p-1 border-r border-black">{p.unit.includes('কেজি') ? formatDualStock(p.qty, p.unit, p.name).main : `${p.qty} ${p.unit}`}</td>
-                                <td className="p-1 font-bold text-right">৳{p.totalVal.toLocaleString()}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-
-                        <h3 className="font-bold text-xs mb-2">ইনভয়েস ভিত্তিক চালান বিবরণী:</h3>
-                        <table className="w-full text-xs border border-black">
-                          <thead className="bg-gray-100 border-b border-black">
-                            <tr>
-                              <th className="p-1 border-r border-black text-center">#</th>
-                              <th className="p-1 border-r border-black">ইনভয়েস</th>
-                              <th className="p-1 border-r border-black">কাস্টমার</th>
-                              <th className="p-1 border-r border-black text-right">মোট বিল</th>
-                              <th className="p-1 border-r border-black text-right">জমা</th>
-                              <th className="p-1 text-right">বাকী</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {dayOrders.map((o, idx) => (
-                              <tr key={o.id} className="border-b border-black">
-                                <td className="p-1 text-center border-r border-black">{idx + 1}</td>
-                                <td className="p-1 border-r border-black font-bold">{o.id}</td>
-                                <td className="p-1 border-r border-black">{o.customerName || 'সাধারণ কাস্টমার'}</td>
-                                <td className="p-1 text-right border-r border-black font-bold">৳{o.totalAmount.toLocaleString()}</td>
-                                <td className="p-1 text-right border-r border-black">৳{o.paidAmount.toLocaleString()}</td>
-                                <td className="p-1 text-right font-bold text-red-700">৳{o.dueAmount.toLocaleString()}</td>
-                              </tr>
-                            ))}
-                            <tr className="font-black bg-gray-100">
-                              <td colSpan={3} className="p-1.5 border-r border-black text-right">সর্বমোট:</td>
-                              <td className="p-1.5 text-right border-r border-black">৳{totalSalesVal.toLocaleString()}</td>
-                              <td className="p-1.5 text-right border-r border-black">৳{totalPaidVal.toLocaleString()}</td>
-                              <td className="p-1.5 text-right">৳{totalDueVal.toLocaleString()}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <div className="pt-16 flex justify-between text-xs font-bold">
-                        <div className="border-t border-black px-6 pt-1">বিক্রেতার স্বাক্ষর</div>
-                        <div className="border-t border-black px-6 pt-1">ম্যানেজার স্বাক্ষর</div>
-                      </div>
-                    </div>
-
-                    {/* PRINTABLE DAILY REPORT SLIP (দেলোয়ার এন্ড ব্রাদার্স - গোপালগঞ্জ শাখা) */}
-                    <div id="printable-daily-report-sheet" className="p-8 bg-white text-black font-bengali space-y-6">
-                      <div className="text-center border-b-2 border-black pb-4">
-                        <h1 className="text-2xl font-black uppercase tracking-wide">=== দেলোয়ার এন্ড ব্রাদার্স ===</h1>
-                        <p className="text-sm font-bold mt-0.5">গোপালগঞ্জ শাখা</p>
-                        <h2 className="text-lg font-black mt-2 underline">==== ডেইলি রিপোর্ট ====</h2>
-                        <p className="text-xs font-bold mt-1">তারিখ - {dateFormattedBn}</p>
-                      </div>
-
-                      <div className="space-y-4 text-sm font-bold">
+                      <div className="space-y-4 text-sm font-bold leading-relaxed">
                         {/* ক্যাশ ও চেক */}
                         <div className="border border-black p-3 space-y-1">
-                          <p>১/ ক্যাশ = {toBengaliDigits(dayCashCollected.toLocaleString('en-IN'))} ৳</p>
-                          <p>২/ চেক = {dayChequeAmount > 0 ? `${toBengaliDigits(dayChequeAmount.toLocaleString('en-IN'))} ৳` : '০/'}</p>
+                          <p>১/ ক্যাশ = {dayCashCollected > 0 ? toBengaliDigits(dayCashCollected.toLocaleString('en-IN')) : '০০'} ৳</p>
+                          <p>২/ চেক = {dayChequeAmount > 0 ? `${toBengaliDigits(dayChequeAmount.toLocaleString('en-IN'))} ৳/` : '০/'}</p>
                         </div>
 
                         {/* সিমেন্ট */}
-                        <div className="border border-black p-3 space-y-1.5">
-                          <p className="text-center font-black underline">===== সিমেন্ট =====</p>
-                          <p>সিমেন্ট বিক্রয় = {toBengaliDigits(cementSoldBags)} ব্যাগ</p>
-                          <p>সিমেন্ট প্রাপ্তি = {toBengaliDigits(cementBoughtBags)} ব্যাগ</p>
-                          <p>সিমেন্ট সরাসরি= {toBengaliDigits(cementDirectBags)} ব্যাগ</p>
-                          <p className="font-black">সিমেন্ট স্টক= {toBengaliDigits(totalCementStockBags)} ব্যাগ</p>
-                          {cementBrandList.length > 0 && (
+                        <div className="border border-black p-3 space-y-1">
+                          <p className="text-center font-black">=====সিমেন্ট =====</p>
+                          <p>সিমেন্ট বিক্রয় = {formatQtyOrZero(cementSoldBags)} ব্যাগ</p>
+                          <p>সিমেন্ট প্রাপ্তি = {formatQtyOrZero(cementBoughtBags)} ব্যাগ</p>
+                          <p>সিমেন্ট সরাসরি= {formatQtyOrZero(cementDirectBags)} ব্যাগ</p>
+                          <p className="font-black">সিমেন্ট স্টক= {formatQtyOrZero(totalCementStockBags)} ব্যাগ</p>
+                          {realCementList.length > 0 && (
                             <div className="pt-2 border-t border-dashed border-black space-y-1">
-                              {cementBrandList.map((b, i) => (
-                                <p key={i}>{b.name}= {toBengaliDigits(b.stock)} ব্যাগ</p>
+                              {realCementList.map((b, i) => (
+                                <p key={i}>{b.name}= {formatQtyOrZero(b.stock)} ব্যাগ</p>
                               ))}
                             </div>
                           )}
                         </div>
 
                         {/* রড */}
-                        <div className="border border-black p-3 space-y-1.5">
-                          <p className="text-center font-black underline">===== রড =====</p>
-                          <p>রড বিক্রয় = {toBengaliDigits(rodSoldKg % 1 === 0 ? rodSoldKg.toLocaleString('en-IN') : rodSoldKg.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))} কেজি</p>
-                          <p>রড প্রাপ্তি = {toBengaliDigits(rodBoughtKg % 1 === 0 ? rodBoughtKg.toLocaleString('en-IN') : rodBoughtKg.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))} কেজি</p>
-                          <p>রড সরাসরি= {toBengaliDigits(rodDirectKg % 1 === 0 ? rodDirectKg.toLocaleString('en-IN') : rodDirectKg.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))} কেজি</p>
-                          <p className="font-black">রড স্টক = {toBengaliDigits(totalRodStockKg % 1 === 0 ? totalRodStockKg.toLocaleString('en-IN') : totalRodStockKg.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))} কেজি</p>
+                        <div className="border border-black p-3 space-y-1">
+                          <p className="text-center font-black">===== রড=====</p>
+                          <p>রড বিক্রয় = {formatRodSold(rodSoldKg)}</p>
+                          <p>রড প্রাপ্তি = {formatRodBought(rodBoughtKg)}</p>
+                          <p>রড সরাসরি= {formatRodDirect(rodDirectKg)}</p>
+                          <p className="font-black">রড স্টক = {formatRodStock(totalRodStockKg)}</p>
+                          {realRodList.length > 0 && (
+                            <div className="pt-2 border-t border-dashed border-black space-y-1">
+                              {realRodList.map((b, i) => (
+                                <p key={i}>{b.name}= {formatRodStock(b.stock)}</p>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      <div className="pt-16 flex justify-between text-xs font-bold">
+                      <div className="pt-12 flex justify-between text-xs font-bold">
                         <div className="border-t border-black px-6 pt-1">ক্যাশিয়ার / হিসাবরক্ষক</div>
                         <div className="border-t border-black px-6 pt-1">ম্যানেজার / প্রোপ্রাইটর</div>
                       </div>
