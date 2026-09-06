@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useState, useEffect, useCallback } from 'react';
+import { ReactNode, useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from './Sidebar';
@@ -784,7 +784,9 @@ export function Shell({ children }: { children: ReactNode }) {
       <div className="fixed bottom-0 left-0 w-[700px] h-[700px] bg-gradient-to-tr from-[#8c6b1c]/10 via-[#c59b27]/5 to-transparent rounded-full blur-3xl pointer-events-none z-0" />
 
       {/* Sidebar Component */}
-      <Sidebar mobileOpen={mobileMenuOpen} onCloseMobile={() => setMobileMenuOpen(false)} />
+      <Suspense fallback={null}>
+        <Sidebar mobileOpen={mobileMenuOpen} onCloseMobile={() => setMobileMenuOpen(false)} />
+      </Suspense>
 
       {/* Main Wrapper */}
       <div className="flex-1 flex flex-col min-w-0 z-10 relative">
