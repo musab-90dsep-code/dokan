@@ -4,6 +4,7 @@ import './globals.css';
 import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/utils';
 import { AuthProvider } from '@/lib/authContext';
+import { BanglaInputProvider } from '@/components/BanglaInputProvider';
 import { PwaManager } from '@/components/PwaManager';
 import { NumberInputWheelDisable } from '@/components/NumberInputWheelDisable';
 
@@ -55,10 +56,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="bn" className={cn(inter.variable, hindSiliguri.variable, "font-bengali")} suppressHydrationWarning>
       <body suppressHydrationWarning className="bg-[#faf8f5] text-[#2e2316] min-h-screen antialiased">
         <AuthProvider>
-          {children}
-          <NumberInputWheelDisable />
-          <PwaManager />
-          <Toaster position="top-center" richColors />
+          <BanglaInputProvider>
+            {children}
+            <NumberInputWheelDisable />
+            <PwaManager />
+            <Toaster position="top-center" richColors />
+          </BanglaInputProvider>
         </AuthProvider>
       </body>
     </html>

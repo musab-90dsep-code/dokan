@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { InvoiceMemo } from '@/components/InvoiceMemo';
 import { printElement } from '@/lib/printUtils';
-import { toBengaliDigits } from '@/lib/bengaliUtils';
+import { toBengaliDigits, toEnglishDigits } from '@/lib/bengaliUtils';
 import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
 import { ProductSearchSelect } from '@/components/ProductSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
@@ -1099,7 +1099,7 @@ export default function OrdersPage() {
                         />
                         <Input 
                           value={newCustomerData.phone} 
-                          onChange={e => setNewCustomerData(prev => ({ ...prev, phone: e.target.value }))} 
+                          onChange={e => setNewCustomerData(prev => ({ ...prev, phone: toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11) }))} 
                           placeholder="মোবাইল নম্বর" 
                           className="rounded-md h-11 border-slate-200 text-xs bg-white" 
                         />

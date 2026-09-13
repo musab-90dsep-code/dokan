@@ -29,7 +29,8 @@
     "recoil": "^0.7.7",
     "shadcn": "^4.6.0",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.5.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.11",

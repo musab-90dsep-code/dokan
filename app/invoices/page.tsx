@@ -22,7 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
 import { EngineerSearchSelect, EngineerOption } from '@/components/EngineerSearchSelect';
-import { toBengaliDigits, parseProductDetails } from '@/lib/bengaliUtils';
+import { toBengaliDigits, toEnglishDigits, parseProductDetails } from '@/lib/bengaliUtils';
 import { ProductSearchSelect } from '@/components/ProductSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
 import { InvoiceMemo } from '@/components/InvoiceMemo';
@@ -1853,7 +1853,7 @@ function InvoicesContent() {
                               placeholder="মোবাইল নম্বর (১১ ডিজিট)"
                               value={newCustomerData.phone}
                               maxLength={11}
-                              onChange={e => setNewCustomerData({ ...newCustomerData, phone: e.target.value.replace(/[^0-9]/g, '').slice(0, 11) })}
+                              onChange={e => setNewCustomerData({ ...newCustomerData, phone: toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11) })}
                               className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-mono"
                             />
                           </div>
@@ -2127,7 +2127,7 @@ function InvoicesContent() {
                         <Input
                           value={driverPhone}
                           maxLength={11}
-                          onChange={e => setDriverPhone(e.target.value.replace(/[^0-9]/g, '').slice(0, 11))}
+                          onChange={e => setDriverPhone(toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11))}
                           placeholder="০১৭XXXXXXXX"
                           className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-mono"
                         />

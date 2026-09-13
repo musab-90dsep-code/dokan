@@ -28,6 +28,7 @@ import { bn } from 'date-fns/locale';
 import { printElement } from '@/lib/printUtils';
 import { toBengaliDigits } from '@/lib/bengaliUtils';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
+import { DataImportModal } from '@/components/DataImportModal';
 
 const formatBnDate = (dateVal: Date | string | undefined | null, pattern: string = 'dd MMMM - yyyy') => {
   if (!dateVal) return '—';
@@ -229,6 +230,7 @@ function MasterReportsContent() {
 
 
 
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [journalModalOpen, setJournalModalOpen] = useState(false);
   const [journalCommission, setJournalCommission] = useState<Commission | null>(null);
   const [journalAccountType, setJournalAccountType] = useState<'cash' | 'bank'>('cash');
@@ -326,118 +328,126 @@ function MasterReportsContent() {
     }
   };
 
-  useEffect(() => {
-    async function loadReportsData() {
+  const loadReportsData = useCallback(async () => {
+    try {
+      const txList = await api.transactions.list();
+      const safeTxList = Array.isArray(txList) ? txList : [];
+      setTransactions(safeTxList.map(t => ({
+        id: String(t.id || t.invoice_no),
+        type: t.transaction_type,
+        amount: Number(t.total_amount || 0),
+        paidAmount: Number(t.paid_amount || 0),
+        paymentMethod: t.payment_method || '',
+        chequeNo: t.cheque_number || '',
+        notes: t.notes || '',
+        createdAt: t.created_at,
+        raw: t
+      })));
+      setOrders(safeTxList.filter(t => t.transaction_type === 'sale').map(t => ({
+        id: String(t.id || t.invoice_no),
+        invoiceNo: t.invoice_no,
+        customerName: t.party_name || '',
+        totalPrice: Number(t.total_amount || 0),
+        totalAmount: Number(t.total_amount || 0),
+        paidAmount: Number(t.paid_amount || 0),
+        dueAmount: Number(t.due_amount || 0),
+        paymentMethod: t.payment_method || '',
+        chequeNo: t.cheque_number || '',
+        deliveryType: (t as any).delivery_type || '',
+        items: (t.items || []).map(i => ({ name: i.product_name, price: Number(i.price || 0), quantity: Number(i.quantity || 0), unit: i.unit || 'পিস' })),
+        notes: (t as any).notes || '',
+        createdAt: t.created_at
+      })));
+      setPurchases(safeTxList.filter(t => t.transaction_type === 'purchase').map(t => ({
+        id: String(t.id || t.invoice_no),
+        invoiceNo: t.invoice_no,
+        supplierName: t.party_name || '',
+        totalPrice: Number(t.total_amount || 0),
+        totalAmount: Number(t.total_amount || 0),
+        paidAmount: Number(t.paid_amount || 0),
+        dueAmount: Number(t.due_amount || 0),
+        paymentMethod: t.payment_method || '',
+        deliveryType: (t as any).delivery_type || '',
+        items: (t.items || []).map(i => ({ name: i.product_name, price: Number(i.price || 0), quantity: Number(i.quantity || 0), unit: i.unit || 'পিস' })),
+        notes: (t as any).notes || '',
+        createdAt: t.created_at
+      })));
+
+      const partyList = await api.parties.list();
+      const safePartyList = Array.isArray(partyList) ? partyList : [];
+      setCustomers(safePartyList.filter(p => p.party_type === 'customer' || p.party_type === 'both').map(p => ({
+        id: String(p.id),
+        name: p.name,
+        businessName: p.business_name || '',
+        totalDue: Number(p.total_due || 0)
+      })));
+      setSuppliers(safePartyList.filter(p => p.party_type === 'supplier' || p.party_type === 'both').map(p => ({
+        id: String(p.id),
+        name: p.name,
+        businessName: p.business_name || '',
+        totalDue: Number(p.total_due || 0)
+      })));
+
+      const prodList = await api.inventory.list();
+      const safeProdList = Array.isArray(prodList) ? prodList : [];
+      setProducts(safeProdList.map(p => ({
+        id: String(p.id),
+        name: p.name,
+        category: p.category_name || 'অন্যান্য',
+        stock: Number(p.stock || 0),
+        buyPrice: Number(p.purchase_price || 0),
+        sellPrice: Number(p.sell_price || 0),
+        unit: p.unit || 'পিস',
+        brand: p.brand || ''
+      })));
+
+      const bankList = await api.banks.list();
+      const safeBankList = Array.isArray(bankList) ? bankList : [];
+      setBanks(safeBankList.map(b => ({
+        id: String(b.id),
+        name: b.name,
+        accNo: b.account_number || '',
+        balance: Number(b.balance || 0)
+      })));
+
+      const expList = await api.expenses.list();
+      const safeExpList = Array.isArray(expList) ? expList : [];
+      setExpenses(safeExpList.map(e => ({
+        id: String(e.id),
+        title: e.title,
+        category: e.category_name || 'general',
+        amount: Number(e.amount || 0),
+        date: e.date || '',
+        status: 'পরিশোধিত',
+        createdAt: e.date
+      })));
+
+      // Real Cash Balance from dashboard or transactions
       try {
-        const txList = await api.transactions.list();
-        const safeTxList = Array.isArray(txList) ? txList : [];
-        setTransactions(safeTxList.map(t => ({
-          id: String(t.id || t.invoice_no),
-          type: t.transaction_type,
-          amount: Number(t.total_amount || 0),
-          paidAmount: Number(t.paid_amount || 0),
-          paymentMethod: t.payment_method || '',
-          chequeNo: t.cheque_number || '',
-          notes: t.notes || '',
-          createdAt: t.created_at,
-          raw: t
-        })));
-        setOrders(safeTxList.filter(t => t.transaction_type === 'sale').map(t => ({
-          id: String(t.id || t.invoice_no),
-          orderId: t.invoice_no,
-          customerName: t.party_name || '',
-          customerPhone: t.party_phone || '',
-          totalAmount: Number(t.total_amount || 0),
-          paidAmount: Number(t.paid_amount || 0),
-          dueAmount: Number(t.due_amount || 0),
-          paymentMethod: t.payment_method || '',
-          chequeNo: t.cheque_number || '',
-          deliveryType: (t as any).delivery_type || '',
-          items: (t.items || []).map(i => ({ name: i.product_name, price: Number(i.price || 0), quantity: Number(i.quantity || 0), unit: i.unit || 'পিস' })),
-          notes: (t as any).notes || '',
-          createdAt: t.created_at
-        })));
-        setPurchases(safeTxList.filter(t => t.transaction_type === 'purchase').map(t => ({
-          id: String(t.id || t.invoice_no),
-          invoiceNo: t.invoice_no,
-          supplierName: t.party_name || '',
-          totalPrice: Number(t.total_amount || 0),
-          totalAmount: Number(t.total_amount || 0),
-          paidAmount: Number(t.paid_amount || 0),
-          dueAmount: Number(t.due_amount || 0),
-          paymentMethod: t.payment_method || '',
-          deliveryType: (t as any).delivery_type || '',
-          items: (t.items || []).map(i => ({ name: i.product_name, price: Number(i.price || 0), quantity: Number(i.quantity || 0), unit: i.unit || 'পিস' })),
-          notes: (t as any).notes || '',
-          createdAt: t.created_at
-        })));
-
-        const partyList = await api.parties.list();
-        const safePartyList = Array.isArray(partyList) ? partyList : [];
-        setCustomers(safePartyList.filter(p => p.party_type === 'customer' || p.party_type === 'both').map(p => ({
-          id: String(p.id),
-          name: p.name,
-          businessName: p.business_name || '',
-          totalDue: Number(p.total_due || 0)
-        })));
-        setSuppliers(safePartyList.filter(p => p.party_type === 'supplier' || p.party_type === 'both').map(p => ({
-          id: String(p.id),
-          name: p.name,
-          businessName: p.business_name || '',
-          totalDue: Number(p.total_due || 0)
-        })));
-
-        const prodList = await api.inventory.list();
-        const safeProdList = Array.isArray(prodList) ? prodList : [];
-        setProducts(safeProdList.map(p => ({
-          id: String(p.id),
-          name: p.name,
-          category: p.category_name || 'অন্যান্য',
-          stock: Number(p.stock || 0),
-          buyPrice: Number(p.purchase_price || 0),
-          sellPrice: Number(p.sell_price || 0),
-          unit: p.unit || 'পিস',
-          brand: p.brand || ''
-        })));
-
-        const bankList = await api.banks.list();
-        const safeBankList = Array.isArray(bankList) ? bankList : [];
-        setBanks(safeBankList.map(b => ({
-          id: String(b.id),
-          name: b.name,
-          accNo: b.account_number || '',
-          balance: Number(b.balance || 0)
-        })));
-
-        const expList = await api.expenses.list();
-        const safeExpList = Array.isArray(expList) ? expList : [];
-        setExpenses(safeExpList.map(e => ({
-          id: String(e.id),
-          title: e.title,
-          category: e.category_name || 'general',
-          amount: Number(e.amount || 0),
-          date: e.date || '',
-          status: 'পরিশোধিত',
-          createdAt: e.date
-        })));
-
-        // Real Cash Balance from dashboard or transactions
-        try {
-          const stats = await api.dashboard.getStats();
-          if (stats && typeof stats.totalCash === 'number') {
-            setTotalCash(stats.totalCash);
-          }
-        } catch {
-          const cashIn = safeTxList.filter(t => (t.payment_method === 'cash' || !t.payment_method) && (String(t.transaction_type) === 'sale' || String(t.transaction_type) === 'payment_in')).reduce((a, b) => a + Number(b.paid_amount || b.total_amount || 0), 0);
-          const cashOut = safeTxList.filter(t => (t.payment_method === 'cash' || !t.payment_method) && (String(t.transaction_type) === 'purchase' || String(t.transaction_type) === 'payment_out')).reduce((a, b) => a + Number(b.paid_amount || b.total_amount || 0), 0);
-          setTotalCash(cashIn - cashOut);
+        const stats = await api.dashboard.getStats();
+        if (stats && typeof stats.totalCash === 'number') {
+          setTotalCash(stats.totalCash);
         }
       } catch (err) {
-        console.error('Error loading reports data:', err);
+        console.error('Error fetching dashboard stats for cash:', err);
       }
+    } catch (err) {
+      console.error('Error loading reports data:', err);
     }
-    loadReportsData();
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      if (active) {
+        await loadReportsData();
+      }
+    };
+    run();
+    return () => {
+      active = false;
+    };
+  }, [loadReportsData]);
 
   // Derived commissions list (Both Purchases and Sales)
   const activeCommissions = useMemo(() => {
@@ -504,9 +514,9 @@ function MasterReportsContent() {
           quantity: (meta.engineerRodKg || 0) + (meta.engineerCementBags || 0) || 1,
           rate: meta.engineerRodRate || meta.engineerCementRate || 0,
           totalAmount: engComm,
-          paidAmount: 0,
-          pendingAmount: engComm,
-          status: 'pending',
+          paidAmount: meta.commissionStatus === 'journalized' ? engComm : 0,
+          pendingAmount: meta.commissionStatus === 'journalized' ? 0 : engComm,
+          status: meta.commissionStatus === 'journalized' ? 'journalized' : 'pending',
           note: `বিক্রয় চালান কমিশন (${meta.engineerName || 'ইঞ্জিনিয়ার'})`,
           createdAt: o.createdAt || new Date()
         });
@@ -557,7 +567,8 @@ function MasterReportsContent() {
   // Auto-Journal Execution
   const handleOpenAutoJournal = (comm: Commission) => {
     setJournalCommission(comm);
-    setJournalAccountType('cash');
+    const isPurchase = comm.id.startsWith('comm_purchase_');
+    setJournalAccountType(isPurchase ? 'adjustment' : 'cash');
     setJournalConfirmText('');
     if (banks.length > 0) setJournalBankId(banks[0].id);
     setJournalModalOpen(true);
@@ -572,19 +583,34 @@ function MasterReportsContent() {
     setIsSubmittingJournal(true);
     try {
       const isPurchaseComm = journalCommission.id.startsWith('comm_purchase_');
+      const isSaleComm = journalCommission.id.startsWith('comm_sale_');
       const bankAccId = journalAccountType === 'bank' && journalBankId ? Number(journalBankId) : undefined;
       
       if (isPurchaseComm) {
+        const purId = journalCommission.id.replace('comm_purchase_', '');
         await api.expenses.create({
           title: `কোম্পানি কমিশন সমন্বয়/প্রাপ্তি: ${journalCommission.agentName} (চালান: ${journalCommission.orderId || '—'})`,
           category_name: 'কমিশন আয়/সমন্বয়',
           amount: journalCommission.totalAmount,
           date: new Date().toISOString().split('T')[0],
-          payment_method: journalAccountType,
+          payment_method: journalAccountType || 'adjustment',
           bank_account: bankAccId,
           notes: journalCommission.note || 'Company Purchase Commission Adjusted'
         });
-      } else {
+
+        // Persist to purchase transaction notes in backend database
+        const targetPur = purchases.find(p => String(p.id) === String(purId));
+        if (targetPur) {
+          let meta: any = {};
+          if (targetPur.notes && typeof targetPur.notes === 'string' && targetPur.notes.trim().startsWith('{')) {
+            try { meta = JSON.parse(targetPur.notes.split('\n')[0]); } catch {}
+          }
+          meta.commissionStatus = 'journalized';
+          meta.commissionAdjustment = 'deduct';
+          await api.transactions.update(purId, { notes: JSON.stringify(meta) });
+        }
+      } else if (isSaleComm) {
+        const orderId = journalCommission.id.replace('comm_sale_', '');
         await api.expenses.create({
           title: `কমিশন পরিশোধ: ${journalCommission.agentName} (মেমো: ${journalCommission.orderId || '—'})`,
           category_name: 'কমিশন খরচ',
@@ -594,19 +620,56 @@ function MasterReportsContent() {
           bank_account: bankAccId,
           notes: journalCommission.note || 'Commission Approved and Paid'
         });
+
+        // Persist to sales order notes in backend database
+        const targetOrder = orders.find(o => String(o.id) === String(orderId));
+        if (targetOrder) {
+          let meta: any = {};
+          const oAny = targetOrder as any;
+          if (oAny.notes && typeof oAny.notes === 'string' && oAny.notes.trim().startsWith('{')) {
+            try { meta = JSON.parse(oAny.notes.split('\n')[0]); } catch {}
+          }
+          meta.commissionStatus = 'journalized';
+          await api.transactions.update(orderId, { notes: JSON.stringify(meta) });
+        }
+      } else {
+        const rawId = journalCommission.id.replace('comm_', '');
+        await api.expenses.create({
+          title: `কমিশন অনুমোদন: ${journalCommission.agentName} (চালান/মেমো: ${journalCommission.orderId || '—'})`,
+          category_name: 'কমিশন সমন্বয়',
+          amount: journalCommission.totalAmount,
+          date: new Date().toISOString().split('T')[0],
+          payment_method: journalAccountType || 'adjustment',
+          bank_account: bankAccId,
+          notes: journalCommission.note || 'Commission Approved'
+        });
+
+        const targetOrder = orders.find(o => String(o.id) === String(rawId));
+        if (targetOrder) {
+          let meta: any = {};
+          const oAny = targetOrder as any;
+          if (oAny.notes && typeof oAny.notes === 'string' && oAny.notes.trim().startsWith('{')) {
+            try { meta = JSON.parse(oAny.notes.split('\n')[0]); } catch {}
+          }
+          meta.commissionStatus = 'journalized';
+          try {
+            await api.transactions.update(rawId, { notes: JSON.stringify(meta) });
+          } catch {}
+        }
       }
 
       setCommissions(prev => {
         const base = prev.length > 0 ? prev : activeCommissions;
-        return base.map(c => c.id === journalCommission.id ? { ...c, status: 'journalized', pendingAmount: 0 } : c);
+        return base.map(c => c.id === journalCommission.id ? { ...c, status: 'journalized', pendingAmount: 0, paidAmount: c.totalAmount } : c);
       });
+      await loadReportsData();
       fetchBankList();
       toast.success('কমিশন সফলভাবে অনুমোদিত (Approve) হয়েছে!');
       setJournalModalOpen(false);
       setJournalConfirmText('');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error('কমিশন অনুমোদন করতে ব্যর্থ হয়েছে');
+      toast.error(err?.message || 'কমিশন অনুমোদন করতে ব্যর্থ হয়েছে');
     } finally {
       setIsSubmittingJournal(false);
     }
@@ -632,6 +695,12 @@ function MasterReportsContent() {
 
               {/* TOP RIGHT ACTION BUTTONS */}
               <div className="flex items-center gap-2.5">
+                <Button
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="h-10 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-md"
+                >
+                  <FileSpreadsheet className="w-4 h-4 mr-1.5" /> আগের হিসাব ও ডাটা ইমপোর্ট
+                </Button>
                 <Button variant="outline" className="h-10 px-4 rounded-xl border-slate-200 bg-white text-slate-700 font-bold text-xs hover:bg-slate-50 shadow-xs">
                   <Settings2 className="w-4 h-4 mr-1.5 text-slate-600" /> রিপোর্ট কাস্টমাইজ
                 </Button>
@@ -946,6 +1015,35 @@ function MasterReportsContent() {
                     className="h-9 px-3 rounded-xl text-xs font-bold border-slate-200 text-slate-700 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200"
                   >
                     রিপোর্ট দেখুন <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                  </Button>
+                </div>
+              </Card>
+
+              {/* CARD 9: আগের হিসাব ও এক্সেল ইমপোর্ট */}
+              <Card className="border-orange-200/90 rounded-3xl bg-linear-to-br from-orange-50/70 to-amber-50/30 p-6 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between group">
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-orange-500 text-white flex items-center justify-center font-bold shadow-md shadow-orange-500/20">
+                    <FileSpreadsheet className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="inline-flex items-center px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 text-[10px] font-black mb-1.5">
+                      মাইগ্রেশন টুল
+                    </div>
+                    <h3 className="font-black text-slate-900 text-lg group-hover:text-orange-600 transition-colors">
+                      ৯. পূর্বের হিসাব ও ডাটা ইমপোর্ট
+                    </h3>
+                    <p className="text-xs text-slate-600 font-semibold mt-1 line-clamp-2">
+                      আগের খাতা বা এক্সেল থেকে গ্রাহক, বাকি, পণ্য, স্টক ও খরচের হিসাব এক ক্লিকে ইমপোর্ট করুন
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-6 mt-4 border-t border-orange-100 flex items-center justify-between">
+                  <Button
+                    onClick={() => setIsImportModalOpen(true)}
+                    className="h-9 px-4 rounded-xl text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white shadow-xs"
+                  >
+                    ইমপোর্ট শুরু করুন <ArrowRight className="w-3.5 h-3.5 ml-1" />
                   </Button>
                 </div>
               </Card>
@@ -4039,14 +4137,20 @@ ${cementBlockLines.join('\n')}
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="font-bold">টাকা কাটার মাধ্যম:</Label>
+                  <Label className="font-bold">
+                    {journalCommission.id.startsWith('comm_purchase_') ? 'কমিশন সমন্বয়ের মাধ্যম:' : 'টাকা কাটার মাধ্যম:'}
+                  </Label>
                   <Select value={journalAccountType} onValueChange={(v: any) => setJournalAccountType(v)}>
                     <SelectTrigger className="h-10 rounded-xl font-bold bg-white border-slate-200">
                       <span className="flex-1 text-left truncate">
-                        {journalAccountType === 'bank' ? '🏦 ব্যাংক একাউন্ট' : '💵 ক্যাশ ড্রয়ার'}
+                        {journalAccountType === 'adjustment' ? '⚖️ কোম্পানি বাকি থেকে সমন্বয় (Due Adjustment)' :
+                         journalAccountType === 'bank' ? '🏦 ব্যাংক একাউন্ট' : '💵 ক্যাশ ড্রয়ার'}
                       </span>
                     </SelectTrigger>
                     <SelectContent className="font-bengali">
+                      {journalCommission.id.startsWith('comm_purchase_') && (
+                        <SelectItem value="adjustment">⚖️ কোম্পানি বাকি থেকে সমন্বয় (Due Adjustment)</SelectItem>
+                      )}
                       <SelectItem value="cash">💵 ক্যাশ ড্রয়ার</SelectItem>
                       <SelectItem value="bank">🏦 ব্যাংক একাউন্ট</SelectItem>
                     </SelectContent>
@@ -4177,6 +4281,13 @@ ${cementBlockLines.join('\n')}
             </form>
           </DialogContent>
         </Dialog>
+
+        {/* Bulk Data & Previous Reports Import Modal */}
+        <DataImportModal
+          open={isImportModalOpen}
+          onOpenChange={setIsImportModalOpen}
+          onSuccess={loadReportsData}
+        />
 
       </div>
     </Shell>

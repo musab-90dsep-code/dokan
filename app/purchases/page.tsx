@@ -27,7 +27,7 @@ import { PurchaseInvoiceDetailsView } from '@/components/PurchaseInvoiceDetailsV
 import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
 import { printElement } from '@/lib/printUtils';
-import { parseProductDetails } from '@/lib/bengaliUtils';
+import { parseProductDetails, toEnglishDigits } from '@/lib/bengaliUtils';
 import { TableRowActionMenu } from '@/components/TableRowActionMenu';
 import { useAuth } from '@/lib/authContext';
 
@@ -1502,7 +1502,7 @@ export default function PurchasesPage() {
                               placeholder="মোবাইল নম্বর (১১ ডিজিট)"
                               value={newSupplierData.phone}
                               maxLength={11}
-                              onChange={e => setNewSupplierData({ ...newSupplierData, phone: e.target.value.replace(/[^0-9]/g, '').slice(0, 11) })}
+                              onChange={e => setNewSupplierData({ ...newSupplierData, phone: toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11) })}
                               className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-mono"
                             />
                           </div>
@@ -1724,7 +1724,7 @@ export default function PurchasesPage() {
                         <Input
                           value={driverPhone}
                           maxLength={11}
-                          onChange={e => setDriverPhone(e.target.value.replace(/[^0-9]/g, '').slice(0, 11))}
+                          onChange={e => setDriverPhone(toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11))}
                           placeholder="০১৭XXXXXXXX"
                           className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-mono"
                         />

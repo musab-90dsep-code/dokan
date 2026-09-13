@@ -256,10 +256,19 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
         }
       }
 
-      if (errorJson && errorJson.detail) {
-        throw new Error(errorJson.detail);
-      } else if (errorJson && errorJson.error) {
-        throw new Error(errorJson.error);
+      if (errorJson) {
+        if (errorJson.detail) throw new Error(errorJson.detail);
+        if (errorJson.error) throw new Error(errorJson.error);
+        if (typeof errorJson === 'object' && !Array.isArray(errorJson)) {
+          for (const key of Object.keys(errorJson)) {
+            const val = errorJson[key];
+            if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string') {
+              throw new Error(val[0]);
+            } else if (typeof val === 'string') {
+              throw new Error(val);
+            }
+          }
+        }
       }
 
       throw new Error(`API Error [${response.status} ${response.statusText}]: ${errorText}`);
@@ -359,6 +368,12 @@ export const api = {
     },
     delete: async (id: string | number): Promise<void> => {
       return request<void>(`/parties/${id}/`, { method: 'DELETE' });
+    },
+    bulkImport: async (parties: any[]): Promise<{ success: boolean; created_count: number; updated_count: number; errors: string[] }> => {
+      return request('/parties/bulk-import/', {
+        method: 'POST',
+        body: JSON.stringify({ parties }),
+      });
     }
   },
 
@@ -409,6 +424,12 @@ export const api = {
         console.error('getCostLogs error:', e);
         return productId ? { product_id: Number(productId), product_name: '', unit: '', current_stock: 0, current_purchase_price: 0, logs: [] } : [];
       }
+    },
+    bulkImport: async (products: any[]): Promise<{ success: boolean; created_count: number; updated_count: number; errors: string[] }> => {
+      return request('/products/bulk-import/', {
+        method: 'POST',
+        body: JSON.stringify({ products }),
+      });
     }
   },
 
@@ -531,6 +552,12 @@ export const api = {
     },
     delete: async (id: string | number): Promise<void> => {
       return request<void>(`/expenses/${id}/`, { method: 'DELETE' });
+    },
+    bulkImport: async (expenses: any[]): Promise<{ success: boolean; created_count: number; errors: string[] }> => {
+      return request('/expenses/bulk-import/', {
+        method: 'POST',
+        body: JSON.stringify({ expenses }),
+      });
     }
   },
 

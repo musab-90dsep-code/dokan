@@ -35,8 +35,10 @@ import {
   Coins,
   Wallet,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  FileSpreadsheet
 } from 'lucide-react';
+import { DataImportModal } from '@/components/DataImportModal';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -55,6 +57,7 @@ import { useRouter } from 'next/navigation';
 
 import { format } from 'date-fns';
 import { bn } from 'date-fns/locale';
+import { toEnglishDigits, normalizeForSearch } from '@/lib/bengaliUtils';
 
 export const toBnDigits = (val: string | number | undefined | null): string => {
   if (val === undefined || val === null || val === '') return '';
@@ -146,6 +149,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
   };
 
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [editing, setEditing] = useState<Party | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
@@ -455,9 +459,18 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       return;
     }
 
+    const rodComm = parseFloat(toEnglishDigits(formData.rodCommissionRate) || '0') || 0;
+    const cementComm = parseFloat(toEnglishDigits(formData.cementCommissionRate) || '0') || 0;
+    const openBal = parseFloat(toEnglishDigits(formData.openingBalance) || '0') || 0;
+    const credLim = parseFloat(toEnglishDigits(formData.creditLimit) || '0') || 0;
+    const credDays = parseInt(toEnglishDigits(formData.creditDays) || '30', 10) || 30;
+    const discPct = parseFloat(toEnglishDigits(formData.discountPercent) || '0') || 0;
+    const cleanPhone = toEnglishDigits(formData.phone).replace(/[^0-9]/g, '');
+    const cleanAltPhone = formData.altPhone ? toEnglishDigits(formData.altPhone).replace(/[^0-9]/g, '') : undefined;
+
     const meta = {
-      rodCommissionRate: Number(formData.rodCommissionRate || 0),
-      cementCommissionRate: Number(formData.cementCommissionRate || 0),
+      rodCommissionRate: rodComm,
+      cementCommissionRate: cementComm,
       userNote: formData.note || ''
     };
     const notePayload = JSON.stringify(meta) + (formData.note ? `\n${formData.note}` : '');
@@ -468,8 +481,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       business_name: formData.businessName.trim() || formData.name.trim(),
       customer_type: formData.customerType,
       supply_type: formData.customerType,
-      phone: formData.phone,
-      alt_phone: formData.altPhone,
+      phone: cleanPhone,
+      alt_phone: cleanAltPhone,
       email: formData.email,
       country: formData.country,
       division: formData.division,
@@ -480,11 +493,11 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       id_type: formData.idType,
       nid: formData.nid,
       tin_number: formData.tinNumber,
-      opening_balance: Number(formData.openingBalance || 0),
-      credit_limit: Number(formData.creditLimit || 0),
-      credit_days: Number(formData.creditDays || 30),
-      discount_percent: Number(formData.discountPercent || 0),
-      total_due: editing ? (editing.totalDue || 0) : (Number(formData.openingBalance) || 0),
+      opening_balance: openBal,
+      credit_limit: credLim,
+      credit_days: credDays,
+      discount_percent: discPct,
+      total_due: editing ? (editing.totalDue || 0) : openBal,
       joined_date: formData.joinedDate,
       note: isEngineer ? notePayload : formData.note,
       photo_url: formData.photoUrl
@@ -519,12 +532,21 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
   };
 
   const filtered = parties.filter((p) => {
-    const searchLower = search.toLowerCase();
+    const searchLower = search.toLowerCase().trim();
+    const searchNorm = normalizeForSearch(search);
+    const partyPhoneNorm = normalizeForSearch(p.phone || '');
+    const partyAltPhoneNorm = normalizeForSearch(p.altPhone || '');
+    const partyNameNorm = (p.name || '').toLowerCase();
+    const partyBizNorm = (p.businessName || '').toLowerCase();
+    const partyAddrNorm = (p.address || '').toLowerCase();
+
     const matchesSearch = !search ||
-      p.name?.toLowerCase().includes(searchLower) ||
-      p.phone?.includes(search) ||
-      (p.businessName && p.businessName.toLowerCase().includes(searchLower)) ||
-      (p.address && p.address.toLowerCase().includes(searchLower)) ||
+      partyNameNorm.includes(searchLower) ||
+      partyBizNorm.includes(searchLower) ||
+      partyAddrNorm.includes(searchLower) ||
+      partyPhoneNorm.includes(searchNorm) ||
+      partyAltPhoneNorm.includes(searchNorm) ||
+      (p.phone && p.phone.includes(search)) ||
       (p.email && p.email.toLowerCase().includes(searchLower));
 
     const matchesType =
@@ -590,6 +612,17 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
               <Receipt className="w-3.5 h-3.5 text-blue-600" />
               <span>রিপোর্ট এক্সপোর্ট</span>
             </Button>
+
+            {canModifyData && (
+              <Button
+                variant="outline"
+                onClick={() => setIsImportOpen(true)}
+                className="h-9 px-3.5 border-orange-200 text-orange-700 bg-orange-50/50 hover:bg-orange-100/50 font-bold text-xs rounded-md shadow-2xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-orange-600" />
+                <span>এক্সেল ইমপোর্ট</span>
+              </Button>
+            )}
 
             {canModifyData && (
               <Button
@@ -1513,7 +1546,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           required
                           value={formData.name}
                           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                          placeholder={isEngineer ? 'ইঞ্জি. মাহফুজুর রহমান' : isCustomer ? 'মোহাম্মদ রফিকুল ইসলাম' : 'বিএসআরএম স্টিল মিলস'}
+                          placeholder=""
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1526,7 +1559,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           <Input
                             value={formData.businessName}
                             onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                            placeholder={isEngineer ? 'রহমান ডিজাইন এন্ড বিল্ডার্স' : 'রফিক ট্রেডার্স (ঐচ্ছিক)'}
+                            placeholder=""
                             className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                           />
                         </div>
@@ -1543,7 +1576,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           }
                         >
                           <SelectTrigger className="rounded-xl h-10 bg-white border-slate-200 font-bold">
-                            <SelectValue placeholder="ধরন নির্বাচন করুন" />
+                            <SelectValue placeholder="" />
                           </SelectTrigger>
                           <SelectContent className="font-bengali text-xs">
                             {isEngineer ? (
@@ -1596,8 +1629,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                               required
                               value={formData.phone}
                               maxLength={11}
-                              onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/[^0-9]/g, '').slice(0, 11) })}
-                              placeholder="০১৭১১XXXXXX"
+                              onChange={(e) => setFormData({ ...formData, phone: toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11) })}
+                              placeholder=""
                               className="rounded-xl h-10 bg-white border-slate-200 pr-9 font-bold font-mono"
                             />
                           </div>
@@ -1607,8 +1640,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                               <Input
                                 value={formData.altPhone}
                                 maxLength={11}
-                                onChange={(e) => setFormData({ ...formData, altPhone: e.target.value.replace(/[^0-9]/g, '').slice(0, 11) })}
-                                placeholder="বিকল্প মোবাইল নম্বর"
+                                onChange={(e) => setFormData({ ...formData, altPhone: toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11) })}
+                                placeholder=""
                                 className="rounded-xl h-10 bg-white border-slate-200 pr-9 font-bold font-mono"
                               />
                             </div>
@@ -1624,7 +1657,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                             type="email"
                             value={formData.email}
                             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                            placeholder="ইমেইল এড্রেস লিখুন"
+                            placeholder=""
                             className="rounded-xl h-10 bg-white border-slate-200 pr-9 font-bold"
                           />
                         </div>
@@ -1752,7 +1785,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         <Input
                           value={formData.address}
                           onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                          placeholder={isEngineer ? 'চেম্বার বা অফিসের ঠিকানা' : 'দোকান বা বাড়ির বিস্তারিত ঠিকানা'}
+                          placeholder=""
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1762,7 +1795,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         <Input
                           value={formData.postcode}
                           onChange={(e) => setFormData({ ...formData, postcode: e.target.value })}
-                          placeholder="১২১৬"
+                          placeholder=""
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1820,7 +1853,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         <Input
                           value={formData.nid}
                           onChange={(e) => setFormData({ ...formData, nid: e.target.value })}
-                          placeholder={isEngineer ? 'IEB M-34821 বা NID' : 'এনআইডি বা লাইসেন্স নম্বর'}
+                          placeholder=""
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1830,7 +1863,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         <Input
                           value={formData.tinNumber}
                           onChange={(e) => setFormData({ ...formData, tinNumber: e.target.value })}
-                          placeholder="টিন সার্টিফিকেট নম্বর"
+                          placeholder=""
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1842,12 +1875,13 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           {isEngineer ? 'প্রারম্ভিক কমিশন / পাওনা (৳)' : 'প্রারম্ভিক বকেয়া / পাওনা (৳)'}
                         </Label>
                         <Input
-                          type="number"
-                          value={formData.openingBalance}
+                          type="text"
+                          inputMode="decimal"
+                          value={formData.openingBalance ?? ''}
                           onChange={(e) =>
                             setFormData({ ...formData, openingBalance: e.target.value })
                           }
-                          placeholder="০.০০"
+                          placeholder=""
                           className="rounded-xl h-10 bg-white border-slate-200 font-black text-rose-600"
                         />
                       </div>
@@ -1857,12 +1891,13 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           {isEngineer ? 'সর্বোচ্চ পাওনা লিমিট (৳)' : 'বাকি বা ঋণের সীমা (৳)'}
                         </Label>
                         <Input
-                          type="number"
-                          value={formData.creditLimit}
+                          type="text"
+                          inputMode="decimal"
+                          value={formData.creditLimit ?? ''}
                           onChange={(e) =>
                             setFormData({ ...formData, creditLimit: e.target.value })
                           }
-                          placeholder="৫০০০০০"
+                          placeholder=""
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1872,12 +1907,13 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           {isEngineer ? 'রেফারেল কমিশন হার (%)' : 'স্পেশাল কমিশন / ছাড় (%)'}
                         </Label>
                         <Input
-                          type="number"
-                          value={formData.discountPercent}
+                          type="text"
+                          inputMode="decimal"
+                          value={formData.discountPercent ?? ''}
                           onChange={(e) =>
                             setFormData({ ...formData, discountPercent: e.target.value })
                           }
-                          placeholder="০%"
+                          placeholder=""
                           className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                         />
                       </div>
@@ -1888,7 +1924,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         <BengaliDatePicker
                           value={formData.joinedDate}
                           onChange={(val) => setFormData({ ...formData, joinedDate: val })}
-                          placeholder="তারিখ নির্বাচন করুন"
+                          placeholder=""
                           className="w-full"
                         />
                       </div>
@@ -1918,17 +1954,17 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                             </Label>
                             <div className="relative">
                               <Input
-                                type="number"
-                                step="0.01"
-                                value={formData.rodCommissionRate}
+                                type="text"
+                                inputMode="decimal"
+                                value={formData.rodCommissionRate ?? ''}
                                 onChange={(e) => setFormData({ ...formData, rodCommissionRate: e.target.value })}
-                                placeholder="০.৫০ (৫০ পয়সা/কেজি)"
+                                placeholder=""
                                 className="rounded-lg h-10 bg-slate-50 border-orange-200 font-black text-slate-900 text-sm pl-7"
                               />
                               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xs">৳</span>
                             </div>
                             <p className="text-[10px] text-slate-500 font-medium">
-                              ১ টন রড বিক্রি হলে কমিশন হবে: <strong className="text-orange-700 font-bold font-mono">৳ {(Number(formData.rodCommissionRate || 0) * 1000).toLocaleString('en-IN')}</strong>
+                              ১ টন রড বিক্রি হলে কমিশন হবে: <strong className="text-orange-700 font-bold font-mono">৳ {(Number(toEnglishDigits(formData.rodCommissionRate) || 0) * 1000).toLocaleString('en-IN')}</strong>
                             </p>
                           </div>
 
@@ -1940,11 +1976,11 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                             </Label>
                             <div className="relative">
                               <Input
-                                type="number"
-                                step="0.1"
-                                value={formData.cementCommissionRate}
+                                type="text"
+                                inputMode="decimal"
+                                value={formData.cementCommissionRate ?? ''}
                                 onChange={(e) => setFormData({ ...formData, cementCommissionRate: e.target.value })}
-                                placeholder="১০.০০ (১০ টাকা/বস্তা)"
+                                placeholder=""
                                 className="rounded-lg h-10 bg-slate-50 border-orange-200 font-black text-slate-900 text-sm pl-7"
                               />
                               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xs">৳</span>
@@ -1964,7 +2000,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                       <Input
                         value={formData.note}
                         onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-                        placeholder={isEngineer ? 'বসুন্ধরা ৩ তলা রেসিডেন্সিয়াল সাইট, প্রতি টন রডে ৫০ টাকা ও প্রতি ব্যাগ সিমেন্টে ২০ টাকা কমিশন' : 'গ্রাহক সম্পর্কে যেকোনো অতিরিক্ত তথ্য বা নোট লিখে রাখুন'}
+                        placeholder=""
                         className="rounded-xl h-10 bg-white border-slate-200 font-bold"
                       />
                     </div>
@@ -2086,6 +2122,14 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
           </div>
         </div>
       )}
+
+      {/* Excel/CSV Bulk Data Import Modal */}
+      <DataImportModal
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        defaultType={isCustomer ? 'customers' : isEngineer ? 'customers' : 'suppliers'}
+        onSuccess={fetchParties}
+      />
     </Shell>
   );
 }

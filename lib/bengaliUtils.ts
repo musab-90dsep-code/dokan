@@ -1,5 +1,3 @@
-// Utility for converting numbers to Bengali digits and Bengali words (টাকা কথায়)
-
 export const toBengaliDigits = (num: number | string | undefined | null): string => {
   if (num === undefined || num === null || num === '') return '০';
   const str = String(num);
@@ -16,6 +14,20 @@ export const toBengaliDigits = (num: number | string | undefined | null): string
     '9': '৯',
   };
   return str.replace(/[0-9]/g, (match) => bengaliNumerals[match] || match);
+};
+
+export const toEnglishDigits = (str: string | number | undefined | null): string => {
+  if (str === undefined || str === null || str === '') return '';
+  const bnToEn: Record<string, string> = {
+    '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
+    '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'
+  };
+  return String(str).replace(/[০-৯]/g, (match) => bnToEn[match] || match);
+};
+
+export const normalizeForSearch = (str: string | number | undefined | null): string => {
+  if (!str) return '';
+  return toEnglishDigits(String(str)).toLowerCase().trim();
 };
 
 export const formatBengaliTaka = (amount: number | undefined | null, includeSymbol: boolean = false): string => {
