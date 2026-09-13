@@ -171,7 +171,30 @@ export function buildLedgerPrintRows(
       const items = tx.items || [];
       if (items.length > 0) {
         items.forEach((it: any) => {
-          const name = it.product_name || it.name || 'পণ্য';
+          let name = it.product_name || it.name || 'পণ্য';
+          // Clean any legacy Bijoy/Sutonny tokens if present
+          if (name.includes('wg:') || name.includes('iW') || name.includes('†d«m') || name.includes('G¨vsKi') || name.includes('Avi Gg')) {
+            name = name
+              .replace(/10 wg: wj †d«m iW/g, '10 মি.মি ফ্রেশ রড')
+              .replace(/12 wg: wj †d«m iW/g, '12 মি.মি ফ্রেশ রড')
+              .replace(/16 wg: wj †d«m iW/g, '16 মি.মি ফ্রেশ রড')
+              .replace(/20 wg: wj †d«m iW/g, '20 মি.মি ফ্রেশ রড')
+              .replace(/8 wg: wj †d«m iW/g, '8 মি.মি ফ্রেশ রড')
+              .replace(/16 wg: wj ‡K Gm Gg Gj iW/g, '16 মি.মি কেএসএমএল রড')
+              .replace(/10 wg: wj ‡K Gm Gg Gj iW/g, '10 মি.মি কেএসএমএল রড')
+              .replace(/8 wg: wj G Gm Avi Gg iW/g, '8 মি.মি বিএসআরএম রড')
+              .replace(/8 wg: wj we Gm Avi Gg iW/g, '8 মি.মি বিএসআরএম রড')
+              .replace(/10 wg: wj we Gm Avi Gg iW/g, '10 মি.মি বিএসআরএম রড')
+              .replace(/12 wg: wj we Gm Avi Gg iW/g, '12 মি.মি বিএসআরএম রড')
+              .replace(/16 wg: wj we Gm Avi Gg iW/g, '16 মি.মি বিএসআরএম রড')
+              .replace(/20 wg: wj we Gm Avi Gg iW/g, '20 মি.মি বিএসআরএম রড')
+              .replace(/G¨vsKi wm‡g›U/g, 'অ্যাংকর সিমেন্ট')
+              .replace(/G¨vsKi/g, 'অ্যাংকর')
+              .replace(/†d«m/g, 'ফ্রেশ')
+              .replace(/iW/g, 'রড')
+              .replace(/wg: wj/g, 'মি.মি')
+              .replace(/wg\.wj/g, 'মি.মি');
+          }
           const qty = Number(it.quantity || 1);
           const price = Number(it.price || 0);
           const itemTotal = Number(it.total) || (qty * price);

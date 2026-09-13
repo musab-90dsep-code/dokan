@@ -229,10 +229,36 @@ export function DataImportModal({
     return k;
   };
 
-  // Bijoy 52 / SutonnyMJ translation mappings
+  // Bijoy 52 / SutonnyMJ translation mappings (sorted longest phrase first)
   const SUTONNY_WORDS: [string, string][] = [
-    ['bRiæj Bmjvg', 'নজরুল ইসলাম'],
-    ['bweb evM', 'নবীন বাগ'],
+    // Fresh rod
+    ['10 wg: wj †d«m iW', '10 মি.মি ফ্রেশ রড'],
+    ['12 wg: wj †d«m iW', '12 মি.মি ফ্রেশ রড'],
+    ['16 wg: wj †d«m iW', '16 মি.মি ফ্রেশ রড'],
+    ['20 wg: wj †d«m iW', '20 মি.মি ফ্রেশ রড'],
+    ['22 wg: wj †d«m iW', '22 মি.মি ফ্রেশ রড'],
+    ['25 wg: wj †d«m iW', '25 মি.মি ফ্রেশ রড'],
+    ['8 wg: wj †d«m iW', '8 মি.মি ফ্রেশ রড'],
+
+    ['10 wg.wj †d«m iW', '10 মি.মি ফ্রেশ রড'],
+    ['12 wg.wj †d«m iW', '12 মি.মি ফ্রেশ রড'],
+    ['16 wg.wj †d«m iW', '16 মি.মি ফ্রেশ রড'],
+    ['20 wg.wj †d«m iW', '20 মি.মি ফ্রেশ রড'],
+    ['8 wg.wj †d«m iW', '8 মি.মি ফ্রেশ রড'],
+
+    // BSRM rod
+    ['10 wg: wj we Gm Avi Gg iW', '10 মি.মি বিএসআরএম রড'],
+    ['12 wg: wj we Gm Avi Gg iW', '12 মি.মি বিএসআরএম রড'],
+    ['16 wg: wj we Gm Avi Gg iW', '16 মি.মি বিএসআরএম রড'],
+    ['20 wg: wj we Gm Avi Gg iW', '20 মি.মি বিএসআরএম রড'],
+    ['8 wg: wj we Gm Avi Gg iW', '8 মি.মি বিএসআরএম রড'],
+
+    ['10 wg: wj G Gm Avi Gg iW', '10 মি.মি বিএসআরএম রড'],
+    ['12 wg: wj G Gm Avi Gg iW', '12 মি.মি বিএসআরএম রড'],
+    ['16 wg: wj G Gm Avi Gg iW', '16 মি.মি বিএসআরএম রড'],
+    ['20 wg: wj G Gm Avi Gg iW', '20 মি.মি বিএসআরএম রড'],
+    ['8 wg: wj G Gm Avi Gg iW', '8 মি.মি বিএসআরএম রড'],
+
     ['10 wg.wj we Gm Avi Gg', '10 মি.মি বিএসআরএম রড'],
     ['12 wg.wj we Gm Avi Gg', '12 মি.মি বিএসআরএম রড'],
     ['16 wg.wj we Gm Avi Gg', '16 মি.মি বিএসআরএম রড'],
@@ -241,25 +267,74 @@ export function DataImportModal({
     ['25 wg.wj we Gm Avi Gg', '25 মি.মি বিএসআরএম রড'],
     ['8 wg.wj we Gm Avi Gg', '8 মি.মি বিএসআরএম রড'],
     ['we Gm Avi Gg', 'বিএসআরএম রড'],
+
+    // KSML rod
+    ['16 wg: wj ‡K Gm Gg Gj iW', '16 মি.মি কেএসএমএল রড'],
+    ['10 wg: wj ‡K Gm Gg Gj iW', '10 মি.মি কেএসএমএল রড'],
+    ['12 wg: wj ‡K Gm Gg Gj iW', '12 মি.মি কেএসএমএল রড'],
+    ['20 wg: wj ‡K Gm Gg Gj iW', '20 মি.মি কেএসএমএল রড'],
+    ['8 wg: wj ‡K Gm Gg Gj iW', '8 মি.মি কেএসএমএল রড'],
+
+    // Anwar / AKS rod
+    ['10 wg: wj Av‡bvqvi iW', '10 মি.মি আনোয়ার রড'],
+    ['12 wg: wj Av‡bvqvi iW', '12 মি.মি আনোয়ার রড'],
+    ['16 wg: wj Av‡bvqvi iW', '16 মি.মি আনোয়ার রড'],
+    ['10 wg: wj G‡KGm iW', '10 মি.মি একেএস রড'],
+    ['12 wg: wj G‡KGm iW', '12 মি.মি একেএস রড'],
+    ['16 wg: wj G‡KGm iW', '16 মি.মি একেএস রড'],
+
+    // Cement
+    ['G¨vsKi wm‡g›U', 'অ্যাংকর সিমেন্ট'],
     ['wm‡g›U G¨vsKi Avc', 'অ্যাংকর সিমেন্ট'],
+    ['wm‡g›U G¨vsKi', 'অ্যাংকর সিমেন্ট'],
+    ['G¨vsKi Avc', 'অ্যাংকর সিমেন্ট'],
+    ['G¨vsKi', 'অ্যাংকর সিমেন্ট'],
     ['wm‡g›U †nvjwmg', 'হোলসিম সিমেন্ট'],
     ['†nvjwmg wm‡g›U', 'হোলসিম সিমেন্ট'],
     ['†nvjwmg', 'হোলসিম সিমেন্ট'],
     ['wm‡g›U', 'সিমেন্ট'],
+    ['‡kL wm‡g›U', 'শেখ সিমেন্ট'],
+    ['kvn wm‡g›U', 'শাহ সিমেন্ট'],
+    ['AvwKR wm‡g›U', 'আকিজ সিমেন্ট'],
+    ['µvDb wm‡g›U', 'ক্রাউন সিমেন্ট'],
+    ['†m‡fb wis wm‡g›U', 'সেভেন রিংস সিমেন্ট'],
+
+    // Charges
     ['‡jevwi', 'লেবার বিল'],
+    ['‡jevix', 'লেবার বিল'],
     ['fvov', 'ভাড়া'],
+
+    // Customer & Addresses
+    ['bRiæj Bmjvg', 'নজরুল ইসলাম'],
+    ['bweb evM', 'নবীন বাগ'],
+    ['mvBdzj Bmjvg', 'সাইফুল ইসলাম'],
+    ['mvw`Kzj Bmjvg', 'সাদিকুল ইসলাম'],
+    ['wgqvevwo', 'মিয়াবাড়ি'],
+    ['gyb G›UvicÖvBR', 'মুন এন্টারপ্রাইজ'],
+    ['cvPzwiqv', 'পাঁচুরিয়া'],
+    ['Pi gvwbK`v', 'চর মানিকদা'],
+    ['Ry‡qj †kL', 'জুয়েল শেখ'],
+    ['‡fv‡Rvi MvwZ', 'ভোজের গাতি'],
+    ['iv‡mj Avjg', 'রাসেল আলম'],
+    ['Bgb gvgv', 'ইমন মামা'],
+    ['‡nKgZ fvB', 'হেকমত ভাই'],
+
+    // Common column labels
     ['‡µZv', 'ক্রেতা'],
     ['wVKvbv', 'ঠিকানা'],
     ['ZvwiL', 'তারিখ'],
     ['weeib', 'বিবরণ'],
     ['cwigvb', 'পরিমাণ'],
-    ['`i', 'দর'],
     ['Rgv', 'জমা'],
     ['UvKv', 'টাকা'],
     ['evKx', 'বাকী'],
     ['‡gvU', 'মোট'],
-    ['K_vq', 'কথায়']
+    ['K_vq', 'কথায়'],
+    ['`i', 'দর']
   ];
+
+  // Sort descending by length so compound phrases replace before single words
+  SUTONNY_WORDS.sort((a, b) => b[0].length - a[0].length);
 
   const cleanSutonny = (txt: any): string => {
     if (txt === null || txt === undefined) return '';
@@ -269,6 +344,12 @@ export function DataImportModal({
         str = str.split(k).join(v);
       }
     }
+    // Clean residual Bijoy tokens
+    str = str.split('iW').join('রড');
+    str = str.split('†d«m').join('ফ্রেশ');
+    str = str.split('wg: wj').join('মি.মি');
+    str = str.split('wg.wj').join('মি.মি');
+    str = str.split('G¨vsKi').join('অ্যাংকর');
     return str.trim();
   };
 
