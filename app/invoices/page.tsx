@@ -598,12 +598,15 @@ function InvoicesContent() {
     const existing = cart.find(i => i.name === itemName || (foundProd && String(i.id) === String(foundProd.id)));
     const currentInCart = existing ? Number(existing.quantity) : 0;
 
+    const parsedItem = parseProductDetails({ name: itemName, category: selectedCascadingProduct?.category || (foundProd as any)?.category });
+    const isRing = parsedItem.categoryName === 'রিং' || itemName.includes('রিং');
+    const itemUnitToUse = isRing ? 'কেজি' : (selectedCascadingProduct?.unit || foundProd?.unit || 'পিস');
+
     if (currentInCart + requestedQty > availableStock) {
-      toast.error(`⚠️ স্টকে মাত্র ${availableStock} ${foundProd?.unit || 'পিস'} রয়েছে! (কার্টে ইতিমধ্যে আছে: ${currentInCart} ${foundProd?.unit || 'পিস'}), এর বেশি যোগ করা সম্ভব নয়।`);
+      toast.error(`⚠️ স্টকে মাত্র ${availableStock} ${itemUnitToUse} রয়েছে! (কার্টে ইতিমধ্যে আছে: ${currentInCart} ${itemUnitToUse}), এর বেশি যোগ করা সম্ভব নয়।`);
       return;
     }
 
-    const itemUnitToUse = selectedCascadingProduct?.unit || foundProd?.unit || 'পিস';
     const itemId = selectedCascadingProduct?.productId || selectedProductId || foundProd?.id || String(Date.now());
     const finalPrice = itemPrice || selectedCascadingProduct?.price || foundProd?.sellPrice || 0;
 

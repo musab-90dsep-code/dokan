@@ -374,7 +374,8 @@ export default function OrdersPage() {
       return;
     }
 
-    const itemUnitToUse = selectedCascadingProduct?.unit || 'বস্তা/কেজি';
+    const isRing = (selectedCascadingProduct?.category === 'রিং') || (itemName || '').includes('রিং');
+    const itemUnitToUse = isRing ? 'কেজি' : (selectedCascadingProduct?.unit || 'বস্তা/কেজি');
     const itemId = selectedCascadingProduct?.productId || selectedProductId || String(Date.now());
     const finalPrice = selectedCascadingProduct?.price || 0;
 

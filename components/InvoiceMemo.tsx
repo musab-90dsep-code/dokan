@@ -552,7 +552,7 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                       <td className="border border-slate-300 py-1.5 px-2 text-center">{item.brand || '—'}</td>
                       <td className="border border-slate-300 py-1.5 px-2 text-center">{item.variant || '—'}</td>
                       <td className="border border-slate-300 py-1.5 px-2 text-center font-mono font-bold">{toBengaliDigits(itemQty.toLocaleString('en-IN'))}</td>
-                      <td className="border border-slate-300 py-1.5 px-2 text-center">{item.unit || 'পিস'}</td>
+                      <td className="border border-slate-300 py-1.5 px-2 text-center">{isRing ? 'কেজি' : (item.unit || 'পিস')}</td>
                       <td className="border border-slate-300 py-1.5 px-2 text-right font-mono font-bold">
                         ৳ {toBengaliDigits(itemPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
                       </td>

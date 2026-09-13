@@ -162,7 +162,8 @@ export default function PurchasesPage() {
       return;
     }
 
-    const unitToUse = selectedCascadingProduct?.unit || itemUnit || 'পিস';
+    const isRing = selectedCascadingProduct?.category === 'রিং' || (nameToUse || '').includes('রিং');
+    const unitToUse = isRing ? 'কেজি' : (selectedCascadingProduct?.unit || itemUnit || 'পিস');
     const prodId = selectedCascadingProduct ? (selectedCascadingProduct.productId || `temp_${Date.now()}`) : (selectedProductId || `temp_${Date.now()}`);
 
     const newItem: PurchaseItem = {
@@ -529,6 +530,10 @@ export default function PurchasesPage() {
     const product = products.find(p => p.id === selectedProductId);
     if (!product) return;
 
+    const parsed = parseProductDetails({ name: product.name || '' });
+    const isRing = parsed.categoryName === 'রিং' || (product.name || '').includes('রিং');
+    const unitToUse = isRing ? 'কেজি' : (product.unit || 'পিস');
+
     const existingIndex = cart.findIndex(i => i.id === product.id);
     if (existingIndex > -1) {
       const updated = [...cart];
@@ -539,7 +544,7 @@ export default function PurchasesPage() {
       setCart(prev => [...prev, {
         id: product.id,
         name: product.name,
-        unit: product.unit || 'পিস',
+        unit: unitToUse,
         price: itemPrice > 0 ? itemPrice : (product.buyPrice || 0),
         quantity: itemQty || 1,
         discount: 0

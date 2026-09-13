@@ -525,7 +525,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
                         {toBengaliDigits(itemQty.toLocaleString('en-IN'))}
                       </td>
                       <td className="py-2.5 px-2 text-center text-slate-600">
-                        {item.unit || 'পিস'}
+                        {isRing ? 'কেজি' : (item.unit || 'পিস')}
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono font-bold text-slate-900">
                         ৳ {toBengaliDigits(itemPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}

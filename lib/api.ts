@@ -374,6 +374,12 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ parties }),
       });
+    },
+    bulkImportLedger: async (data: { party_id?: string | number; clear_existing?: boolean; group_by_date?: boolean; entries: any[] }): Promise<{ success: boolean; created_count: number; affected_parties_count: number; errors: string[] }> => {
+      return request('/parties/bulk-import-ledger/', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
     }
   },
 

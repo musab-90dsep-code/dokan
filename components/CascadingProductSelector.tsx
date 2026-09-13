@@ -525,7 +525,7 @@ export function CascadingProductSelector({
       } else {
         constructedName = activeMm ? `${activeMm} রিং ${activeBrand && activeBrand !== 'সাইট মেইড' ? `(${activeBrand})` : ''}`.trim() : '';
       }
-      defaultUnit = 'পিস';
+      defaultUnit = 'কেজি';
     }
 
     if (!constructedName) {
@@ -579,7 +579,7 @@ export function CascadingProductSelector({
         name: exact.name,
         price: isPurchaseMode ? (buyP || sellP) : (sellP || buyP),
         sellPrice: sellP,
-        unit: exact.unit || defaultUnit,
+        unit: category === 'রিং' ? 'কেজি' : (exact.unit || defaultUnit),
         stock: exact.stock || 0,
       };
     }
@@ -620,7 +620,7 @@ export function CascadingProductSelector({
         name: partial.name,
         price: isPurchaseMode ? (buyP || sellP) : (sellP || buyP),
         sellPrice: sellP,
-        unit: partial.unit || defaultUnit,
+        unit: category === 'রিং' ? 'কেজি' : (partial.unit || defaultUnit),
         stock: partial.stock || 0,
       };
     }
