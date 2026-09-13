@@ -15,7 +15,7 @@ import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { toBengaliDigits } from '@/lib/bengaliUtils';
+import { toBengaliDigits, toEnglishDigits } from '@/lib/bengaliUtils';
 import {
   FileSpreadsheet,
   UploadCloud,
@@ -204,10 +204,13 @@ export function DataImportModal({
 
         // Clean numbers & values
         if (activeType === 'customers' || activeType === 'suppliers') {
-          const due = parseFloat(String(item.due || 0).replace(/[^0-9.-]+/g, '')) || 0;
+          const rawDue = item.due !== undefined && item.due !== '' ? item.due : (item.amount !== undefined && item.amount !== '' ? item.amount : 0);
+          const dueEn = toEnglishDigits(String(rawDue)).replace(/[^0-9.-]+/g, '');
+          const due = parseFloat(dueEn) || 0;
+          const phoneEn = toEnglishDigits(item.phone ? String(item.phone) : '').replace(/[^0-9]/g, '');
           return {
             name: item.name || '',
-            phone: item.phone ? String(item.phone).replace(/\s+/g, '') : '',
+            phone: phoneEn,
             business_name: item.business_name || '',
             address: item.address || '',
             opening_balance: due,
@@ -215,9 +218,9 @@ export function DataImportModal({
             party_type: activeType === 'suppliers' ? 'supplier' : 'customer'
           };
         } else if (activeType === 'products') {
-          const stock = parseFloat(String(item.stock || 0).replace(/[^0-9.-]+/g, '')) || 0;
-          const purchase_price = parseFloat(String(item.purchase_price || 0).replace(/[^0-9.-]+/g, '')) || 0;
-          const sell_price = parseFloat(String(item.sell_price || 0).replace(/[^0-9.-]+/g, '')) || 0;
+          const stock = parseFloat(toEnglishDigits(String(item.stock || 0)).replace(/[^0-9.-]+/g, '')) || 0;
+          const purchase_price = parseFloat(toEnglishDigits(String(item.purchase_price || 0)).replace(/[^0-9.-]+/g, '')) || 0;
+          const sell_price = parseFloat(toEnglishDigits(String(item.sell_price || 0)).replace(/[^0-9.-]+/g, '')) || 0;
           return {
             name: item.name || '',
             category_name: item.category || 'সাধারণ পণ্য',
@@ -228,7 +231,7 @@ export function DataImportModal({
             brand: item.brand || ''
           };
         } else if (activeType === 'expenses') {
-          const amount = parseFloat(String(item.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+          const amount = parseFloat(toEnglishDigits(String(item.amount || 0)).replace(/[^0-9.-]+/g, '')) || 0;
           return {
             title: item.name || item.title || 'সাধারণ খরচ',
             category_name: item.category || 'সাধারণ খরচ',

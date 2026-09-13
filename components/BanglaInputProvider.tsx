@@ -95,9 +95,9 @@ export function BanglaInputProvider({ children }: { children: React.ReactNode })
       const target = e.target as HTMLInputElement | HTMLTextAreaElement;
       if (!target || !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
 
-      // Skip non-text inputs (password, date, etc.)
+      // Skip non-text inputs (password, date, number, etc.)
       const inputType = target.getAttribute('type') || 'text';
-      if (['password', 'email', 'file', 'checkbox', 'radio', 'range', 'color', 'date', 'time', 'datetime-local'].includes(inputType)) {
+      if (['password', 'email', 'file', 'checkbox', 'radio', 'range', 'color', 'date', 'time', 'datetime-local', 'number'].includes(inputType)) {
         return;
       }
       if (target.dataset.noBangla === 'true') {
@@ -226,6 +226,9 @@ export function BanglaInputProvider({ children }: { children: React.ReactNode })
       if (!target || !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
       if (target.dataset.noBangla === 'true') return;
 
+      const inputType = target.getAttribute('type') || 'text';
+      if (['password', 'email', 'file', 'checkbox', 'radio', 'range', 'color', 'date', 'time', 'datetime-local', 'number'].includes(inputType)) return;
+
       const text = e.clipboardData?.getData('text');
       if (!text) return;
 
@@ -265,9 +268,16 @@ export function BanglaInputProvider({ children }: { children: React.ReactNode })
  * Helper to insert text at cursor position in input or textarea
  */
 function insertTextAtCursor(target: HTMLInputElement | HTMLTextAreaElement, text: string) {
-  const start = target.selectionStart ?? target.value.length;
-  const end = target.selectionEnd ?? target.value.length;
-  const val = target.value;
+  let start = 0;
+  let end = 0;
+  try {
+    start = target.selectionStart ?? (target.value ? target.value.length : 0);
+    end = target.selectionEnd ?? (target.value ? target.value.length : 0);
+  } catch {
+    start = target.value ? target.value.length : 0;
+    end = target.value ? target.value.length : 0;
+  }
+  const val = target.value || '';
   const nextValue = val.substring(0, start) + text + val.substring(end);
   const newCursorPos = start + text.length;
 
@@ -282,7 +292,9 @@ function insertTextAtCursor(target: HTMLInputElement | HTMLTextAreaElement, text
     target.value = nextValue;
   }
 
-  target.setSelectionRange(newCursorPos, newCursorPos);
+  try {
+    target.setSelectionRange(newCursorPos, newCursorPos);
+  } catch {}
   target.dispatchEvent(new Event('input', { bubbles: true }));
 }
 

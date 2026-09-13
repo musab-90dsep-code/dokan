@@ -891,7 +891,7 @@ function InvoicesContent() {
         const createdParty = await api.parties.create({
           party_type: 'customer',
           name: newCustomerData.name.trim(),
-          phone: newCustomerData.phone.trim(),
+          phone: toEnglishDigits(newCustomerData.phone).trim(),
           address: newCustomerData.address.trim()
         });
         finalCustId = String(createdParty.id);
@@ -1853,8 +1853,11 @@ function InvoicesContent() {
                               placeholder="মোবাইল নম্বর (১১ ডিজিট)"
                               value={newCustomerData.phone}
                               maxLength={11}
-                              onChange={e => setNewCustomerData({ ...newCustomerData, phone: toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11) })}
-                              className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-mono"
+                              onChange={e => {
+                                const val = toBengaliDigits(e.target.value).replace(/[^০-৯]/g, '').slice(0, 11);
+                                setNewCustomerData({ ...newCustomerData, phone: val });
+                              }}
+                              className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali tracking-wide"
                             />
                           </div>
                         )}
@@ -2071,10 +2074,21 @@ function InvoicesContent() {
                                 <TableCell className="text-center font-bold text-slate-700">{parsed.brandName}</TableCell>
                                 <TableCell className="text-center font-bold text-slate-700">{parsed.sizeName}</TableCell>
                                 <TableCell className="text-center">
-                                  <div className="inline-flex items-center gap-1.5">
-                                    <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity - 1, idx)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold hover:bg-slate-200">-</button>
-                                    <span className="font-bold">{toBengaliDigits(item.quantity)} {item.unit}</span>
-                                    <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity + 1, idx)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold hover:bg-slate-200">+</button>
+                                  <div className="inline-flex items-center justify-center gap-1">
+                                    <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity - 1, idx)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold hover:bg-slate-200 cursor-pointer">-</button>
+                                    <Input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={toBengaliDigits(item.quantity)}
+                                      onChange={(e) => {
+                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
+                                        const val = parseFloat(raw) || 0;
+                                        handleUpdateCartQty(item.id || idx, val, idx);
+                                      }}
+                                      className="w-16 h-7 text-center font-bold text-xs font-bengali p-1 border-slate-300 bg-white"
+                                    />
+                                    <span className="font-bold text-slate-600 text-[11px]">{item.unit}</span>
+                                    <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity + 1, idx)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold hover:bg-slate-200 cursor-pointer">+</button>
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-right font-medium text-slate-600">৳{toBengaliDigits((item.price || 0).toLocaleString('en-IN'))}</TableCell>
@@ -2176,10 +2190,12 @@ function InvoicesContent() {
                         <div className="space-y-1">
                           <Label className="text-[11px] font-bold text-slate-600">ছাড়ের পরিমাণ (% / ৳)</Label>
                           <Input 
-                            type="number"
-                            value={discountType === 'percentage' ? (discountPercent || '') : (discountFlat || '')}
+                            type="text"
+                            inputMode="decimal"
+                            value={discountType === 'percentage' ? (discountPercent ? toBengaliDigits(discountPercent) : '') : (discountFlat ? toBengaliDigits(discountFlat) : '')}
                             onChange={e => {
-                              const val = parseFloat(e.target.value) || 0;
+                              const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
+                              const val = parseFloat(raw) || 0;
                               if (discountType === 'percentage') setDiscountPercent(val);
                               else setDiscountFlat(val);
                             }}
@@ -2252,10 +2268,13 @@ function InvoicesContent() {
                                   <Label className="text-[11px] font-bold text-slate-600">লেবার রেট (৳/কেজি)</Label>
                                   <div className="relative">
                                     <Input 
-                                      type="number"
-                                      step="0.01"
-                                      value={rodLaborRate || ''}
-                                      onChange={e => setRodLaborRate(parseFloat(e.target.value) || 0)}
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={rodLaborRate ? toBengaliDigits(rodLaborRate) : ''}
+                                      onChange={e => {
+                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
+                                        setRodLaborRate(parseFloat(raw) || 0);
+                                      }}
                                       placeholder="০.০০"
                                       className="rounded-md h-9 bg-white border-sky-300 text-xs font-bold text-amber-700 font-bengali pr-20"
                                     />
@@ -2268,10 +2287,13 @@ function InvoicesContent() {
                                   <Label className="text-[11px] font-bold text-slate-600">গাড়ি ভাড়া রেট (৳/কেজি)</Label>
                                   <div className="relative">
                                     <Input 
-                                      type="number"
-                                      step="0.01"
-                                      value={rodShippingRate || ''}
-                                      onChange={e => setRodShippingRate(parseFloat(e.target.value) || 0)}
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={rodShippingRate ? toBengaliDigits(rodShippingRate) : ''}
+                                      onChange={e => {
+                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
+                                        setRodShippingRate(parseFloat(raw) || 0);
+                                      }}
                                       placeholder="০.০০"
                                       className="rounded-md h-9 bg-white border-sky-300 text-xs font-bold text-sky-700 font-bengali pr-20"
                                     />
@@ -2303,10 +2325,13 @@ function InvoicesContent() {
                                   </div>
                                   <div className="relative">
                                     <Input 
-                                      type="number"
-                                      step="0.01"
-                                      value={cementLaborRate || ''}
-                                      onChange={e => setCementLaborRate(parseFloat(e.target.value) || 0)}
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={cementLaborRate ? toBengaliDigits(cementLaborRate) : ''}
+                                      onChange={e => {
+                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
+                                        setCementLaborRate(parseFloat(raw) || 0);
+                                      }}
                                       placeholder="০.০০"
                                       className="rounded-md h-9 bg-white border-amber-300 text-xs font-bold text-amber-700 font-bengali pr-20"
                                     />
@@ -2322,10 +2347,13 @@ function InvoicesContent() {
                                   <Label className="text-[11px] font-bold text-slate-600">গাড়ি ভাড়া রেট (৳/বস্তা)</Label>
                                   <div className="relative">
                                     <Input 
-                                      type="number"
-                                      step="0.01"
-                                      value={cementShippingRate || ''}
-                                      onChange={e => setCementShippingRate(parseFloat(e.target.value) || 0)}
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={cementShippingRate ? toBengaliDigits(cementShippingRate) : ''}
+                                      onChange={e => {
+                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
+                                        setCementShippingRate(parseFloat(raw) || 0);
+                                      }}
                                       placeholder="০.০০"
                                       className="rounded-md h-9 bg-white border-amber-300 text-xs font-bold text-amber-800 font-bengali pr-20"
                                     />
@@ -2343,9 +2371,13 @@ function InvoicesContent() {
                           <div className="space-y-1">
                             <Label className="text-[11px] font-bold text-slate-600">লেবার খরচ (৳)</Label>
                             <Input 
-                              type="number"
-                              value={manualLaborCost || ''}
-                              onChange={e => setManualLaborCost(parseFloat(e.target.value) || 0)}
+                              type="text"
+                              inputMode="decimal"
+                              value={manualLaborCost ? toBengaliDigits(manualLaborCost) : ''}
+                              onChange={e => {
+                                const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
+                                setManualLaborCost(parseFloat(raw) || 0);
+                              }}
                               placeholder="০"
                               className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold text-amber-600 font-bengali"
                             />
@@ -2354,9 +2386,13 @@ function InvoicesContent() {
                           <div className="space-y-1">
                             <Label className="text-[11px] font-bold text-slate-600">গাড়ি ভাড়া (৳)</Label>
                             <Input 
-                              type="number"
-                              value={manualShippingCost || ''}
-                              onChange={e => setManualShippingCost(parseFloat(e.target.value) || 0)}
+                              type="text"
+                              inputMode="decimal"
+                              value={manualShippingCost ? toBengaliDigits(manualShippingCost) : ''}
+                              onChange={e => {
+                                const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
+                                setManualShippingCost(parseFloat(raw) || 0);
+                              }}
                               placeholder="০"
                               className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali"
                             />
@@ -2429,9 +2465,13 @@ function InvoicesContent() {
                                   <div className="space-y-1 min-w-0">
                                     <Label className="text-[11px] font-bold text-slate-700 truncate block">নগদ জমার পরিমাণ (৳)</Label>
                                     <Input 
-                                      type="number"
-                                      value={cashPaidAmount || ''}
-                                      onChange={e => setCashPaidAmount(parseFloat(e.target.value) || 0)}
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={cashPaidAmount ? toBengaliDigits(cashPaidAmount) : ''}
+                                      onChange={e => {
+                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
+                                        setCashPaidAmount(parseFloat(raw) || 0);
+                                      }}
                                       placeholder="০"
                                       className="rounded-md h-10 bg-emerald-50/70 border-emerald-300 text-xs font-black text-emerald-700 font-bengali w-full"
                                     />
@@ -2439,9 +2479,13 @@ function InvoicesContent() {
                                   <div className="space-y-1 min-w-0">
                                     <Label className="text-[11px] font-bold text-slate-700 truncate block">চেক জমার পরিমাণ (৳)</Label>
                                     <Input 
-                                      type="number"
-                                      value={chequePaidAmount || ''}
-                                      onChange={e => setChequePaidAmount(parseFloat(e.target.value) || 0)}
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={chequePaidAmount ? toBengaliDigits(chequePaidAmount) : ''}
+                                      onChange={e => {
+                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
+                                        setChequePaidAmount(parseFloat(raw) || 0);
+                                      }}
                                       placeholder="০"
                                       className="rounded-md h-10 bg-purple-50/70 border-purple-300 text-xs font-black text-purple-700 font-bengali w-full"
                                     />
@@ -2451,10 +2495,12 @@ function InvoicesContent() {
                                 <div className="space-y-1 sm:col-span-2">
                                   <Label className="text-[11px] font-bold text-slate-600">পরিশোধিত জমার পরিমাণ (৳)</Label>
                                   <Input 
-                                    type="number"
-                                    value={invoicePaidAmount || ''}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={invoicePaidAmount ? toBengaliDigits(invoicePaidAmount) : ''}
                                     onChange={e => {
-                                      const val = parseFloat(e.target.value) || 0;
+                                      const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
+                                      const val = parseFloat(raw) || 0;
                                       setInvoicePaidAmount(val);
                                       if (invoicePaymentMethod === 'Cash') setCashPaidAmount(val);
                                       if (invoicePaymentMethod === 'Cheque') setChequePaidAmount(val);

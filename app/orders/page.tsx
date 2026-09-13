@@ -475,7 +475,7 @@ export default function OrdersPage() {
         const createdParty = await api.parties.create({
           party_type: 'customer',
           name: newCustomerData.name.trim(),
-          phone: newCustomerData.phone.trim(),
+          phone: toEnglishDigits(newCustomerData.phone).trim(),
           address: newCustomerData.address.trim(),
           business_name: newCustomerData.businessName.trim()
         });
@@ -1099,9 +1099,12 @@ export default function OrdersPage() {
                         />
                         <Input 
                           value={newCustomerData.phone} 
-                          onChange={e => setNewCustomerData(prev => ({ ...prev, phone: toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11) }))} 
+                          onChange={e => {
+                            const val = toBengaliDigits(e.target.value).replace(/[^০-৯]/g, '').slice(0, 11);
+                            setNewCustomerData(prev => ({ ...prev, phone: val }));
+                          }}
                           placeholder="মোবাইল নম্বর" 
-                          className="rounded-md h-11 border-slate-200 text-xs bg-white" 
+                          className="rounded-md h-11 border-slate-200 text-xs bg-white font-bengali tracking-wide" 
                         />
                       </div>
                     )}

@@ -238,8 +238,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       businessName: p.businessName || '',
       name: p.name || '',
       customerType: p.customerType || p.supplyType || (isEngineer ? 'সিভিল ইঞ্জিনিয়ার' : isCustomer ? 'খুচরা গ্রাহক' : 'রড'),
-      phone: p.phone || '',
-      altPhone: p.altPhone || '',
+      phone: p.phone ? toBnDigits(p.phone) : '',
+      altPhone: p.altPhone ? toBnDigits(p.altPhone) : '',
       email: p.email || '',
       country: p.country || 'বাংলাদেশ',
       division: p.division || 'ঢাকা',
@@ -1629,9 +1629,12 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                               required
                               value={formData.phone}
                               maxLength={11}
-                              onChange={(e) => setFormData({ ...formData, phone: toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11) })}
-                              placeholder=""
-                              className="rounded-xl h-10 bg-white border-slate-200 pr-9 font-bold font-mono"
+                              onChange={(e) => {
+                                const val = toBnDigits(e.target.value).replace(/[^০-৯]/g, '').slice(0, 11);
+                                setFormData({ ...formData, phone: val });
+                              }}
+                              placeholder="০১৭১..."
+                              className="rounded-xl h-10 bg-white border-slate-200 pr-9 font-bold font-bengali text-sm tracking-wide"
                             />
                           </div>
                           {formData.altPhone !== undefined && (
@@ -1640,9 +1643,12 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                               <Input
                                 value={formData.altPhone}
                                 maxLength={11}
-                                onChange={(e) => setFormData({ ...formData, altPhone: toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11) })}
-                                placeholder=""
-                                className="rounded-xl h-10 bg-white border-slate-200 pr-9 font-bold font-mono"
+                                onChange={(e) => {
+                                  const val = toBnDigits(e.target.value).replace(/[^০-৯]/g, '').slice(0, 11);
+                                  setFormData({ ...formData, altPhone: val });
+                                }}
+                                placeholder="০১৭১..."
+                                className="rounded-xl h-10 bg-white border-slate-200 pr-9 font-bold font-bengali text-sm tracking-wide"
                               />
                             </div>
                           )}

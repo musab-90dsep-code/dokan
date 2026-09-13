@@ -611,7 +611,7 @@ export default function PurchasesPage() {
           supply_type: purchaseType === 'rod' ? 'রড' : 'সিমেন্ট',
           name: suppName,
           business_name: suppName,
-          phone: newSupplierData.phone.trim(),
+          phone: toEnglishDigits(newSupplierData.phone).trim(),
           address: newSupplierData.address.trim()
         });
         finalSuppId = String(createdParty.id);
@@ -1502,8 +1502,11 @@ export default function PurchasesPage() {
                               placeholder="মোবাইল নম্বর (১১ ডিজিট)"
                               value={newSupplierData.phone}
                               maxLength={11}
-                              onChange={e => setNewSupplierData({ ...newSupplierData, phone: toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11) })}
-                              className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-mono"
+                              onChange={e => {
+                                const val = toBengaliDigits(e.target.value).replace(/[^০-৯]/g, '').slice(0, 11);
+                                setNewSupplierData({ ...newSupplierData, phone: val });
+                              }}
+                              className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali tracking-wide"
                             />
                           </div>
                         )}

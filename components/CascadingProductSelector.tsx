@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
 import { toast } from 'sonner';
-import { toBengaliDigits } from '@/lib/bengaliUtils';
+import { toBengaliDigits, toEnglishDigits } from '@/lib/bengaliUtils';
 
 export interface ProductInventoryItem {
   id: string;
@@ -1046,17 +1046,29 @@ export function CascadingProductSelector({
       <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end pt-1">
         {/* Quantity Field */}
         <div className={cn(isPurchaseMode ? 'sm:col-span-3' : 'sm:col-span-4', 'space-y-1')}>
-          <Label className="text-[11px] font-bold text-slate-600">পরিমাণ ({matchedProductInfo.unit})</Label>
+          <div className="flex items-center justify-between">
+            <Label className="text-[11px] font-bold text-slate-600">পরিমাণ ({matchedProductInfo.unit})</Label>
+            {matchedProductInfo.productId && (
+              <span className={cn(
+                "text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1",
+                matchedProductInfo.stock > 0 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-700"
+              )}>
+                <span>স্টক:</span>
+                <span>{toBengaliDigits(matchedProductInfo.stock.toLocaleString('en-IN'))} {matchedProductInfo.unit}</span>
+              </span>
+            )}
+          </div>
           <Input
-            type="number"
-            min="1"
-            value={!itemQty && itemQty !== 0 ? '' : itemQty}
+            type="text"
+            inputMode="decimal"
+            value={itemQty ? toBengaliDigits(itemQty) : ''}
             onChange={(e) => {
               const val = e.target.value;
-              if (val === '') {
+              const enStr = toEnglishDigits(val).replace(/[^0-9.]/g, '');
+              if (enStr === '') {
                 onQtyChange('' as any);
               } else {
-                const parsed = parseFloat(val);
+                const parsed = parseFloat(enStr);
                 const newQty = isNaN(parsed) ? ('' as any) : parsed;
                 onQtyChange(newQty);
                 if (typeof newQty === 'number' && newQty > 0 && enteredTotal !== '' && Number(enteredTotal) > 0) {
@@ -1068,7 +1080,8 @@ export function CascadingProductSelector({
               }
             }}
             onFocus={(e) => e.target.select()}
-            className="rounded-xl h-10 bg-white text-center font-bold text-xs"
+            placeholder="পরিমাণ লিখুন"
+            className="rounded-xl h-10 bg-white text-center font-bold text-xs font-bengali tracking-wide"
           />
         </div>
 
@@ -1080,17 +1093,18 @@ export function CascadingProductSelector({
               <span className="text-[9px] font-bold text-indigo-500">(ইনভয়েস মোট টাকা)</span>
             </Label>
             <Input
-              type="number"
-              min="0"
-              value={enteredTotal !== '' ? enteredTotal : ''}
+              type="text"
+              inputMode="decimal"
+              value={enteredTotal !== '' ? toBengaliDigits(enteredTotal) : ''}
               onChange={(e) => {
                 const val = e.target.value;
-                if (val === '') {
+                const enStr = toEnglishDigits(val).replace(/[^0-9.]/g, '');
+                if (enStr === '') {
                   setEnteredTotal('');
                   onPriceChange(0);
                   if (onTotalPriceChange) onTotalPriceChange(0);
                 } else {
-                  const parsed = parseFloat(val);
+                  const parsed = parseFloat(enStr);
                   const newTotal = isNaN(parsed) ? '' : parsed;
                   setEnteredTotal(newTotal);
                   if (typeof newTotal === 'number') {
@@ -1104,7 +1118,7 @@ export function CascadingProductSelector({
               }}
               onFocus={(e) => e.target.select()}
               placeholder="মোট টাকা লিখুন"
-              className="rounded-xl h-10 bg-indigo-50/70 border-indigo-200 text-center font-black text-xs text-indigo-700 focus:bg-white transition-colors"
+              className="rounded-xl h-10 bg-indigo-50/70 border-indigo-200 text-center font-black text-xs text-indigo-700 focus:bg-white transition-colors font-bengali tracking-wide"
             />
           </div>
         )}
@@ -1114,22 +1128,22 @@ export function CascadingProductSelector({
           <div className="sm:col-span-4 space-y-1">
             <Label className="text-[11px] font-bold text-slate-600">{priceLabel}</Label>
             <Input
-              type="number"
-              min="0"
-              step="any"
-              value={!itemPrice && itemPrice !== 0 ? '' : itemPrice}
+              type="text"
+              inputMode="decimal"
+              value={!itemPrice && itemPrice !== 0 ? '' : toBengaliDigits(itemPrice)}
               onChange={(e) => {
                 const val = e.target.value;
-                if (val === '') {
+                const enStr = toEnglishDigits(val).replace(/[^0-9.]/g, '');
+                if (enStr === '') {
                   onPriceChange('' as any);
                 } else {
-                  const parsed = parseFloat(val);
+                  const parsed = parseFloat(enStr);
                   onPriceChange(isNaN(parsed) ? ('' as any) : parsed);
                 }
               }}
               onFocus={(e) => e.target.select()}
-              placeholder="0"
-              className="rounded-xl h-10 bg-white text-center font-bold text-xs text-orange-600"
+              placeholder="০.০০"
+              className="rounded-xl h-10 bg-white text-center font-bold text-xs text-orange-600 font-bengali tracking-wide"
             />
           </div>
         )}
@@ -1208,11 +1222,19 @@ export function CascadingProductSelector({
       </div>
 
       {/* Selected Item Summary Pill */}
-      <div className="flex items-center justify-between text-xs bg-white p-2.5 rounded-xl border border-slate-200/80">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between text-xs bg-white p-2.5 rounded-xl border border-slate-200/80 flex-wrap gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-slate-400 font-bold">আইটেম সারসংক্ষেপ:</span>
-          <span className="font-black text-slate-900">{matchedProductInfo.name}</span>
-          <span className="text-slate-500 font-bold">({toBengaliDigits(itemQty)} {matchedProductInfo.unit})</span>
+          <span className="font-black text-slate-900">{matchedProductInfo.name || 'পণ্য নির্বাচন করুন'}</span>
+          <span className="text-slate-500 font-bold">({toBengaliDigits(itemQty || 0)} {matchedProductInfo.unit})</span>
+          {matchedProductInfo.productId && (
+            <span className={cn(
+              "text-[11px] font-bold px-2 py-0.5 rounded-md border",
+              matchedProductInfo.stock > 0 ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
+            )}>
+              বর্তমান মজুত: <strong>{toBengaliDigits(matchedProductInfo.stock.toLocaleString('en-IN'))} {matchedProductInfo.unit}</strong>
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {(isPurchaseMode ? (enteredTotal !== '' || (itemPrice > 0 && itemQty > 0)) : showPriceField) && (
