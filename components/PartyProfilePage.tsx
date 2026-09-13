@@ -487,7 +487,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
       if (isEngineer) {
         // Fetch sales transactions to find invoices where this engineer earned commission
         const salesList = await api.transactions.list({ transaction_type: 'sale' }).catch(() => []);
-        const directList = await api.transactions.list({ party: Number(id) }).catch(() => []);
+        const directList = await api.transactions.list({ party: Number(id), include_historical: 'true' }).catch(() => []);
 
         const engineerSales = salesList.filter(s => {
           let meta: any = {};
@@ -503,7 +503,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
 
         rawTxList = [...engineerSales, ...directList];
       } else {
-        rawTxList = await api.transactions.list({ party: Number(id) }).catch(() => []);
+        rawTxList = await api.transactions.list({ party: Number(id), include_historical: 'true' }).catch(() => []);
       }
 
       setTransactions(rawTxList.map((t: any) => {

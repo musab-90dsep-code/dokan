@@ -459,13 +459,14 @@ export const api = {
 
   // Transactions (Sales, Purchases, Returns, Invoices)
   transactions: {
-    list: async (params?: { transaction_type?: string; party?: number; cheque_status?: string; search?: string }): Promise<TransactionData[]> => {
+    list: async (params?: { transaction_type?: string; party?: number; cheque_status?: string; search?: string; include_historical?: boolean | string }): Promise<TransactionData[]> => {
       try {
         const query = new URLSearchParams();
         if (params?.transaction_type) query.append('transaction_type', params.transaction_type);
         if (params?.party) query.append('party', String(params.party));
         if (params?.cheque_status) query.append('cheque_status', params.cheque_status);
         if (params?.search) query.append('search', params.search);
+        if (params?.include_historical !== undefined) query.append('include_historical', String(params.include_historical));
         const queryStr = query.toString() ? `?${query.toString()}` : '';
         const res: any = await request<TransactionData[]>(`/transactions/${queryStr}`);
         const arr = Array.isArray(res) ? res : (res?.results || []);

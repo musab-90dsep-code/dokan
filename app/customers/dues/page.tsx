@@ -118,7 +118,7 @@ export default function CustomerDuesPage() {
         const ledger = generateLedgerEntries(partyProfile as any, formattedTx as any, true, false);
         const finalBalance = ledger.length > 0
           ? ledger[ledger.length - 1].runningBalance
-          : Number(c.opening_balance || 0);
+          : Number(c.total_due !== undefined && c.total_due !== null ? c.total_due : (c.opening_balance || 0));
 
         let dueAmount = 0;
         let advanceAmount = 0;
