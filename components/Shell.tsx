@@ -14,7 +14,6 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import { BengaliDatePicker } from './ui/BengaliDatePicker';
-import { BanglaKeyboardToggle } from './BanglaInputProvider';
 
 export const toBnDigits = (val: string | number | undefined | null): string => {
   if (val === undefined || val === null || val === '') return '';
@@ -819,9 +818,6 @@ export function Shell({ children }: { children: ReactNode }) {
 
           {/* Right: Quick Triggers & User Profile */}
           <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3">
-            {/* In-App Bangla Keyboard Toggle (Ctrl+M) */}
-            <BanglaKeyboardToggle />
-
             {/* Shipping Charges Drawer Trigger */}
             <button
               onClick={() => setShowShippingDrawer(!showShippingDrawer)}
