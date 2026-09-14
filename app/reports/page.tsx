@@ -67,10 +67,58 @@ interface OrderItem {
   price: number;
   quantity: number;
   unit: string;
+  total?: number;
   discount?: number;
   bundle?: number | string;
   category?: string;
 }
+
+export const isCementProduct = (item?: { name?: string; unit?: string; category?: string } | null): boolean => {
+  if (!item) return false;
+  const n = (item.name || '').toLowerCase();
+  const u = (item.unit || '').toLowerCase();
+  const c = ((item as any).category || '').toLowerCase();
+
+  if (u.includes('বস্তা') || u.includes('ব্যাগ') || u.includes('bag')) return true;
+  if (c.includes('সিমেন্ট') || c.includes('cement')) return true;
+
+  return (
+    n.includes('সিমেন্ট') || n.includes('cement') ||
+    n.includes('হোলসিম') || n.includes('holcim') ||
+    n.includes('কোস্টাল') || n.includes('coastal') ||
+    n.includes('সুপারক্রিট') || n.includes('supercrete') ||
+    n.includes('কিং ব্র্যান্ড') || n.includes('king') ||
+    n.includes('অ্যাংকর') || n.includes('anchor') ||
+    n.includes('আকিজ') || n.includes('akij') ||
+    n.includes('শাহ') || n.includes('shah') ||
+    n.includes('সেভেন রিংস') || n.includes('seven rings') ||
+    n.includes('স্ট্রং স্ট্রাকচার') ||
+    n.includes('pcc') || n.includes('opc')
+  );
+};
+
+export const isRodProduct = (item?: { name?: string; unit?: string; category?: string } | null): boolean => {
+  if (!item) return false;
+  const n = (item.name || '').toLowerCase();
+  const u = (item.unit || '').toLowerCase();
+  const c = ((item as any).category || '').toLowerCase();
+
+  if (u.includes('কেজি') || u.includes('টন') || u.includes('kg') || u.includes('ton')) return true;
+  if (c.includes('রড') || c.includes('rod')) return true;
+
+  return (
+    n.includes('রড') || n.includes('rod') ||
+    n.includes('মিমি') || n.includes('মি.মি') || n.includes('মিলি') || n.includes('mm') ||
+    n.includes('রিং') || n.includes('ring') ||
+    n.includes('বিএসআরএম') || n.includes('bsrm') ||
+    n.includes('এসসিআরএম') || n.includes('scrm') ||
+    n.includes('কেএসএমএল') || n.includes('ksml') ||
+    n.includes('এফএসএল') || n.includes('fsl') ||
+    n.includes('ডিএসআরএম') || n.includes('dsrm') ||
+    n.includes('থার্মেক্স') || n.includes('thermax') ||
+    n.includes('এইচকেজি') || n.includes('আইআরএমএল') || n.includes('আইআরএল')
+  );
+};
 
 interface Order {
   id: string;
@@ -93,6 +141,7 @@ interface PurchaseItem {
   name: string;
   quantity: number;
   price: number;
+  total?: number;
   unit?: string;
   category?: string;
 }
@@ -332,7 +381,7 @@ function MasterReportsContent() {
 
   const loadReportsData = useCallback(async () => {
     try {
-      const txList = await api.transactions.list();
+      const txList = await api.transactions.list({ include_historical: true });
       const safeTxList = Array.isArray(txList) ? txList : [];
       setTransactions(safeTxList.map(t => ({
         id: String(t.id || t.invoice_no),
@@ -356,7 +405,14 @@ function MasterReportsContent() {
         paymentMethod: t.payment_method || '',
         chequeNo: t.cheque_number || '',
         deliveryType: (t as any).delivery_type || '',
-        items: (t.items || []).map(i => ({ name: i.product_name, price: Number(i.price || 0), quantity: Number(i.quantity || 0), unit: i.unit || 'পিস' })),
+        items: (t.items || []).map(i => ({ 
+          name: i.product_name, 
+          price: Number(i.price || 0), 
+          quantity: Number(i.quantity || 0), 
+          unit: i.unit || 'পিস',
+          total: Number(i.total || (Number(i.price || 0) * Number(i.quantity || 0))),
+          category: (i as any).category || ''
+        })),
         notes: (t as any).notes || '',
         createdAt: t.created_at
       })));
@@ -370,7 +426,14 @@ function MasterReportsContent() {
         dueAmount: Number(t.due_amount || 0),
         paymentMethod: t.payment_method || '',
         deliveryType: (t as any).delivery_type || '',
-        items: (t.items || []).map(i => ({ name: i.product_name, price: Number(i.price || 0), quantity: Number(i.quantity || 0), unit: i.unit || 'পিস' })),
+        items: (t.items || []).map(i => ({ 
+          name: i.product_name, 
+          price: Number(i.price || 0), 
+          quantity: Number(i.quantity || 0), 
+          unit: i.unit || 'পিস',
+          total: Number(i.total || (Number(i.price || 0) * Number(i.quantity || 0))),
+          category: (i as any).category || ''
+        })),
         notes: (t as any).notes || '',
         createdAt: t.created_at
       })));
@@ -1257,12 +1320,11 @@ function MasterReportsContent() {
               let cementSoldBags = 0;
               dayOrders.forEach(o => {
                 (o.items || []).forEach(i => {
-                  const nameLower = (i.name || '').toLowerCase();
                   const unitLower = (i.unit || '').toLowerCase();
-                  if (nameLower.includes('রড') || nameLower.includes('rod') || nameLower.includes('রিং') || unitLower.includes('কেজি') || unitLower.includes('টন')) {
+                  if (isRodProduct(i)) {
                     rodSoldKg += unitLower.includes('টন') ? i.quantity * 1000 : i.quantity;
                   }
-                  if (nameLower.includes('সিমেন্ট') || nameLower.includes('cement') || unitLower.includes('বস্তা') || unitLower.includes('bag')) {
+                  if (isCementProduct(i)) {
                     cementSoldBags += i.quantity;
                   }
                 });
@@ -1272,12 +1334,11 @@ function MasterReportsContent() {
               let cementBoughtBags = 0;
               dayPurchases.forEach(p => {
                 (p.items || []).forEach(i => {
-                  const nameLower = (i.name || '').toLowerCase();
                   const unitLower = (i.unit || '').toLowerCase();
-                  if (nameLower.includes('রড') || nameLower.includes('rod') || nameLower.includes('রিং') || unitLower.includes('কেজি') || unitLower.includes('টন')) {
+                  if (isRodProduct(i)) {
                     rodBoughtKg += unitLower.includes('টন') ? i.quantity * 1000 : i.quantity;
                   }
-                  if (nameLower.includes('সিমেন্ট') || nameLower.includes('cement') || unitLower.includes('বস্তা') || unitLower.includes('bag')) {
+                  if (isCementProduct(i)) {
                     cementBoughtBags += i.quantity;
                   }
                 });
@@ -1555,18 +1616,10 @@ function MasterReportsContent() {
                 if (!matchesDate) return false;
 
                 if (salesCategoryFilter === 'rod') {
-                  return (o.items || []).some(i => {
-                    const n = (i.name || '').toLowerCase();
-                    const u = (i.unit || '').toLowerCase();
-                    return n.includes('রড') || n.includes('rod') || n.includes('রিং') || u.includes('কেজি') || u.includes('টন');
-                  });
+                  return (o.items || []).some(i => isRodProduct(i));
                 }
                 if (salesCategoryFilter === 'cement') {
-                  return (o.items || []).some(i => {
-                    const n = (i.name || '').toLowerCase();
-                    const u = (i.unit || '').toLowerCase();
-                    return n.includes('সিমেন্ট') || n.includes('cement') || u.includes('ব্যাগ') || u.includes('বস্তা');
-                  });
+                  return (o.items || []).some(i => isCementProduct(i));
                 }
                 return true;
               });
@@ -1609,8 +1662,7 @@ function MasterReportsContent() {
               dayAllOrders.forEach(o => {
                 (o.items || []).forEach(i => {
                   const n = (i.name || '').toLowerCase();
-                  const u = (i.unit || '').toLowerCase();
-                  if (n.includes('সিমেন্ট') || n.includes('cement') || u.includes('ব্যাগ') || u.includes('বস্তা')) {
+                  if (isCementProduct(i)) {
                     const qty = Number(i.quantity) || 0;
                     cementSoldBags += qty;
                     if (n.includes('সরাসরি') || (o.notes || '').toLowerCase().includes('সরাসরি') || (o.notes || '').toLowerCase().includes('direct') || o.deliveryType === 'direct') {
@@ -1623,21 +1675,14 @@ function MasterReportsContent() {
               let cementBoughtBags = 0;
               dayAllPurchases.forEach(p => {
                 (p.items || []).forEach(i => {
-                  const n = (i.name || '').toLowerCase();
-                  const u = (i.unit || '').toLowerCase();
-                  if (n.includes('সিমেন্ট') || n.includes('cement') || u.includes('ব্যাগ') || u.includes('বস্তা')) {
+                  if (isCementProduct(i)) {
                     cementBoughtBags += Number(i.quantity) || 0;
                   }
                 });
               });
 
               // Real cement products from inventory
-              const cementProducts = products.filter(p => {
-                const n = (p.name || '').toLowerCase();
-                const c = (p.category || '').toLowerCase();
-                const u = (p.unit || '').toLowerCase();
-                return n.includes('সিমেন্ট') || n.includes('cement') || c.includes('সিমেন্ট') || c.includes('cement') || u.includes('বস্তা') || u.includes('bag');
-              });
+              const cementProducts = products.filter(p => isCementProduct(p));
 
               const totalCementStockBags = cementProducts.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
 
@@ -2184,36 +2229,24 @@ ${cementBlockLines.join('\n')}
               const filteredExpenses = expenses.filter(e => filterByPeriod(e.createdAt || e.date));
 
               // 2. Revenue Breakdown (আয়ের খাত)
-              const cementSalesItems = filteredOrders.flatMap(o => (o.items || []).filter(i => 
-                (i.category && i.category.includes('সিমেন্ট')) || 
-                (i.name && i.name.includes('সিমেন্ট')) || 
-                (i.unit && i.unit.includes('ব্যাগ'))
-              ));
+              const cementSalesItems = filteredOrders.flatMap(o => (o.items || []).filter(i => isCementProduct(i)));
               const cementSalesQty = cementSalesItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
-              const cementSalesAmount = cementSalesItems.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 0)), 0);
+              const cementSalesAmount = cementSalesItems.reduce((sum, i) => sum + (Number((i as any).total) || ((Number(i.price) || 0) * (Number(i.quantity) || 0))), 0);
 
-              const rodSalesItems = filteredOrders.flatMap(o => (o.items || []).filter(i => 
-                (i.category && i.category.includes('রড')) || 
-                (i.name && (i.name.includes('রড') || i.name.includes('মিমি') || i.name.toLowerCase().includes('mm'))) || 
-                (i.unit && (i.unit.includes('কেজি') || i.unit.includes('টন')))
-              ));
+              const rodSalesItems = filteredOrders.flatMap(o => (o.items || []).filter(i => isRodProduct(i)));
               const rodSalesQty = rodSalesItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
-              const rodSalesAmount = rodSalesItems.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 0)), 0);
+              const rodSalesAmount = rodSalesItems.reduce((sum, i) => sum + (Number((i as any).total) || ((Number(i.price) || 0) * (Number(i.quantity) || 0))), 0);
 
               const totalOrderSalesAmount = filteredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
               const otherSalesAmount = Math.max(0, totalOrderSalesAmount - (cementSalesAmount + rodSalesAmount));
               const totalSalesIncome = cementSalesAmount + rodSalesAmount + otherSalesAmount;
 
               // 3. Cement Direct Costs (সিমেন্ট ক্রয় ও পরিবহন ব্যয়)
-              const cementPurchaseItems = filteredPurchases.flatMap(p => (p.items || []).filter(i => 
-                (i.category && i.category.includes('সিমেন্ট')) || 
-                (i.name && i.name.includes('সিমেন্ট')) || 
-                (i.unit && i.unit.includes('ব্যাগ'))
-              ));
+              const cementPurchaseItems = filteredPurchases.flatMap(p => (p.items || []).filter(i => isCementProduct(i)));
               const cementPurchaseQty = cementPurchaseItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
               const cementPurchaseAmount = cementPurchaseItems.length > 0 
-                ? cementPurchaseItems.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 0)), 0)
-                : filteredPurchases.filter(p => p.supplierName?.includes('সিমেন্ট') || p.items?.some(i => i.name?.includes('সিমেন্ট'))).reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+                ? cementPurchaseItems.reduce((sum, i) => sum + (Number((i as any).total) || ((Number(i.price) || 0) * (Number(i.quantity) || 0))), 0)
+                : filteredPurchases.filter(p => isCementProduct({ name: p.supplierName }) || p.items?.some(i => isCementProduct(i))).reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
 
               const cementTruckFare = filteredExpenses.filter(e => 
                 (e.title?.includes('সিমেন্ট') && (e.title?.includes('গাড়ি') || e.title?.includes('ভাড়া') || e.title?.includes('পরিবহন'))) || 
@@ -2228,15 +2261,11 @@ ${cementBlockLines.join('\n')}
               const cementTotalDirectCost = cementPurchaseAmount + cementTruckFare + cementUnloadLabor;
 
               // 4. Rod Direct Costs (রড ক্রয় ও পরিবহন ব্যয়)
-              const rodPurchaseItems = filteredPurchases.flatMap(p => (p.items || []).filter(i => 
-                (i.category && i.category.includes('রড')) || 
-                (i.name && (i.name.includes('রড') || i.name.includes('মিমি') || i.name.toLowerCase().includes('mm'))) || 
-                (i.unit && (i.unit.includes('কেজি') || i.unit.includes('টন')))
-              ));
+              const rodPurchaseItems = filteredPurchases.flatMap(p => (p.items || []).filter(i => isRodProduct(i)));
               const rodPurchaseQty = rodPurchaseItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
               const rodPurchaseAmount = rodPurchaseItems.length > 0 
-                ? rodPurchaseItems.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 0)), 0)
-                : filteredPurchases.filter(p => p.supplierName?.includes('রড') || p.items?.some(i => i.name?.includes('রড'))).reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+                ? rodPurchaseItems.reduce((sum, i) => sum + (Number((i as any).total) || ((Number(i.price) || 0) * (Number(i.quantity) || 0))), 0)
+                : filteredPurchases.filter(p => isRodProduct({ name: p.supplierName }) || p.items?.some(i => isRodProduct(i))).reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
 
               const rodTruckFare = filteredExpenses.filter(e => 
                 (e.title?.includes('রড') && (e.title?.includes('গাড়ি') || e.title?.includes('ভাড়া') || e.title?.includes('পরিবহন'))) || 
