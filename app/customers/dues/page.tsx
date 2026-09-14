@@ -99,6 +99,7 @@ export default function CustomerDuesPage() {
           chequeStatus: t.cheque_status,
           note: t.notes || (t as any).description || '',
           notes: t.notes || (t as any).description || '',
+          status: t.status || 'completed',
           transactionType: t.transaction_type || 'sale',
           subtotal: Number(t.subtotal || t.total_amount || 0),
           discount: Number(t.discount || 0),
@@ -136,9 +137,9 @@ export default function CustomerDuesPage() {
           advanceAmount = Number(c.advance_balance);
         }
 
-        const salesTx = formattedTx.filter(t => t.transactionType === 'sale');
+        const salesTx = formattedTx.filter(t => t.transactionType === 'sale' && t.status !== 'pending' && t.status !== 'draft' && t.status !== 'cancelled' && t.status !== 'rejected');
         const totalSales = salesTx.reduce((a, o) => a + Number(o.totalAmount || 0), 0);
-        const totalPaid = formattedTx.reduce((a, o) => a + Number(o.paidAmount || 0), 0);
+        const totalPaid = formattedTx.filter(t => t.status !== 'pending' && t.status !== 'draft' && t.status !== 'cancelled' && t.status !== 'rejected').reduce((a, o) => a + Number(o.paidAmount || 0), 0);
 
         const addressParts = [
           c.address,

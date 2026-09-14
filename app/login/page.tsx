@@ -10,6 +10,7 @@ import { useAuth } from '@/lib/authContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { toEnglishDigits } from '@/lib/bengaliUtils';
 
 const SAVED_IDENTIFIER_KEY = 'dokan_saved_identifier';
 const REMEMBER_ME_KEY = 'dokan_remember_me';
@@ -51,8 +52,8 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanId = identifier.trim();
-    const cleanPass = password.trim();
+    const cleanId = toEnglishDigits(identifier).trim();
+    const cleanPass = toEnglishDigits(password).trim();
 
     if (!cleanId) {
       setErrorMessage('অনুগ্রহ করে আপনার ইমেইল, ইউজারনেম অথবা মোবাইল নম্বর দিন।');
@@ -124,8 +125,9 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Identifier Input */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700">
-                ইমেইল / ইউজারনেম / মোবাইল
+              <label className="flex items-center justify-between text-xs font-bold text-slate-700">
+                <span>ইমেইল / ইউজারনেম / মোবাইল</span>
+                <span className="text-[10px] text-slate-400 font-normal">English (EN)</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -141,18 +143,24 @@ export default function LoginPage() {
                   type="text"
                   required
                   autoFocus
-                  placeholder="ইমেইল, ইউজারনেম বা মোবাইল নম্বর..."
+                  placeholder="Username, email or mobile..."
                   value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  className="pl-10 bg-slate-50/70 border-slate-200 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-600/20 text-xs sm:text-sm h-11 rounded-xl transition-all"
+                  onChange={(e) => setIdentifier(toEnglishDigits(e.target.value))}
+                  lang="en"
+                  dir="ltr"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="pl-10 bg-slate-50/70 border-slate-200 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-600/20 text-xs sm:text-sm h-11 rounded-xl transition-all font-sans font-medium"
                 />
               </div>
             </div>
 
             {/* Password Input */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700">
-                পাসওয়ার্ড
+              <label className="flex items-center justify-between text-xs font-bold text-slate-700">
+                <span>পাসওয়ার্ড</span>
+                <span className="text-[10px] text-slate-400 font-normal">English (EN)</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -161,12 +169,17 @@ export default function LoginPage() {
                 <Input
                   type={showPassword ? 'text' : 'password'}
                   required
-                  placeholder="আপনার পাসওয়ার্ড লিখুন..."
+                  placeholder="Enter password..."
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => setPassword(toEnglishDigits(e.target.value))}
                   onKeyUp={handleKeyUp}
                   onKeyDown={handleKeyUp}
-                  className="pl-10 pr-11 bg-slate-50/70 border-slate-200 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-600/20 text-xs sm:text-sm h-11 rounded-xl transition-all"
+                  lang="en"
+                  dir="ltr"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="pl-10 pr-11 bg-slate-50/70 border-slate-200 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-600/20 text-xs sm:text-sm h-11 rounded-xl transition-all font-sans font-medium"
                 />
                 <button
                   type="button"

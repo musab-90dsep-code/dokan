@@ -677,7 +677,7 @@ export default function OrdersPage() {
       meta.isOrder = false;
 
       await api.transactions.update(orderToInvoice.id, {
-        status: 'completed',
+        status: 'pending',
         paid_amount: invoicePaid,
         due_amount: Math.max(0, orderToInvoice.totalAmount - invoicePaid),
         payment_method: (invoiceMethod.toLowerCase().includes('bank') ? 'bank' : invoiceMethod.toLowerCase().includes('cheque') ? 'cheque' : invoiceMethod.toLowerCase()),
@@ -688,7 +688,7 @@ export default function OrdersPage() {
         window.dispatchEvent(new Event('orderUpdated'));
       }
 
-      toast.success('চালান সফলভাবে সম্পন্ন হয়েছে! স্টক ও হিসাব আপডেট করা হয়েছে।');
+      toast.success('চালান তৈরি হয়েছে (অনুমোদনের জন্য অপেক্ষমাণ)! অ্যাডমিন অনুমোদন করলে স্টক ও হিসাবে যুক্ত হবে।');
       setIsInvoiceModalOpen(false);
       setOrderToInvoice(null);
       loadOrdersData();

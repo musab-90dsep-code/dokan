@@ -298,6 +298,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
           // Engineer commission calculation matching PartyProfilePage
           const engineerSales = transactions.filter(s => {
             if (s.transaction_type !== 'sale' && s.transaction_type) return false;
+            if (s.status === 'pending' || s.status === 'draft' || s.status === 'cancelled' || s.status === 'rejected') return false;
             let meta: any = {};
             if (s.notes && typeof s.notes === 'string' && s.notes.trim().startsWith('{')) {
               try { meta = JSON.parse(s.notes.split('\n')[0]); } catch {}

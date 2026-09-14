@@ -252,7 +252,7 @@ export default function Dashboard() {
         sellPrice: Number(p.sell_price || 0)
       })));
       const safeTxList = Array.isArray(txList) ? txList : [];
-      setOrders(safeTxList.map(t => ({
+      setOrders(safeTxList.filter(t => t.status !== 'pending' && t.status !== 'draft' && t.status !== 'cancelled' && t.status !== 'rejected').map(t => ({
         id: String(t.id),
         orderId: t.invoice_no,
         customerName: t.party_name || 'গ্রাহক',

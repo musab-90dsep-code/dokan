@@ -1254,6 +1254,7 @@ function InvoicesContent() {
       } else if (convertedOrderId) {
         await api.transactions.update(convertedOrderId, {
           party: finalCustId ? Number(finalCustId) : null,
+          status: 'pending',
           subtotal: safeSubtotal,
           discount: safeDiscount,
           total_amount: safeTotalAmount,
@@ -1275,7 +1276,7 @@ function InvoicesContent() {
           }),
           notes: finalNotesPayload
         });
-        toast.success('বিক্রয় অর্ডার সফলভাবে চালানে রূপান্তর করা হয়েছে!');
+        toast.success('বিক্রয় অর্ডার সফলভাবে চালানে রূপান্তর করা হয়েছে (অনুমোদনের অপেক্ষায়)!');
       } else {
         await api.transactions.create({
           party: finalCustId ? Number(finalCustId) : null,

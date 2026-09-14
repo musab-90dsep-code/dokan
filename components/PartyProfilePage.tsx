@@ -171,7 +171,8 @@ export function generateLedgerEntries(
   });
 
   sorted.forEach(tx => {
-    if (tx.status === 'cancelled' || tx.status === 'rejected') {
+    // Unapproved / pending invoices must NEVER affect customer ledger or running balance
+    if (tx.status === 'cancelled' || tx.status === 'rejected' || tx.status === 'pending' || tx.status === 'draft') {
       return;
     }
     
@@ -551,6 +552,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           chequeStatus: t.cheque_status,
           note: cleanNote,
           notes: t.notes || cleanNote,
+          status: t.status || 'completed',
           transactionType: t.transaction_type || defaultTxType,
           subtotal: Number(t.subtotal || t.total_amount || 0),
           discount: Number(t.discount || 0),
@@ -1660,7 +1662,11 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                             </TableCell>
 
                             <TableCell className="py-3.5 px-4 text-center">
-                              {isPaid ? (
+                              {t.status === 'pending' || t.status === 'draft' ? (
+                                <span className="inline-block bg-purple-100/90 text-purple-700 font-black text-[11px] px-2.5 py-0.5 rounded-full border border-purple-200">
+                                  অপেক্ষমাণ (Pending)
+                                </span>
+                              ) : isPaid ? (
                                 <span className="inline-block bg-emerald-100/80 text-emerald-700 font-bold text-[11px] px-3 py-0.5 rounded-full">
                                   পরিশোধিত
                                 </span>

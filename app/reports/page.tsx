@@ -345,7 +345,7 @@ function MasterReportsContent() {
         createdAt: t.created_at,
         raw: t
       })));
-      setOrders(safeTxList.filter(t => t.transaction_type === 'sale').map(t => ({
+      setOrders(safeTxList.filter(t => t.transaction_type === 'sale' && t.status !== 'pending' && t.status !== 'draft' && t.status !== 'cancelled' && t.status !== 'rejected').map(t => ({
         id: String(t.id || t.invoice_no),
         invoiceNo: t.invoice_no,
         customerName: t.party_name || '',
@@ -360,7 +360,7 @@ function MasterReportsContent() {
         notes: (t as any).notes || '',
         createdAt: t.created_at
       })));
-      setPurchases(safeTxList.filter(t => t.transaction_type === 'purchase').map(t => ({
+      setPurchases(safeTxList.filter(t => t.transaction_type === 'purchase' && t.status !== 'pending' && t.status !== 'draft' && t.status !== 'cancelled' && t.status !== 'rejected').map(t => ({
         id: String(t.id || t.invoice_no),
         invoiceNo: t.invoice_no,
         supplierName: t.party_name || '',

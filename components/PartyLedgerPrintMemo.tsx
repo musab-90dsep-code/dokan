@@ -68,7 +68,7 @@ export function buildLedgerPrintRows(
   const inScopeTransactions: any[] = [];
 
   sorted.forEach(tx => {
-    if (tx.status === 'cancelled' || tx.status === 'rejected') return;
+    if (tx.status === 'cancelled' || tx.status === 'rejected' || tx.status === 'pending' || tx.status === 'draft') return;
     const txDate = new Date(tx.createdAt || 0);
 
     if (startObj && txDate < startObj) {
