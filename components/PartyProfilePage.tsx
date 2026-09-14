@@ -34,6 +34,7 @@ import { printElement } from '@/lib/printUtils';
 import { useAuth } from '@/lib/authContext';
 import { PartyLedgerPrintMemo } from '@/components/PartyLedgerPrintMemo';
 import { DataImportModal } from '@/components/DataImportModal';
+import { cleanLegacyBengaliText } from '@/lib/bengaliUtils';
 
 export const toBnDigits = (val: string | number | undefined | null): string => {
   if (val === undefined || val === null || val === '') return '';
@@ -322,7 +323,7 @@ export function generateLedgerEntries(
 
         const itemDesc = tx.items && tx.items.length > 0
           ? tx.items.map((it: any) => {
-              const name = it.product_name || it.name || 'পণ্য';
+              const name = cleanLegacyBengaliText(it.product_name || it.name || 'পণ্য');
               const qty = toBnDigits(it.quantity || 1);
               const unit = it.unit || 'টি';
               const price = it.price ? `@ ৳${toBnDigits(Number(it.price).toLocaleString('en-IN'))}` : '';
@@ -337,9 +338,9 @@ export function generateLedgerEntries(
           } catch {}
         }
 
-        const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || 0);
+        const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || (tx as any).transportCost || 0);
         const labCost = Number(meta.laborCost || (tx as any).laborCost || (tx as any).labor_cost || 0);
-        const extraCharges = !isCustomer ? (shipCost + labCost) : 0;
+        const extraCharges = (!isCustomer || tx.transactionType === 'purchase') ? (shipCost + labCost) : 0;
 
         const debitVal = Math.max(0, Number(tx.totalAmount || 0) - extraCharges);
         cumulativeBalance += debitVal;
@@ -603,15 +604,15 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
     ? engineerTotalCommissionEarned
     : transactions.reduce((a, o) => {
         let extraCharges = 0;
-        if (!isCustomer && o.transactionType === 'purchase') {
+        if ((!isCustomer || o.transactionType === 'purchase') && o.transactionType === 'purchase') {
           let meta: any = {};
           if (o.notes && typeof o.notes === 'string' && o.notes.trim().startsWith('{')) {
             try {
               meta = JSON.parse(o.notes.split('\n')[0]);
             } catch {}
           }
-          const ship = Number(meta.shippingCost || o.shippingCost || 0);
-          const lab = Number(meta.laborCost || o.laborCost || 0);
+          const ship = Number(meta.shippingCost || o.shippingCost || (o as any).shipping_cost || (o as any).transportCost || 0);
+          const lab = Number(meta.laborCost || o.laborCost || (o as any).labor_cost || 0);
           extraCharges = ship + lab;
         }
         const effAmount = Math.max(0, Number(o.totalAmount || 0) - extraCharges);

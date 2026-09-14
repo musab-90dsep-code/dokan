@@ -54,6 +54,7 @@ export interface PartyData {
   credit_days?: number;
   discount_percent?: number;
   total_due?: number;
+  advance_balance?: number;
   total_purchases?: number;
   total_sales?: number;
   joined_date?: string;
@@ -352,6 +353,7 @@ export const api = {
           credit_days: Number(p.credit_days || 30),
           discount_percent: Number(p.discount_percent || 0),
           total_due: Number(p.total_due || 0),
+          advance_balance: Number(p.advance_balance || 0),
           total_purchases: Number(p.total_purchases || 0),
           total_sales: Number(p.total_sales || 0),
         }));
@@ -369,6 +371,7 @@ export const api = {
         credit_days: Number(p.credit_days || 30),
         discount_percent: Number(p.discount_percent || 0),
         total_due: Number(p.total_due || 0),
+        advance_balance: Number(p.advance_balance || 0),
         total_purchases: Number(p.total_purchases || 0),
         total_sales: Number(p.total_sales || 0),
       };

@@ -68,7 +68,7 @@ export default function CustomerDuesPage() {
     try {
       setLoading(true);
       const partyList = await api.parties.list({ party_type: 'customer' });
-      const transactions = await api.transactions.list().catch(() => []);
+      const transactions = await api.transactions.list({ include_historical: 'true' }).catch(() => []);
 
       // Build customer due records matching exact ledger logic
       const mapped: CustomerDueItem[] = partyList.map(c => {
@@ -116,9 +116,14 @@ export default function CustomerDuesPage() {
         };
 
         const ledger = generateLedgerEntries(partyProfile as any, formattedTx as any, true, false);
-        const finalBalance = ledger.length > 0
-          ? ledger[ledger.length - 1].runningBalance
-          : Number(c.total_due !== undefined && c.total_due !== null ? c.total_due : (c.opening_balance || 0));
+        let finalBalance = 0;
+        if (ledger.length > 0) {
+          finalBalance = ledger[ledger.length - 1].runningBalance;
+        } else if (Number(c.advance_balance || 0) > 0) {
+          finalBalance = -Number(c.advance_balance);
+        } else {
+          finalBalance = Number(c.total_due !== undefined && c.total_due !== null ? c.total_due : (c.opening_balance || 0));
+        }
 
         let dueAmount = 0;
         let advanceAmount = 0;
@@ -127,6 +132,8 @@ export default function CustomerDuesPage() {
           dueAmount = finalBalance;
         } else if (finalBalance < 0) {
           advanceAmount = Math.abs(finalBalance);
+        } else if (Number(c.advance_balance || 0) > 0) {
+          advanceAmount = Number(c.advance_balance);
         }
 
         const salesTx = formattedTx.filter(t => t.transactionType === 'sale');
@@ -213,8 +220,13 @@ export default function CustomerDuesPage() {
     }
 
     return [...list].sort((a, b) => {
-      if (sortBy === 'due_desc') return b.dueAmount - a.dueAmount;
-      if (sortBy === 'due_asc') return a.dueAmount - b.dueAmount;
+      if (activeTab === 'advance') {
+        if (sortBy === 'due_desc') return b.advanceAmount - a.advanceAmount;
+        if (sortBy === 'due_asc') return a.advanceAmount - b.advanceAmount;
+      } else {
+        if (sortBy === 'due_desc') return b.dueAmount - a.dueAmount;
+        if (sortBy === 'due_asc') return a.dueAmount - b.dueAmount;
+      }
       if (sortBy === 'name_asc') return a.name.localeCompare(b.name, 'bn');
       return 0;
     });
@@ -436,8 +448,12 @@ export default function CustomerDuesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="font-bengali text-xs font-bold">
-                  <SelectItem value="due_desc">সর্বোচ্চ বাকি আগে</SelectItem>
-                  <SelectItem value="due_asc">সর্বনিম্ন বাকি আগে</SelectItem>
+                  <SelectItem value="due_desc">
+                    {activeTab === 'advance' ? 'সর্বোচ্চ অগ্রিম আগে' : 'সর্বোচ্চ বাকি আগে'}
+                  </SelectItem>
+                  <SelectItem value="due_asc">
+                    {activeTab === 'advance' ? 'সর্বনিম্ন অগ্রিম আগে' : 'সর্বনিম্ন বাকি আগে'}
+                  </SelectItem>
                   <SelectItem value="name_asc">নাম অনুযায়ী (ক-ক্ষ)</SelectItem>
                 </SelectContent>
               </Select>

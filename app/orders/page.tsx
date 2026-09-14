@@ -27,6 +27,7 @@ import { toBengaliDigits, toEnglishDigits } from '@/lib/bengaliUtils';
 import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
 import { ProductSearchSelect } from '@/components/ProductSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
+import { CartItemQtyInput } from '@/components/CartItemQtyInput';
 import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
 import { useAuth } from '@/lib/authContext';
@@ -449,7 +450,7 @@ export default function OrdersPage() {
       if (existing) {
         return prev.map(i => i.name === itemName ? { 
           ...i, 
-          quantity: i.quantity + itemQty, 
+          quantity: Math.round((i.quantity + itemQty) * 100) / 100, 
           price: finalPrice || i.price,
           discount: itemDiscount,
           bundle: bundleCount || i.bundle
@@ -484,10 +485,11 @@ export default function OrdersPage() {
   };
 
   const handleUpdateCartQty = (id: string | number, newQty: number, index?: number) => {
-    if (newQty < 1) return;
+    if (newQty <= 0) return;
+    const cleanQty = Math.round(newQty * 100) / 100;
     setCart(prev => prev.map((i, idx) => {
-      if (index !== undefined && idx === index) return { ...i, quantity: newQty };
-      if (String(i.id) === String(id)) return { ...i, quantity: newQty };
+      if (index !== undefined && idx === index) return { ...i, quantity: cleanQty };
+      if (String(i.id) === String(id)) return { ...i, quantity: cleanQty };
       return i;
     }));
   };
@@ -1432,7 +1434,12 @@ export default function OrdersPage() {
                                     </span>
                                   </TableCell>
                                   <TableCell className="text-center text-slate-600">{item.unit || 'বস্তা'}</TableCell>
-                                  <TableCell className="text-center font-bold text-slate-900">{toBengaliDigits(item.quantity)}</TableCell>
+                                  <TableCell className="text-center">
+                                    <CartItemQtyInput
+                                      value={item.quantity}
+                                      onChange={(val) => handleUpdateCartQty(item.id || idx, val, idx)}
+                                    />
+                                  </TableCell>
                                   <TableCell className="text-center">
                                     <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md">
                                       {toBengaliDigits((item as any).stock || 0)} {item.unit || 'বস্তা'}

@@ -26,6 +26,7 @@ import { EngineerSearchSelect, EngineerOption } from '@/components/EngineerSearc
 import { toBengaliDigits, toEnglishDigits, parseProductDetails } from '@/lib/bengaliUtils';
 import { ProductSearchSelect } from '@/components/ProductSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
+import { CartItemQtyInput } from '@/components/CartItemQtyInput';
 import { InvoiceMemo } from '@/components/InvoiceMemo';
 import { SalesInvoiceDetailsView } from '@/components/SalesInvoiceDetailsView';
 import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
@@ -54,6 +55,7 @@ interface Customer {
   balance?: number;
   previousDue?: number;
   openingBalance?: number;
+  advanceBalance?: number;
   sites?: CustomerSiteData[];
 }
 
@@ -138,6 +140,38 @@ interface Invoice {
   engineerTotalCommission?: number;
 }
 
+// Helpers for safe decimal inputs with Bengali numerals and preserving decimal points
+const toBengaliInputDigits = (val: string): string => {
+  if (!val) return '';
+  const bnDigits: Record<string, string> = {
+    '0': '০', '1': '১', '2': '২', '3': '৩', '4': '৪',
+    '5': '৫', '6': '৬', '7': '৭', '8': '৮', '9': '৯'
+  };
+  return val.replace(/[0-9]/g, m => bnDigits[m] || m);
+};
+
+const formatDecimalInput = (val: string): string => {
+  if (!val) return '';
+  const en = toEnglishDigits(val).replace(/[।\,]/g, '.');
+  const clean = en.replace(/[^0-9.]/g, '');
+  if (clean === '') return '';
+  
+  const parts = clean.split('.');
+  let normalized = parts[0];
+  if (parts.length > 1) {
+    if (normalized === '') normalized = '0';
+    normalized += '.' + parts.slice(1).join('');
+  }
+  return toBengaliInputDigits(normalized);
+};
+
+const parseInputNumber = (val: string | number | undefined | null): number => {
+  if (val === undefined || val === null || val === '') return 0;
+  const en = toEnglishDigits(String(val)).replace(/[^0-9.]/g, '');
+  const n = parseFloat(en);
+  return isNaN(n) ? 0 : n;
+};
+
 function InvoicesContent() {
   const router = useRouter();
   const { canEditInvoice, canDeleteInvoice, canCreateInvoice, canApproveInvoice, isViewer } = useAuth();
@@ -200,9 +234,12 @@ function InvoicesContent() {
   const [itemDiscount, setItemDiscount] = useState<number>(0);
 
   // Billing & Payment States
-  const [invoicePaidAmount, setInvoicePaidAmount] = useState<number>(0);
-  const [cashPaidAmount, setCashPaidAmount] = useState<number>(0);
-  const [chequePaidAmount, setChequePaidAmount] = useState<number>(0);
+  const [invoicePaidAmountInput, setInvoicePaidAmountInput] = useState<string>('');
+  const [cashPaidAmountInput, setCashPaidAmountInput] = useState<string>('');
+  const [chequePaidAmountInput, setChequePaidAmountInput] = useState<string>('');
+  const invoicePaidAmount = parseInputNumber(invoicePaidAmountInput);
+  const cashPaidAmount = parseInputNumber(cashPaidAmountInput);
+  const chequePaidAmount = parseInputNumber(chequePaidAmountInput);
   const [invoicePaymentMethod, setInvoicePaymentMethod] = useState<string>('Cash');
   const [invoiceDate, setInvoiceDate] = useState<string>('');
   const [invoiceNote, setInvoiceNote] = useState<string>('');
@@ -219,9 +256,10 @@ function InvoicesContent() {
 
   // 1:1 Screenshot Extension States
   const [discountType, setDiscountType] = useState<'percentage' | 'flat'>('percentage');
-  const [discountPercent, setDiscountPercent] = useState<number>(0);
-  const [discountFlat, setDiscountFlat] = useState<number>(0);
-  const [manualShippingCost, setManualShippingCost] = useState<number>(0);
+  const [discountPercentInput, setDiscountPercentInput] = useState<string>('');
+  const [discountFlatInput, setDiscountFlatInput] = useState<string>('');
+  const discountPercent = parseInputNumber(discountPercentInput);
+  const discountFlat = parseInputNumber(discountFlatInput);
   const [paymentOption, setPaymentOption] = useState<'now' | 'later'>('now');
   const [preparedBy, setPreparedBy] = useState<string>('');
   const [authorizedBy, setAuthorizedBy] = useState<string>('');
@@ -287,38 +325,44 @@ function InvoicesContent() {
   
   // Rate-based vs manual extra charge states
   const [chargeCalcMode, setChargeCalcMode] = useState<'rate' | 'manual'>('rate');
-  const [rodLaborRate, setRodLaborRate] = useState<number>(() => {
+  const [rodLaborRateInput, setRodLaborRateInput] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('dokan_sales_rod_labor_rate');
-      return saved ? parseFloat(saved) || 0 : 0;
+      return saved ? formatDecimalInput(saved) : '';
     }
-    return 0;
+    return '';
   });
-  const [rodShippingRate, setRodShippingRate] = useState<number>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('dokan_sales_rod_shipping_rate');
-      return saved ? parseFloat(saved) || 0 : 0;
-    }
-    return 0;
-  });
-  const [cementLaborRate, setCementLaborRate] = useState<number>(() => {
+  const [cementLaborRateInput, setCementLaborRateInput] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('dokan_sales_cement_labor_rate');
-      return saved ? parseFloat(saved) || 0 : 0;
+      return saved ? formatDecimalInput(saved) : '';
     }
-    return 0;
+    return '';
   });
-  const [cementShippingRate, setCementShippingRate] = useState<number>(() => {
+  const [shippingCostInput, setShippingCostInput] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('dokan_sales_cement_shipping_rate');
-      return saved ? parseFloat(saved) || 0 : 0;
+      const saved = localStorage.getItem('dokan_sales_shipping_cost');
+      return saved ? formatDecimalInput(saved) : '';
     }
-    return 0;
+    return '';
   });
 
-  const [manualLaborCost, setManualLaborCost] = useState<number>(0);
-  const [engineerRodRate, setEngineerRodRate] = useState<number>(0);
-  const [engineerCementRate, setEngineerCementRate] = useState<number>(0);
+  const [manualLaborCostInput, setManualLaborCostInput] = useState<string>('');
+  const [engineerRodRateInput, setEngineerRodRateInput] = useState<string>('');
+  const [engineerCementRateInput, setEngineerCementRateInput] = useState<string>('');
+
+  const rodLaborRate = parseInputNumber(rodLaborRateInput);
+  const cementLaborRate = parseInputNumber(cementLaborRateInput);
+  const shippingCost = parseInputNumber(shippingCostInput);
+  const manualShippingCost = shippingCost;
+  const manualLaborCost = parseInputNumber(manualLaborCostInput);
+  const engineerRodRate = parseInputNumber(engineerRodRateInput);
+  const engineerCementRate = parseInputNumber(engineerCementRateInput);
+
+  // Carriage / Vehicle fare is a flat trip amount, not per-kg or per-bag
+  const rodShippingRate = 0;
+  const cementShippingRate = 0;
+
   const [isGatePassOpen, setIsGatePassOpen] = useState<boolean>(false);
   const [isPrintMemoOpen, setIsPrintMemoOpen] = useState<boolean>(false);
   const [invoiceViewMode, setInvoiceViewMode] = useState<'details' | 'memo'>('details');
@@ -330,10 +374,9 @@ function InvoicesContent() {
   const handleSaveDefaultCharges = () => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('dokan_sales_rod_labor_rate', (rodLaborRate || 0).toString());
-      localStorage.setItem('dokan_sales_rod_shipping_rate', (rodShippingRate || 0).toString());
       localStorage.setItem('dokan_sales_cement_labor_rate', (cementLaborRate || 0).toString());
-      localStorage.setItem('dokan_sales_cement_shipping_rate', (cementShippingRate || 0).toString());
-      toast.success(`ডিফল্ট রেট সেভ করা হয়েছে (রড: লেবার ৳${rodLaborRate}/কেজি, ভাড়া ৳${rodShippingRate}/কেজি | সিমেন্ট: লেবার ৳${cementLaborRate}/বস্তা, ভাড়া ৳${cementShippingRate}/বস্তা)`);
+      localStorage.setItem('dokan_sales_shipping_cost', (shippingCost || 0).toString());
+      toast.success(`ডিফল্ট চার্জ সেভ করা হয়েছে (রড লেবার: ৳${toBengaliDigits(rodLaborRate)}/কেজি, সিমেন্ট লোডিং: ৳${toBengaliDigits(cementLaborRate)}/বস্তা${shippingCost > 0 ? `, গাড়ি ভাড়া: ৳${toBengaliDigits(shippingCost)}` : ''})`);
     }
   };
 
@@ -468,7 +511,8 @@ function InvoicesContent() {
           due: d,
           balance: d,
           previousDue: d,
-          openingBalance: Number(p.opening_balance || 0)
+          openingBalance: Number(p.opening_balance || 0),
+          advanceBalance: Number(p.advance_balance || 0)
         };
       }));
 
@@ -603,7 +647,48 @@ function InvoicesContent() {
         }));
 
         setCart(rawItems);
-        setInvoicePaidAmount(Number(raw.paid_amount || 0));
+        const orderPaid = Number(raw.paid_amount || 0);
+        setInvoicePaidAmountInput(orderPaid > 0 ? formatDecimalInput(String(orderPaid)) : '');
+        if (parsedOrderMeta.paymentOption) {
+          setPaymentOption(parsedOrderMeta.paymentOption);
+        } else if (orderPaid > 0) {
+          setPaymentOption('now');
+        }
+        if (parsedOrderMeta.paymentMethodName) {
+          setInvoicePaymentMethod(parsedOrderMeta.paymentMethodName);
+        }
+        if (parsedOrderMeta.cashPaidAmount) {
+          setCashPaidAmountInput(formatDecimalInput(String(parsedOrderMeta.cashPaidAmount)));
+        } else if (orderPaid > 0 && (!parsedOrderMeta.paymentMethodName || parsedOrderMeta.paymentMethodName === 'Cash')) {
+          setCashPaidAmountInput(formatDecimalInput(String(orderPaid)));
+        }
+        if (parsedOrderMeta.chequePaidAmount) {
+          setChequePaidAmountInput(formatDecimalInput(String(parsedOrderMeta.chequePaidAmount)));
+        }
+        if (parsedOrderMeta.bankName) {
+          setBankName(parsedOrderMeta.bankName);
+        }
+        if (parsedOrderMeta.chequeNo) {
+          setChequeNo(parsedOrderMeta.chequeNo);
+        }
+        if (parsedOrderMeta.chequeDate) {
+          setChequeDate(parsedOrderMeta.chequeDate);
+        }
+        if (parsedOrderMeta.receiverShopBank) {
+          setSelectedShopBank(parsedOrderMeta.receiverShopBank);
+        }
+        if (parsedOrderMeta.transactionRef) {
+          setTransactionRef(parsedOrderMeta.transactionRef);
+        }
+        if (parsedOrderMeta.senderBankName) {
+          setSenderBankName(parsedOrderMeta.senderBankName);
+        }
+        if (parsedOrderMeta.senderAccountNo) {
+          setSenderAccountNo(parsedOrderMeta.senderAccountNo);
+        }
+        if (parsedOrderMeta.senderTxnRef) {
+          setSenderTxnRef(parsedOrderMeta.senderTxnRef);
+        }
         
         let cleanNote = raw.notes || '';
         if (cleanNote.trim().startsWith('{')) {
@@ -679,7 +764,7 @@ function InvoicesContent() {
       return;
     }
 
-    const requestedQty = Number(itemQty) || 1;
+    const requestedQty = parseFloat(String(itemQty)) || 1;
     const existing = cart.find(i => i.name === itemName || (foundProd && String(i.id) === String(foundProd.id)));
     const currentInCart = existing ? Number(existing.quantity) : 0;
 
@@ -698,13 +783,13 @@ function InvoicesContent() {
     setCart(prev => {
       const existingItem = prev.find(i => i.name === itemName || String(i.id) === String(itemId));
       if (existingItem) {
-        const updatedQty = existingItem.quantity + requestedQty;
+        const updatedQty = Math.round((existingItem.quantity + requestedQty) * 100) / 100;
         return prev.map(i => (i.name === itemName || String(i.id) === String(itemId)) ? { 
           ...i, 
           quantity: updatedQty, 
           price: finalPrice, 
           discount: itemDiscount,
-          total: finalPrice * updatedQty
+          total: Math.round(finalPrice * updatedQty * 100) / 100
         } : i);
       }
       return [...prev, {
@@ -717,7 +802,7 @@ function InvoicesContent() {
         price: finalPrice,
         quantity: requestedQty,
         discount: itemDiscount || 0,
-        total: finalPrice * requestedQty
+        total: Math.round(finalPrice * requestedQty * 100) / 100
       }];
     });
 
@@ -737,7 +822,7 @@ function InvoicesContent() {
   };
 
   const handleUpdateCartQty = (id: string | number, newQty: number, index?: number) => {
-    if (newQty < 1) return;
+    if (newQty <= 0) return;
     const targetItem = cart.find((i, idx) => index !== undefined ? idx === index : String(i.id) === String(id));
     if (targetItem) {
       const foundProd = products.find(p => p.id === String(targetItem.id) || p.name === targetItem.name);
@@ -747,9 +832,10 @@ function InvoicesContent() {
         newQty = availableStock;
       }
     }
+    const cleanQty = Math.round(newQty * 100) / 100;
     setCart(prev => prev.map((i, idx) => {
-      if (index !== undefined && idx === index) return { ...i, quantity: newQty, total: (i.price || 0) * newQty };
-      if (String(i.id) === String(id)) return { ...i, quantity: newQty, total: (i.price || 0) * newQty };
+      if (index !== undefined && idx === index) return { ...i, quantity: cleanQty, total: Math.round((i.price || 0) * cleanQty * 100) / 100 };
+      if (String(i.id) === String(id)) return { ...i, quantity: cleanQty, total: Math.round((i.price || 0) * cleanQty * 100) / 100 };
       return i;
     }));
   };
@@ -783,13 +869,13 @@ function InvoicesContent() {
   }, [cart]);
 
   const rodLaborTotal = round2(rodRingTotalKg * (rodLaborRate || 0));
-  const rodShippingTotal = round2(rodRingTotalKg * (rodShippingRate || 0));
+  const rodShippingTotal = 0;
   const cementLaborTotal = round2(cementTotalBags * (cementLaborRate || 0));
-  const cementShippingTotal = round2(cementTotalBags * (cementShippingRate || 0));
+  const cementShippingTotal = 0;
 
   // Customer only pays Rod labor (or manual labor); Cement labor is shop loading charge paid by dokan
   const laborCost = chargeCalcMode === 'rate' ? rodLaborTotal : manualLaborCost;
-  const shippingCost = chargeCalcMode === 'rate' ? round2(rodShippingTotal + cementShippingTotal) : manualShippingCost;
+  // Note: shippingCost (vehicle rent) is directly entered as a flat amount and parsed above
 
   // Engineer Commission Calculations (Per KG for Rod, Per Bag for Cement)
   const engineerRodCommission = round2(rodRingTotalKg * (engineerRodRate || 0));
@@ -811,12 +897,16 @@ function InvoicesContent() {
 
   const cartDueAmount = round2(paymentOption === 'now' ? Math.max(0, cartTotalAmount - totalReceivedPayment) : cartTotalAmount);
 
-  // Selected Customer Existing Due Calculation
+  // Selected Customer Existing Due & Advance Calculation
   const selectedCustomerDue = selectedCustomer 
-    ? allOrders
-        .filter(o => o.customerId === selectedCustomer.id || o.customerName === selectedCustomer.name)
-        .reduce((acc, o) => acc + (o.dueAmount || 0), 0)
+    ? Number(selectedCustomer.totalDue !== undefined ? selectedCustomer.totalDue : (selectedCustomer.due || 0))
     : 0;
+  const selectedCustomerAdvance = selectedCustomer 
+    ? Number(selectedCustomer.advanceBalance || 0)
+    : 0;
+  const netPayableWithPrevious = selectedCustomerAdvance > 0
+    ? Math.max(0, cartTotalAmount - selectedCustomerAdvance)
+    : (cartTotalAmount + selectedCustomerDue);
 
   const resetCreateForm = () => {
     setEditingInvoiceId(null);
@@ -830,17 +920,17 @@ function InvoicesContent() {
     setItemQty(1);
     setItemPrice(0);
     setItemDiscount(0);
-    setInvoicePaidAmount(0);
-    setCashPaidAmount(0);
-    setChequePaidAmount(0);
+    setInvoicePaidAmountInput('');
+    setCashPaidAmountInput('');
+    setChequePaidAmountInput('');
     setBankName('');
     setChequeNo('');
     setChequeDate('');
     setInvoicePaymentMethod('Cash');
     setInvoiceNote('');
     setDiscountType('percentage');
-    setDiscountPercent(0);
-    setDiscountFlat(0);
+    setDiscountPercentInput('');
+    setDiscountFlatInput('');
     setPaymentOption('now');
     setPreparedBy('');
     setAuthorizedBy('');
@@ -858,19 +948,16 @@ function InvoicesContent() {
     setSaveSiteForFuture(true);
     
     // Load default per-unit rates from localStorage
-    const defRodLab = typeof window !== 'undefined' ? (parseFloat(localStorage.getItem('dokan_sales_rod_labor_rate') || '0') || 0) : 0;
-    const defRodShip = typeof window !== 'undefined' ? (parseFloat(localStorage.getItem('dokan_sales_rod_shipping_rate') || '0') || 0) : 0;
-    const defCemLab = typeof window !== 'undefined' ? (parseFloat(localStorage.getItem('dokan_sales_cement_labor_rate') || '0') || 0) : 0;
-    const defCemShip = typeof window !== 'undefined' ? (parseFloat(localStorage.getItem('dokan_sales_cement_shipping_rate') || '0') || 0) : 0;
-    setRodLaborRate(defRodLab);
-    setRodShippingRate(defRodShip);
-    setCementLaborRate(defCemLab);
-    setCementShippingRate(defCemShip);
+    const defRodLab = typeof window !== 'undefined' ? (localStorage.getItem('dokan_sales_rod_labor_rate') || '') : '';
+    const defCemLab = typeof window !== 'undefined' ? (localStorage.getItem('dokan_sales_cement_labor_rate') || '') : '';
+    const defShip = typeof window !== 'undefined' ? (localStorage.getItem('dokan_sales_shipping_cost') || '') : '';
+    setRodLaborRateInput(defRodLab ? formatDecimalInput(defRodLab) : '');
+    setCementLaborRateInput(defCemLab ? formatDecimalInput(defCemLab) : '');
+    setShippingCostInput(defShip ? formatDecimalInput(defShip) : '');
     setChargeCalcMode('rate');
-    setManualLaborCost(0);
-    setManualShippingCost(0);
-    setEngineerRodRate(0);
-    setEngineerCementRate(0);
+    setManualLaborCostInput('');
+    setEngineerRodRateInput('');
+    setEngineerCementRateInput('');
 
     if (fromOrderId) {
       router.replace('/invoices');
@@ -897,8 +984,8 @@ function InvoicesContent() {
     const eng = engineers.find(e => e.id === inv.engineerId || e.name === inv.engineerName);
     if (eng) {
       setSelectedEngineer(eng);
-      setEngineerRodRate(inv.engineerRodRate !== undefined ? inv.engineerRodRate : (eng.rodCommissionRate || 0));
-      setEngineerCementRate(inv.engineerCementRate !== undefined ? inv.engineerCementRate : (eng.cementCommissionRate || 0));
+      setEngineerRodRateInput(inv.engineerRodRate !== undefined ? formatDecimalInput(String(inv.engineerRodRate)) : (eng.rodCommissionRate ? formatDecimalInput(String(eng.rodCommissionRate)) : ''));
+      setEngineerCementRateInput(inv.engineerCementRate !== undefined ? formatDecimalInput(String(inv.engineerCementRate)) : (eng.cementCommissionRate ? formatDecimalInput(String(eng.cementCommissionRate)) : ''));
     } else if (inv.engineerName) {
       setSelectedEngineer({
         id: inv.engineerId || 'custom-eng',
@@ -907,25 +994,41 @@ function InvoicesContent() {
         rodCommissionRate: inv.engineerRodRate || 0,
         cementCommissionRate: inv.engineerCementRate || 0
       });
-      setEngineerRodRate(inv.engineerRodRate || 0);
-      setEngineerCementRate(inv.engineerCementRate || 0);
+      setEngineerRodRateInput(inv.engineerRodRate !== undefined ? formatDecimalInput(String(inv.engineerRodRate)) : '');
+      setEngineerCementRateInput(inv.engineerCementRate !== undefined ? formatDecimalInput(String(inv.engineerCementRate)) : '');
     } else {
       setSelectedEngineer(null);
-      setEngineerRodRate(0);
-      setEngineerCementRate(0);
+      setEngineerRodRateInput('');
+      setEngineerCementRateInput('');
     }
 
     setCart(inv.items ? inv.items.map(i => ({ ...i })) : []);
-    setInvoicePaidAmount(inv.paidAmount || 0);
-    setCashPaidAmount((inv as any).cashAmount || 0);
-    setChequePaidAmount((inv as any).chequeAmount || 0);
+    setInvoicePaidAmountInput(inv.paidAmount ? formatDecimalInput(String(inv.paidAmount)) : '');
+    setCashPaidAmountInput((inv as any).cashAmount || (inv as any).cashPaidAmount ? formatDecimalInput(String((inv as any).cashAmount || (inv as any).cashPaidAmount)) : '');
+    setChequePaidAmountInput((inv as any).chequeAmount || (inv as any).chequePaidAmount ? formatDecimalInput(String((inv as any).chequeAmount || (inv as any).chequePaidAmount)) : '');
     setBankName((inv as any).bankName || '');
     setChequeNo((inv as any).chequeNo || '');
     setChequeDate((inv as any).chequeDate || '');
     setInvoicePaymentMethod(inv.paymentMethod || 'Cash');
     setInvoiceNote(inv.note || '');
-    setManualShippingCost(inv.shippingCost || 0);
-    setManualLaborCost(inv.laborCost || 0);
+    
+    // Vehicle Fare (Flat carriage) & Labor
+    const invAny = inv as any;
+    if (invAny.shippingCost !== undefined || invAny.transportCost !== undefined) {
+      setShippingCostInput(formatDecimalInput(String(invAny.shippingCost || invAny.transportCost || '')));
+    } else if (invAny.rodShippingCost || invAny.cementShippingCost) {
+      const legacyShip = Number(invAny.rodShippingCost || 0) + Number(invAny.cementShippingCost || 0);
+      setShippingCostInput(legacyShip > 0 ? formatDecimalInput(String(legacyShip)) : '');
+    } else {
+      setShippingCostInput('');
+    }
+
+    if (invAny.laborCost !== undefined || invAny.manualLaborCost !== undefined) {
+      setManualLaborCostInput(formatDecimalInput(String(invAny.laborCost || invAny.manualLaborCost || '')));
+    } else {
+      setManualLaborCostInput('');
+    }
+
     setVehicleNo(inv.vehicleNo || '');
     setDriverName(inv.driverName || '');
     setDriverPhone(inv.driverPhone || '');
@@ -948,11 +1051,8 @@ function InvoicesContent() {
     setSiteContact(inv.siteContact || '');
     setSaveSiteForFuture(true);
 
-    const invAny = inv as any;
-    if (invAny.rodLaborRate !== undefined) setRodLaborRate(Number(invAny.rodLaborRate || 0));
-    if (invAny.rodShippingRate !== undefined) setRodShippingRate(Number(invAny.rodShippingRate || 0));
-    if (invAny.cementLaborRate !== undefined) setCementLaborRate(Number(invAny.cementLaborRate || 0));
-    if (invAny.cementShippingRate !== undefined) setCementShippingRate(Number(invAny.cementShippingRate || 0));
+    if (invAny.rodLaborRate !== undefined) setRodLaborRateInput(formatDecimalInput(String(invAny.rodLaborRate || '')));
+    if (invAny.cementLaborRate !== undefined) setCementLaborRateInput(formatDecimalInput(String(invAny.cementLaborRate || '')));
     if (invAny.chargeCalcMode) setChargeCalcMode(invAny.chargeCalcMode);
 
     setSelectedInvoice(null);
@@ -2051,11 +2151,11 @@ function InvoicesContent() {
                           onSelectEngineer={(eng) => {
                             setSelectedEngineer(eng);
                             if (eng) {
-                              setEngineerRodRate(eng.rodCommissionRate || 0);
-                              setEngineerCementRate(eng.cementCommissionRate || 0);
+                              setEngineerRodRateInput(eng.rodCommissionRate ? formatDecimalInput(String(eng.rodCommissionRate)) : '');
+                              setEngineerCementRateInput(eng.cementCommissionRate ? formatDecimalInput(String(eng.cementCommissionRate)) : '');
                             } else {
-                              setEngineerRodRate(0);
-                              setEngineerCementRate(0);
+                              setEngineerRodRateInput('');
+                              setEngineerCementRateInput('');
                             }
                           }}
                           placeholder="ইঞ্জিনিয়ার সার্চ করুন..."
@@ -2090,10 +2190,28 @@ function InvoicesContent() {
                     {/* Customer & Engineer Alert Boxes */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                       {selectedCustomer && (
-                        <div className="p-3.5 bg-rose-50/80 border border-rose-200 rounded-md flex items-center justify-between text-xs font-bengali">
+                        <div className={cn(
+                          "p-3.5 border rounded-md flex items-center justify-between text-xs font-bengali",
+                          selectedCustomerAdvance > 0
+                            ? "bg-emerald-50/80 border-emerald-200"
+                            : selectedCustomerDue > 0
+                              ? "bg-rose-50/80 border-rose-200"
+                              : "bg-slate-50 border-slate-200"
+                        )}>
                           <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-md bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
-                              <AlertCircle className="w-4 h-4" />
+                            <div className={cn(
+                              "w-8 h-8 rounded-md flex items-center justify-center font-bold",
+                              selectedCustomerAdvance > 0 
+                                ? "bg-emerald-100 text-emerald-700" 
+                                : selectedCustomerDue > 0 
+                                  ? "bg-rose-100 text-rose-700" 
+                                  : "bg-slate-200 text-slate-700"
+                            )}>
+                              {selectedCustomerAdvance > 0 ? (
+                                <CheckCircle2 className="w-4 h-4" />
+                              ) : (
+                                <AlertCircle className="w-4 h-4" />
+                              )}
                             </div>
                             <div>
                               <span className="font-black text-slate-900">{selectedCustomer.name}</span>
@@ -2102,29 +2220,39 @@ function InvoicesContent() {
                             </div>
                           </div>
                           <div className="text-right">
-                            <span className="text-[11px] text-rose-600 font-bold block">পূর্বের মোট বকেয়া</span>
-                            <span className="font-black text-rose-700 text-base">৳ {toBengaliDigits(selectedCustomerDue.toLocaleString('en-IN'))}</span>
+                            {selectedCustomerAdvance > 0 ? (
+                              <>
+                                <span className="text-[11px] text-emerald-700 font-bold block">পূর্বের অগ্রিম জমা (Advance)</span>
+                                <span className="font-black text-emerald-700 text-base">৳ {toBengaliDigits(selectedCustomerAdvance.toLocaleString('en-IN'))}</span>
+                              </>
+                            ) : selectedCustomerDue > 0 ? (
+                              <>
+                                <span className="text-[11px] text-rose-600 font-bold block">পূর্বের মোট বকেয়া</span>
+                                <span className="font-black text-rose-700 text-base">৳ {toBengaliDigits(selectedCustomerDue.toLocaleString('en-IN'))}</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-[11px] text-slate-500 font-bold block">পূর্বের ব্যালেন্স</span>
+                                <span className="font-black text-slate-700 text-base">৳ ০.০০</span>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
 
+                      {/* SHOW SELECTED ENGINEER COMMISSION BADGE & INPUTS */}
                       {selectedEngineer && (
-                        <div className="p-3.5 bg-orange-50/90 border border-orange-200 rounded-md text-xs font-bengali space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-md bg-orange-100 text-orange-700 flex items-center justify-center font-bold">
-                                👷‍♂️
-                              </div>
+                        <div className="p-3 bg-gradient-to-r from-orange-50/80 via-amber-50/50 to-orange-50/80 border border-orange-200 rounded-md font-bengali text-xs">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-orange-200/80">
+                            <div className="flex items-center gap-2">
+                              <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs">👷‍♂️</span>
                               <div>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-black text-slate-900">{selectedEngineer.name}</span>
-                                  <span className="text-[10px] bg-orange-200/60 text-orange-800 font-bold px-1.5 py-0.2 rounded">ইঞ্জিনিয়ার</span>
-                                </div>
-                                {selectedEngineer.phone && <span className="text-slate-600 font-semibold font-mono text-[11px]">{toBengaliDigits(selectedEngineer.phone)}</span>}
+                                <span className="font-bold text-slate-800 text-xs block">{selectedEngineer.name}</span>
+                                <span className="text-[10px] text-slate-500 font-mono">{selectedEngineer.phone || 'মোবাইল নেই'}</span>
                               </div>
                             </div>
                             {selectedEngineer.businessName && (
-                              <div className="text-right">
+                              <div>
                                 <span className="text-[11px] text-slate-500 font-bold block">ফার্ম / প্রজেক্ট</span>
                                 <span className="font-bold text-slate-800 text-xs">{selectedEngineer.businessName}</span>
                               </div>
@@ -2149,12 +2277,12 @@ function InvoicesContent() {
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                   <Input
-                                    type="number"
-                                    step="0.01"
-                                    value={engineerRodRate || ''}
-                                    onChange={(e) => setEngineerRodRate(parseFloat(e.target.value) || 0)}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={engineerRodRateInput}
+                                    onChange={(e) => setEngineerRodRateInput(formatDecimalInput(e.target.value))}
                                     placeholder="০.০০"
-                                    className="w-16 h-7 text-xs font-bold text-center bg-slate-50 border-orange-200 p-0"
+                                    className="w-16 h-7 text-xs font-bold text-center bg-slate-50 border-orange-200 p-0 font-bengali"
                                   />
                                   <span className="font-black text-slate-900 font-mono w-16 text-right">৳{toBengaliDigits(engineerRodCommission.toLocaleString('en-IN'))}</span>
                                 </div>
@@ -2168,12 +2296,12 @@ function InvoicesContent() {
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                   <Input
-                                    type="number"
-                                    step="0.1"
-                                    value={engineerCementRate || ''}
-                                    onChange={(e) => setEngineerCementRate(parseFloat(e.target.value) || 0)}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={engineerCementRateInput}
+                                    onChange={(e) => setEngineerCementRateInput(formatDecimalInput(e.target.value))}
                                     placeholder="০.০০"
-                                    className="w-16 h-7 text-xs font-bold text-center bg-slate-50 border-orange-200 p-0"
+                                    className="w-16 h-7 text-xs font-bold text-center bg-slate-50 border-orange-200 p-0 font-bengali"
                                   />
                                   <span className="font-black text-slate-900 font-mono w-16 text-right">৳{toBengaliDigits(engineerCementCommission.toLocaleString('en-IN'))}</span>
                                 </div>
@@ -2363,22 +2491,11 @@ function InvoicesContent() {
                                 <TableCell className="text-center font-bold text-slate-700">{parsed.brandName}</TableCell>
                                 <TableCell className="text-center font-bold text-slate-700">{parsed.sizeName}</TableCell>
                                 <TableCell className="text-center">
-                                  <div className="inline-flex items-center justify-center gap-1">
-                                    <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity - 1, idx)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold hover:bg-slate-200 cursor-pointer">-</button>
-                                    <Input
-                                      type="text"
-                                      inputMode="decimal"
-                                      value={toBengaliDigits(item.quantity)}
-                                      onChange={(e) => {
-                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
-                                        const val = parseFloat(raw) || 0;
-                                        handleUpdateCartQty(item.id || idx, val, idx);
-                                      }}
-                                      className="w-16 h-7 text-center font-bold text-xs font-bengali p-1 border-slate-300 bg-white"
-                                    />
-                                    <span className="font-bold text-slate-600 text-[11px]">{item.unit}</span>
-                                    <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity + 1, idx)} className="w-6 h-6 rounded-sm bg-slate-100 font-bold hover:bg-slate-200 cursor-pointer">+</button>
-                                  </div>
+                                  <CartItemQtyInput
+                                    value={item.quantity}
+                                    unit={item.unit}
+                                    onChange={(val) => handleUpdateCartQty(item.id || idx, val, idx)}
+                                  />
                                 </TableCell>
                                 <TableCell className="text-right font-medium text-slate-600">৳{toBengaliDigits((item.price || 0).toLocaleString('en-IN'))}</TableCell>
                                 <TableCell className="text-right font-black text-slate-900">৳{toBengaliDigits(((item.price || 0) * item.quantity).toLocaleString('en-IN'))}</TableCell>
@@ -2481,12 +2598,11 @@ function InvoicesContent() {
                           <Input 
                             type="text"
                             inputMode="decimal"
-                            value={discountType === 'percentage' ? (discountPercent ? toBengaliDigits(discountPercent) : '') : (discountFlat ? toBengaliDigits(discountFlat) : '')}
+                            value={discountType === 'percentage' ? discountPercentInput : discountFlatInput}
                             onChange={e => {
-                              const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
-                              const val = parseFloat(raw) || 0;
-                              if (discountType === 'percentage') setDiscountPercent(val);
-                              else setDiscountFlat(val);
+                              const formatted = formatDecimalInput(e.target.value);
+                              if (discountType === 'percentage') setDiscountPercentInput(formatted);
+                              else setDiscountFlatInput(formatted);
                             }}
                             placeholder="০"
                             className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali"
@@ -2546,50 +2662,26 @@ function InvoicesContent() {
                             <div className="bg-sky-50/60 border border-sky-200 rounded-md p-3 space-y-2">
                               <div className="flex items-center justify-between text-xs">
                                 <span className="font-black text-sky-900 flex items-center gap-1.5">
-                                  🔹 রড ও রিং খরচ (কেজি হিসেবে)
+                                  🔹 রড ও রিং লেবার খরচ (কেজি হিসেবে)
                                 </span>
                                 <span className="bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded text-[11px]">
                                   মোট ওজন: {toBengaliDigits(rodRingTotalKg.toLocaleString('en-IN'))} কেজি
                                 </span>
                               </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1">
-                                  <Label className="text-[11px] font-bold text-slate-600">লেবার রেট (৳/কেজি)</Label>
-                                  <div className="relative">
-                                    <Input 
-                                      type="text"
-                                      inputMode="decimal"
-                                      value={rodLaborRate ? toBengaliDigits(rodLaborRate) : ''}
-                                      onChange={e => {
-                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
-                                        setRodLaborRate(parseFloat(raw) || 0);
-                                      }}
-                                      placeholder="০.০০"
-                                      className="rounded-md h-9 bg-white border-sky-300 text-xs font-bold text-amber-700 font-bengali pr-20"
-                                    />
-                                    <span className="absolute right-2 top-2 text-[10px] font-bold text-slate-500 font-bengali">
-                                      = ৳{toBengaliDigits(rodLaborTotal.toLocaleString('en-IN'))}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="space-y-1">
-                                  <Label className="text-[11px] font-bold text-slate-600">গাড়ি ভাড়া রেট (৳/কেজি)</Label>
-                                  <div className="relative">
-                                    <Input 
-                                      type="text"
-                                      inputMode="decimal"
-                                      value={rodShippingRate ? toBengaliDigits(rodShippingRate) : ''}
-                                      onChange={e => {
-                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
-                                        setRodShippingRate(parseFloat(raw) || 0);
-                                      }}
-                                      placeholder="০.০০"
-                                      className="rounded-md h-9 bg-white border-sky-300 text-xs font-bold text-sky-700 font-bengali pr-20"
-                                    />
-                                    <span className="absolute right-2 top-2 text-[10px] font-bold text-slate-500 font-bengali">
-                                      = ৳{toBengaliDigits(rodShippingTotal.toLocaleString('en-IN'))}
-                                    </span>
-                                  </div>
+                              <div className="space-y-1">
+                                <Label className="text-[11px] font-bold text-slate-600">লেবার রেট (৳/কেজি)</Label>
+                                <div className="relative">
+                                  <Input 
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={rodLaborRateInput}
+                                    onChange={e => setRodLaborRateInput(formatDecimalInput(e.target.value))}
+                                    placeholder="০.০০"
+                                    className="rounded-md h-9 bg-white border-sky-300 text-xs font-bold text-amber-700 font-bengali pr-24"
+                                  />
+                                  <span className="absolute right-2 top-2 text-[10px] font-bold text-slate-500 font-bengali">
+                                    = ৳{toBengaliDigits(rodLaborTotal.toLocaleString('en-IN'))}
+                                  </span>
                                 </div>
                               </div>
                             </div>
@@ -2600,60 +2692,56 @@ function InvoicesContent() {
                             <div className="bg-amber-50/60 border border-amber-200 rounded-md p-3 space-y-2">
                               <div className="flex items-center justify-between text-xs">
                                 <span className="font-black text-amber-900 flex items-center gap-1.5">
-                                  🔸 সিমেন্ট খরচ (বস্তা হিসেবে)
+                                  🔸 সিমেন্ট লোডিং খরচ (বস্তা হিসেবে)
                                 </span>
                                 <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[11px]">
                                   মোট পরিমাণ: {toBengaliDigits(cementTotalBags.toLocaleString('en-IN'))} বস্তা
                                 </span>
                               </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1">
-                                  <div className="flex items-center justify-between">
-                                    <Label className="text-[11px] font-bold text-slate-700">লোডিং লেবার রেট (৳/বস্তা)</Label>
-                                    <span className="text-[9px] bg-amber-200/80 text-amber-900 font-black px-1.5 py-0.2 rounded">দোকান প্রদেয়</span>
-                                  </div>
-                                  <div className="relative">
-                                    <Input 
-                                      type="text"
-                                      inputMode="decimal"
-                                      value={cementLaborRate ? toBengaliDigits(cementLaborRate) : ''}
-                                      onChange={e => {
-                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
-                                        setCementLaborRate(parseFloat(raw) || 0);
-                                      }}
-                                      placeholder="০.০০"
-                                      className="rounded-md h-9 bg-white border-amber-300 text-xs font-bold text-amber-700 font-bengali pr-20"
-                                    />
-                                    <span className="absolute right-2 top-2 text-[10px] font-bold text-slate-500 font-bengali">
-                                      = ৳{toBengaliDigits(cementLaborTotal.toLocaleString('en-IN'))}
-                                    </span>
-                                  </div>
-                                  <span className="text-[10px] text-amber-800 font-medium block">
-                                    💡 লোডিং খরচ কাস্টমারের বিলে যুক্ত হবে না, দোকান লোডিং বিল হিসেবে পরিশোধ হবে।
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-[11px] font-bold text-slate-700">লোডিং লেবার রেট (৳/বস্তা)</Label>
+                                  <span className="text-[9px] bg-amber-200/80 text-amber-900 font-black px-1.5 py-0.2 rounded">দোকান প্রদেয়</span>
+                                </div>
+                                <div className="relative">
+                                  <Input 
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={cementLaborRateInput}
+                                    onChange={e => setCementLaborRateInput(formatDecimalInput(e.target.value))}
+                                    placeholder="০.০০"
+                                    className="rounded-md h-9 bg-white border-amber-300 text-xs font-bold text-amber-700 font-bengali pr-24"
+                                  />
+                                  <span className="absolute right-2 top-2 text-[10px] font-bold text-slate-500 font-bengali">
+                                    = ৳{toBengaliDigits(cementLaborTotal.toLocaleString('en-IN'))}
                                   </span>
                                 </div>
-                                <div className="space-y-1">
-                                  <Label className="text-[11px] font-bold text-slate-600">গাড়ি ভাড়া রেট (৳/বস্তা)</Label>
-                                  <div className="relative">
-                                    <Input 
-                                      type="text"
-                                      inputMode="decimal"
-                                      value={cementShippingRate ? toBengaliDigits(cementShippingRate) : ''}
-                                      onChange={e => {
-                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
-                                        setCementShippingRate(parseFloat(raw) || 0);
-                                      }}
-                                      placeholder="০.০০"
-                                      className="rounded-md h-9 bg-white border-amber-300 text-xs font-bold text-amber-800 font-bengali pr-20"
-                                    />
-                                    <span className="absolute right-2 top-2 text-[10px] font-bold text-slate-500 font-bengali">
-                                      = ৳{toBengaliDigits(cementShippingTotal.toLocaleString('en-IN'))}
-                                    </span>
-                                  </div>
-                                </div>
+                                <span className="text-[10px] text-amber-800 font-medium block">
+                                  💡 লোডিং খরচ কাস্টমারের বিলে যুক্ত হবে না, দোকান লোডিং বিল হিসেবে পরিশোধ হবে।
+                                </span>
                               </div>
                             </div>
                           )}
+
+                          {/* Dedicated Vehicle Fare Box */}
+                          <div className="bg-emerald-50/50 border border-emerald-200 rounded-md p-3 space-y-1.5">
+                            <div className="flex items-center justify-between text-xs">
+                              <Label className="text-[11px] font-bold text-emerald-950 flex items-center gap-1.5">
+                                🚚 পরিবহন / গাড়ি ভাড়া (মোট ৳)
+                              </Label>
+                              <span className="text-[10px] text-slate-500">
+                                (ফিক্সড ট্রিপ ভাড়া, কেজি বা বস্তা অনুযায়ী নয়)
+                              </span>
+                            </div>
+                            <Input 
+                              type="text"
+                              inputMode="decimal"
+                              value={shippingCostInput}
+                              onChange={e => setShippingCostInput(formatDecimalInput(e.target.value))}
+                              placeholder="০"
+                              className="rounded-md h-10 bg-white border-emerald-300 text-xs font-bold text-slate-800 font-bengali"
+                            />
+                          </div>
                         </div>
                       ) : (
                         <div className="grid grid-cols-2 gap-3 font-bengali">
@@ -2662,11 +2750,8 @@ function InvoicesContent() {
                             <Input 
                               type="text"
                               inputMode="decimal"
-                              value={manualLaborCost ? toBengaliDigits(manualLaborCost) : ''}
-                              onChange={e => {
-                                const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
-                                setManualLaborCost(parseFloat(raw) || 0);
-                              }}
+                              value={manualLaborCostInput}
+                              onChange={e => setManualLaborCostInput(formatDecimalInput(e.target.value))}
                               placeholder="০"
                               className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold text-amber-600 font-bengali"
                             />
@@ -2677,11 +2762,8 @@ function InvoicesContent() {
                             <Input 
                               type="text"
                               inputMode="decimal"
-                              value={manualShippingCost ? toBengaliDigits(manualShippingCost) : ''}
-                              onChange={e => {
-                                const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
-                                setManualShippingCost(parseFloat(raw) || 0);
-                              }}
+                              value={shippingCostInput}
+                              onChange={e => setShippingCostInput(formatDecimalInput(e.target.value))}
                               placeholder="০"
                               className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali"
                             />
@@ -2756,11 +2838,8 @@ function InvoicesContent() {
                                     <Input 
                                       type="text"
                                       inputMode="decimal"
-                                      value={cashPaidAmount ? toBengaliDigits(cashPaidAmount) : ''}
-                                      onChange={e => {
-                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
-                                        setCashPaidAmount(parseFloat(raw) || 0);
-                                      }}
+                                      value={cashPaidAmountInput}
+                                      onChange={e => setCashPaidAmountInput(formatDecimalInput(e.target.value))}
                                       placeholder="০"
                                       className="rounded-md h-10 bg-emerald-50/70 border-emerald-300 text-xs font-black text-emerald-700 font-bengali w-full"
                                     />
@@ -2770,11 +2849,8 @@ function InvoicesContent() {
                                     <Input 
                                       type="text"
                                       inputMode="decimal"
-                                      value={chequePaidAmount ? toBengaliDigits(chequePaidAmount) : ''}
-                                      onChange={e => {
-                                        const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
-                                        setChequePaidAmount(parseFloat(raw) || 0);
-                                      }}
+                                      value={chequePaidAmountInput}
+                                      onChange={e => setChequePaidAmountInput(formatDecimalInput(e.target.value))}
                                       placeholder="০"
                                       className="rounded-md h-10 bg-purple-50/70 border-purple-300 text-xs font-black text-purple-700 font-bengali w-full"
                                     />
@@ -2786,13 +2862,12 @@ function InvoicesContent() {
                                   <Input 
                                     type="text"
                                     inputMode="decimal"
-                                    value={invoicePaidAmount ? toBengaliDigits(invoicePaidAmount) : ''}
+                                    value={invoicePaidAmountInput}
                                     onChange={e => {
-                                      const raw = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '');
-                                      const val = parseFloat(raw) || 0;
-                                      setInvoicePaidAmount(val);
-                                      if (invoicePaymentMethod === 'Cash') setCashPaidAmount(val);
-                                      if (invoicePaymentMethod === 'Cheque') setChequePaidAmount(val);
+                                      const formatted = formatDecimalInput(e.target.value);
+                                      setInvoicePaidAmountInput(formatted);
+                                      if (invoicePaymentMethod === 'Cash') setCashPaidAmountInput(formatted);
+                                      if (invoicePaymentMethod === 'Cheque') setChequePaidAmountInput(formatted);
                                     }}
                                     placeholder="০"
                                     className="rounded-md h-10 bg-emerald-50/60 border-emerald-200 text-xs font-black text-emerald-600 font-bengali"
@@ -3128,18 +3203,29 @@ function InvoicesContent() {
                           <span className="font-black text-slate-900">৳ {toBengaliDigits(cartTotalAmount.toLocaleString('en-IN'))}</span>
                         </div>
 
-                        <div className="flex justify-between text-rose-600 font-bold">
-                          <span>পূর্বের বকেয়া</span>
-                          <span className="font-black">৳ {toBengaliDigits(selectedCustomerDue.toLocaleString('en-IN'))}</span>
-                        </div>
+                        {selectedCustomerAdvance > 0 ? (
+                          <div className="flex justify-between text-emerald-600 font-bold">
+                            <span>পূর্বের অগ্রিম জমা</span>
+                            <span className="font-black">- ৳ {toBengaliDigits(selectedCustomerAdvance.toLocaleString('en-IN'))}</span>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between text-rose-600 font-bold">
+                            <span>পূর্বের বকেয়া</span>
+                            <span className="font-black">+ ৳ {toBengaliDigits(selectedCustomerDue.toLocaleString('en-IN'))}</span>
+                          </div>
+                        )}
                       </div>
 
                       <div className="pt-3 border-t border-slate-100 flex justify-between items-baseline">
                         <div>
-                          <span className="text-xs font-bold text-slate-700 block">সর্বমোট প্রদেয় বিল (বকেয়াসহ)</span>
-                          <span className="text-[10px] text-slate-400 font-bold">চালান + পূর্বের বকেয়া</span>
+                          <span className="text-xs font-bold text-slate-700 block">
+                            {selectedCustomerAdvance > 0 ? 'সমন্বয় পরবর্তী প্রদেয়' : 'সর্বমোট প্রদেয় বিল (বকেয়াসহ)'}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-bold">
+                            {selectedCustomerAdvance > 0 ? 'চালান বিল - পূর্বের অগ্রিম' : 'চালান + পূর্বের বকেয়া'}
+                          </span>
                         </div>
-                        <span className="text-2xl font-black text-orange-600">৳ {toBengaliDigits((cartTotalAmount + selectedCustomerDue).toLocaleString('en-IN'))}</span>
+                        <span className="text-2xl font-black text-orange-600">৳ {toBengaliDigits(netPayableWithPrevious.toLocaleString('en-IN'))}</span>
                       </div>
                     </div>
                   </CardContent>

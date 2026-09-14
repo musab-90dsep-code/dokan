@@ -22,6 +22,7 @@ import { format } from 'date-fns';
 import { cn, formatDualStock } from '@/lib/utils';
 import { SupplierSearchSelect } from '@/components/SupplierSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
+import { CartItemQtyInput } from '@/components/CartItemQtyInput';
 import { PurchaseInvoiceMemo } from '@/components/PurchaseInvoiceMemo';
 import { PurchaseInvoiceDetailsView } from '@/components/PurchaseInvoiceDetailsView';
 import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
@@ -535,9 +536,10 @@ export default function PurchasesPage() {
     const unitToUse = isRing ? 'কেজি' : (product.unit || 'পিস');
 
     const existingIndex = cart.findIndex(i => i.id === product.id);
+    const addQty = parseFloat(String(itemQty)) || 1;
     if (existingIndex > -1) {
       const updated = [...cart];
-      updated[existingIndex].quantity += (itemQty || 1);
+      updated[existingIndex].quantity = Math.round((updated[existingIndex].quantity + addQty) * 100) / 100;
       if (itemPrice > 0) updated[existingIndex].price = itemPrice;
       setCart(updated);
     } else {
@@ -546,7 +548,7 @@ export default function PurchasesPage() {
         name: product.name,
         unit: unitToUse,
         price: itemPrice > 0 ? itemPrice : (product.buyPrice || 0),
-        quantity: itemQty || 1,
+        quantity: addQty,
         discount: 0
       }]);
     }
@@ -567,10 +569,11 @@ export default function PurchasesPage() {
   };
 
   const handleUpdateCartQty = (id: string | number, newQty: number, index?: number) => {
-    if (newQty < 1) return;
+    if (newQty <= 0) return;
+    const cleanQty = Math.round(newQty * 100) / 100;
     setCart(prev => prev.map((i, idx) => {
-      if (index !== undefined && idx === index) return { ...i, quantity: newQty };
-      if (String(i.id) === String(id)) return { ...i, quantity: newQty };
+      if (index !== undefined && idx === index) return { ...i, quantity: cleanQty };
+      if (String(i.id) === String(id)) return { ...i, quantity: cleanQty };
       return i;
     }));
   };
@@ -1642,11 +1645,11 @@ export default function PurchasesPage() {
                                   )}
                                 </TableCell>
                                 <TableCell className="text-center">
-                                  <div className="inline-flex items-center gap-1.5">
-                                    <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity - 1, idx)} className="w-6 h-6 rounded bg-slate-100 font-bold hover:bg-slate-200">-</button>
-                                    <span className="font-bold min-w-[50px] text-center">{toBengaliDigits(item.quantity)} {item.unit}</span>
-                                    <button type="button" onClick={() => handleUpdateCartQty(item.id || idx, item.quantity + 1, idx)} className="w-6 h-6 rounded bg-slate-100 font-bold hover:bg-slate-200">+</button>
-                                  </div>
+                                  <CartItemQtyInput
+                                    value={item.quantity}
+                                    unit={item.unit}
+                                    onChange={(val) => handleUpdateCartQty(item.id || idx, val, idx)}
+                                  />
                                 </TableCell>
                                 <TableCell className="text-right font-black text-slate-900">
                                   <div className="flex flex-col items-end gap-1">

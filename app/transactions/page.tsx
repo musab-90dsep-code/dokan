@@ -447,7 +447,8 @@ function TransactionsContent() {
         phone: p.phone,
         businessName: p.business_name,
         address: p.address,
-        totalDue: Number(p.total_due || 0)
+        totalDue: Number(p.total_due || 0),
+        advanceBalance: Number(p.advance_balance || 0)
       }));
       const loadedSupps = safePartyList.filter((p: any) => p.party_type === 'supplier' || p.party_type === 'both').map((p: any) => ({
         id: String(p.id),
@@ -455,7 +456,8 @@ function TransactionsContent() {
         phone: p.phone,
         businessName: p.business_name,
         address: p.address,
-        totalDue: Number(p.total_due || 0)
+        totalDue: Number(p.total_due || 0),
+        advanceBalance: Number(p.advance_balance || 0)
       }));
       const loadedEngineers = safePartyList.filter((p: any) => p.party_type === 'engineer').map((p: any) => {
         // Calculate dynamic engineer commission
@@ -1167,7 +1169,41 @@ function TransactionsContent() {
   const previousPaidAmount = (selectedInvoice ? (selectedInvoice.paidAmount || 0) : 0) || 0;
   const currentPaymentAmount = paidAmount || 0;
   const safeDiscount = discountAmount || 0;
-  const remainingDue = Math.max(0, totalInvoiceAmount - (previousPaidAmount + currentPaymentAmount + safeDiscount));
+
+  const partyDue = Number(selectedParty?.totalDue || 0);
+  const partyExistingAdvance = Number(selectedParty?.advanceBalance || 0);
+  let newCalculatedDue = 0;
+  let newCalculatedAdvance = 0;
+
+  if (selectedInvoice) {
+    const invTotal = Number(selectedInvoice.totalAmount || 0);
+    const invPaid = Number(selectedInvoice.paidAmount || 0);
+    const invRemaining = Math.max(0, invTotal - (invPaid + currentPaymentAmount + safeDiscount));
+    newCalculatedDue = invRemaining;
+    newCalculatedAdvance = (currentPaymentAmount + safeDiscount > (invTotal - invPaid)) 
+      ? (currentPaymentAmount + safeDiscount) - (invTotal - invPaid) 
+      : 0;
+  } else if (paymentType === 'income' && selectedParty) {
+    if (partyExistingAdvance > 0) {
+      newCalculatedDue = 0;
+      newCalculatedAdvance = partyExistingAdvance + currentPaymentAmount;
+    } else if (partyDue > 0) {
+      if (currentPaymentAmount + safeDiscount > partyDue) {
+        newCalculatedDue = 0;
+        newCalculatedAdvance = (currentPaymentAmount + safeDiscount) - partyDue;
+      } else {
+        newCalculatedDue = partyDue - (currentPaymentAmount + safeDiscount);
+        newCalculatedAdvance = 0;
+      }
+    } else {
+      newCalculatedDue = 0;
+      newCalculatedAdvance = currentPaymentAmount;
+    }
+  } else {
+    newCalculatedDue = Math.max(0, totalInvoiceAmount - (previousPaidAmount + currentPaymentAmount + safeDiscount));
+    newCalculatedAdvance = 0;
+  }
+  const remainingDue = newCalculatedDue;
 
   return (
     <Shell>
@@ -1990,16 +2026,26 @@ function TransactionsContent() {
                             </p>
                           </div>
 
-                          {/* Due Balance */}
+                          {/* Due / Advance Balance */}
                           <div className="sm:col-span-2 space-y-1 text-right">
                             <Label className="text-xs font-bold text-slate-500">
-                              {expensePartyType === 'engineer' ? 'মোট পাওনা কমিশন' : 'বকেয়া পরিমাণ'}
+                              {expensePartyType === 'engineer' 
+                                ? 'মোট পাওনা কমিশন' 
+                                : (selectedParty?.advanceBalance && selectedParty.advanceBalance > 0)
+                                  ? 'অগ্রিম জমা'
+                                  : 'বকেয়া পরিমাণ'}
                             </Label>
                             <p className={cn(
                               "text-base font-black pt-1",
-                              expensePartyType === 'engineer' ? "text-emerald-700 font-black" : "text-rose-600 font-black"
+                              expensePartyType === 'engineer' 
+                                ? "text-emerald-700 font-black" 
+                                : (selectedParty?.advanceBalance && selectedParty.advanceBalance > 0)
+                                  ? "text-emerald-600 font-black"
+                                  : (selectedParty?.totalDue || 0) > 0 
+                                    ? "text-rose-600 font-black" 
+                                    : "text-slate-600 font-black"
                             )}>
-                              ৳ {toBengaliDigits((selectedParty?.totalDue || 0).toLocaleString('bn-BD'))}
+                              ৳ {toBengaliDigits(((selectedParty?.advanceBalance && selectedParty.advanceBalance > 0) ? selectedParty.advanceBalance : (selectedParty?.totalDue || 0)).toLocaleString('bn-BD'))}
                             </p>
                           </div>
 
@@ -2135,6 +2181,39 @@ function TransactionsContent() {
                               </div>
                             )}
                             </div>
+
+                          {/* Dynamic Advance / Due Live Explanation */}
+                          {paymentType === 'income' && selectedParty && paidAmount > 0 && (
+                            <div className={cn(
+                              "p-3 rounded-lg border text-xs font-bold font-bengali flex items-start gap-2 animate-in fade-in-50",
+                              newCalculatedAdvance > 0 
+                                ? "bg-emerald-50/80 border-emerald-200 text-emerald-900" 
+                                : "bg-blue-50/80 border-blue-200 text-blue-900"
+                            )}>
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                              <div className="space-y-0.5">
+                                {partyExistingAdvance > 0 ? (
+                                  <p>
+                                    গ্রাহকের পূর্বে <strong>৳ {toBengaliDigits(partyExistingAdvance.toLocaleString('bn-BD'))}</strong> অগ্রিম জমা ছিল। বর্তমান <strong>৳ {toBengaliDigits(paidAmount.toLocaleString('bn-BD'))}</strong> জমা হয়ে মোট অগ্রিম হবে <span className="text-emerald-700 font-black">৳ {toBengaliDigits(newCalculatedAdvance.toLocaleString('bn-BD'))}</span>।
+                                  </p>
+                                ) : partyDue > 0 ? (
+                                  paidAmount > partyDue ? (
+                                    <p>
+                                      বকেয়া <strong>৳ {toBengaliDigits(partyDue.toLocaleString('bn-BD'))}</strong> সম্পূর্ণ পরিশোধ হয়ে অতিরিক্ত <span className="text-emerald-700 font-black">৳ {toBengaliDigits(newCalculatedAdvance.toLocaleString('bn-BD'))}</span> অগ্রিম জমা (Advance) হিসেবে গণ্য হবে।
+                                    </p>
+                                  ) : (
+                                    <p>
+                                      বকেয়া থেকে <strong>৳ {toBengaliDigits(paidAmount.toLocaleString('bn-BD'))}</strong> সমন্বয় হবে। অবশিষ্ট বকেয়া থাকবে <span className="text-rose-600 font-black">৳ {toBengaliDigits(newCalculatedDue.toLocaleString('bn-BD'))}</span>।
+                                    </p>
+                                  )
+                                ) : (
+                                  <p>
+                                    গ্রাহকের কোনো বকেয়া নেই। পুরো <span className="text-emerald-700 font-black">৳ {toBengaliDigits(paidAmount.toLocaleString('bn-BD'))}</span> টাকা অগ্রিম জমা (Advance) হিসেবে গণ্য হবে।
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
 
                           {/* Extra Row: Discount, Reference, Note */}
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
@@ -2420,12 +2499,21 @@ function TransactionsContent() {
                           {/* Dashed Separator */}
                           <div className="border-b border-dashed border-slate-200 my-2"></div>
 
-                          <div className="space-y-1">
-                            <span className="text-[11px] font-bold text-rose-600 uppercase tracking-widest block">অবশিষ্ট বকেয়া</span>
-                            <span className="text-2xl font-black text-rose-600 block">
-                              ৳ {toBengaliDigits((remainingDue || 0).toLocaleString('bn-BD'))}
-                            </span>
-                          </div>
+                          {newCalculatedAdvance > 0 ? (
+                            <div className="space-y-1 bg-emerald-50/70 p-2.5 rounded-lg border border-emerald-200">
+                              <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-widest block">পরবর্তী অগ্রিম জমা (Advance)</span>
+                              <span className="text-2xl font-black text-emerald-600 block">
+                                ৳ {toBengaliDigits(newCalculatedAdvance.toLocaleString('bn-BD'))}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <span className="text-[11px] font-bold text-rose-600 uppercase tracking-widest block">অবশিষ্ট বকেয়া</span>
+                              <span className="text-2xl font-black text-rose-600 block">
+                                ৳ {toBengaliDigits((remainingDue || 0).toLocaleString('bn-BD'))}
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Quick Metadata List */}

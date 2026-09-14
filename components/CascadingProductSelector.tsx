@@ -154,6 +154,43 @@ export function CascadingProductSelector({
   const isPurchaseMode = showTotalPriceField || showSellPriceField || !!purchaseType;
   const [enteredTotal, setEnteredTotal] = useState<number | ''>('');
 
+  // Local text states to preserve '.' and trailing decimals while typing
+  const [prevItemQty, setPrevItemQty] = useState<number>(itemQty);
+  const [qtyInput, setQtyInput] = useState<string>(() => (itemQty ? toBengaliDigits(itemQty) : ''));
+
+  if (itemQty !== prevItemQty) {
+    setPrevItemQty(itemQty);
+    const currentNum = parseFloat(toEnglishDigits(qtyInput).replace(/[^0-9.]/g, '')) || 0;
+    const propNum = Number(itemQty) || 0;
+    if (propNum !== currentNum || (propNum === 0 && qtyInput !== '' && qtyInput !== '০')) {
+      setQtyInput(itemQty ? toBengaliDigits(itemQty) : '');
+    }
+  }
+
+  const [prevItemPrice, setPrevItemPrice] = useState<number>(itemPrice);
+  const [priceInput, setPriceInput] = useState<string>(() => (itemPrice ? toBengaliDigits(itemPrice) : ''));
+
+  if (itemPrice !== prevItemPrice) {
+    setPrevItemPrice(itemPrice);
+    const currentNum = parseFloat(toEnglishDigits(priceInput).replace(/[^0-9.]/g, '')) || 0;
+    const propNum = Number(itemPrice) || 0;
+    if (propNum !== currentNum || (propNum === 0 && priceInput !== '' && priceInput !== '০')) {
+      setPriceInput(itemPrice ? toBengaliDigits(itemPrice) : '');
+    }
+  }
+
+  const [prevEnteredTotal, setPrevEnteredTotal] = useState<number | ''>(enteredTotal);
+  const [totalInput, setTotalInput] = useState<string>(() => (enteredTotal !== '' ? toBengaliDigits(enteredTotal) : ''));
+
+  if (enteredTotal !== prevEnteredTotal) {
+    setPrevEnteredTotal(enteredTotal);
+    const currentNum = parseFloat(toEnglishDigits(totalInput).replace(/[^0-9.]/g, '')) || 0;
+    const stateNum = enteredTotal !== '' ? Number(enteredTotal) : 0;
+    if (stateNum !== currentNum || (enteredTotal === '' && totalInput !== '')) {
+      setTotalInput(enteredTotal !== '' ? toBengaliDigits(enteredTotal) : '');
+    }
+  }
+
   const categoriesToDisplay = useMemo<('রড' | 'সিমেন্ট' | 'রিং' | 'অন্যান্য')[]>(() => {
     if (allowedCategories && allowedCategories.length > 0) return allowedCategories;
     if (purchaseType === 'rod') return ['রড', 'রিং'];
@@ -1061,14 +1098,19 @@ export function CascadingProductSelector({
           <Input
             type="text"
             inputMode="decimal"
-            value={itemQty ? toBengaliDigits(itemQty) : ''}
+            value={qtyInput}
             onChange={(e) => {
               const val = e.target.value;
-              const enStr = toEnglishDigits(val).replace(/[^0-9.]/g, '');
-              if (enStr === '') {
+              const enStr = toEnglishDigits(val).replace(/[।\,]/g, '.').replace(/[^0-9.]/g, '');
+              const parts = enStr.split('.');
+              const cleanEn = parts.length > 1 ? parts[0] + '.' + parts.slice(1).join('') : enStr;
+
+              if (cleanEn === '') {
+                setQtyInput('');
                 onQtyChange('' as any);
               } else {
-                const parsed = parseFloat(enStr);
+                setQtyInput(toBengaliDigits(cleanEn));
+                const parsed = parseFloat(cleanEn);
                 const newQty = isNaN(parsed) ? ('' as any) : parsed;
                 onQtyChange(newQty);
                 if (typeof newQty === 'number' && newQty > 0 && enteredTotal !== '' && Number(enteredTotal) > 0) {
@@ -1077,6 +1119,21 @@ export function CascadingProductSelector({
                 } else if (typeof newQty === 'number' && newQty > 0 && itemPrice > 0) {
                   setEnteredTotal(Math.round(newQty * itemPrice * 100) / 100);
                 }
+              }
+            }}
+            onBlur={() => {
+              const enStr = toEnglishDigits(qtyInput).replace(/[^0-9.]/g, '');
+              const parsed = parseFloat(enStr);
+              if (isNaN(parsed) || parsed <= 0) {
+                if (itemQty) {
+                  setQtyInput(toBengaliDigits(itemQty));
+                } else {
+                  setQtyInput('');
+                }
+              } else {
+                const clean = Math.round(parsed * 100) / 100;
+                setQtyInput(toBengaliDigits(clean));
+                onQtyChange(clean);
               }
             }}
             onFocus={(e) => e.target.select()}
@@ -1095,25 +1152,46 @@ export function CascadingProductSelector({
             <Input
               type="text"
               inputMode="decimal"
-              value={enteredTotal !== '' ? toBengaliDigits(enteredTotal) : ''}
+              value={totalInput}
               onChange={(e) => {
                 const val = e.target.value;
-                const enStr = toEnglishDigits(val).replace(/[^0-9.]/g, '');
-                if (enStr === '') {
+                const enStr = toEnglishDigits(val).replace(/[।\,]/g, '.').replace(/[^0-9.]/g, '');
+                const parts = enStr.split('.');
+                const cleanEn = parts.length > 1 ? parts[0] + '.' + parts.slice(1).join('') : enStr;
+
+                if (cleanEn === '') {
+                  setTotalInput('');
                   setEnteredTotal('');
                   onPriceChange(0);
                   if (onTotalPriceChange) onTotalPriceChange(0);
                 } else {
-                  const parsed = parseFloat(enStr);
+                  setTotalInput(toBengaliDigits(cleanEn));
+                  const parsed = parseFloat(cleanEn);
                   const newTotal = isNaN(parsed) ? '' : parsed;
                   setEnteredTotal(newTotal);
                   if (typeof newTotal === 'number') {
                     if (onTotalPriceChange) onTotalPriceChange(newTotal);
-                    if (itemQty > 0) {
-                      const computedPrice = Math.round((newTotal / itemQty) * 100) / 100;
+                    const currentQty = Number(itemQty) || 0;
+                    if (currentQty > 0) {
+                      const computedPrice = Math.round((newTotal / currentQty) * 100) / 100;
                       onPriceChange(computedPrice);
                     }
                   }
+                }
+              }}
+              onBlur={() => {
+                const enStr = toEnglishDigits(totalInput).replace(/[^0-9.]/g, '');
+                const parsed = parseFloat(enStr);
+                if (isNaN(parsed) || parsed <= 0) {
+                  if (enteredTotal !== '') {
+                    setTotalInput(toBengaliDigits(enteredTotal));
+                  } else {
+                    setTotalInput('');
+                  }
+                } else {
+                  const clean = Math.round(parsed * 100) / 100;
+                  setTotalInput(toBengaliDigits(clean));
+                  setEnteredTotal(clean);
                 }
               }}
               onFocus={(e) => e.target.select()}
@@ -1130,15 +1208,35 @@ export function CascadingProductSelector({
             <Input
               type="text"
               inputMode="decimal"
-              value={!itemPrice && itemPrice !== 0 ? '' : toBengaliDigits(itemPrice)}
+              value={priceInput}
               onChange={(e) => {
                 const val = e.target.value;
-                const enStr = toEnglishDigits(val).replace(/[^0-9.]/g, '');
-                if (enStr === '') {
+                const enStr = toEnglishDigits(val).replace(/[।\,]/g, '.').replace(/[^0-9.]/g, '');
+                const parts = enStr.split('.');
+                const cleanEn = parts.length > 1 ? parts[0] + '.' + parts.slice(1).join('') : enStr;
+
+                if (cleanEn === '') {
+                  setPriceInput('');
                   onPriceChange('' as any);
                 } else {
-                  const parsed = parseFloat(enStr);
+                  setPriceInput(toBengaliDigits(cleanEn));
+                  const parsed = parseFloat(cleanEn);
                   onPriceChange(isNaN(parsed) ? ('' as any) : parsed);
+                }
+              }}
+              onBlur={() => {
+                const enStr = toEnglishDigits(priceInput).replace(/[^0-9.]/g, '');
+                const parsed = parseFloat(enStr);
+                if (isNaN(parsed) || parsed <= 0) {
+                  if (itemPrice) {
+                    setPriceInput(toBengaliDigits(itemPrice));
+                  } else {
+                    setPriceInput('');
+                  }
+                } else {
+                  const clean = Math.round(parsed * 100) / 100;
+                  setPriceInput(toBengaliDigits(clean));
+                  onPriceChange(clean);
                 }
               }}
               onFocus={(e) => e.target.select()}

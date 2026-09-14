@@ -1,4 +1,4 @@
-export const toBengaliDigits = (num: number | string | undefined | null): string => {
+                        export const toBengaliDigits = (num: number | string | undefined | null): string => {
   if (num === undefined || num === null || num === '') return '০';
   const str = String(num);
   const bengaliNumerals: Record<string, string> = {
@@ -200,5 +200,91 @@ export function parseProductDetails(item: {
     sizeName: sizeName || '—',
     cementType: detectedCementType
   };
+}
+
+/**
+ * Universal cleaner for legacy Bijoy 52 / SutonnyMJ text remnants in product names and ledger descriptions.
+ * Converts strings like "10 মি.মি Gm wm Avi Gg রড" to "10 মি.মি এসসিআরএম রড".
+ */
+export function cleanLegacyBengaliText(input: any): string {
+  if (input === null || input === undefined) return '';
+  let str = String(input).trim();
+  if (!str) return '';
+
+  // 1. Specific brand phrases (longest phrase first)
+  const PHRASES: [RegExp, string | ((m: string) => string)][] = [
+    // SCRM rod
+    [/10\s*wg[:.]\s*wj\s+Gm\s+wm\s+Avi\s+Gg\s+iW/gi, '10 মি.মি এসসিআরএম রড'],
+    [/12\s*wg[:.]\s*wj\s+Gm\s+wm\s+Avi\s+Gg\s+iW/gi, '12 মি.মি এসসিআরএম রড'],
+    [/16\s*wg[:.]\s*wj\s+Gm\s+wm\s+Avi\s+Gg\s+iW/gi, '16 মি.মি এসসিআরএম রড'],
+    [/20\s*wg[:.]\s*wj\s+Gm\s+wm\s+Avi\s+Gg\s+iW/gi, '20 মি.মি এসসিআরএম রড'],
+    [/22\s*wg[:.]\s*wj\s+Gm\s+wm\s+Avi\s+Gg\s+iW/gi, '22 মি.মি এসসিআরএম রড'],
+    [/25\s*wg[:.]\s*wj\s+Gm\s+wm\s+Avi\s+Gg\s+iW/gi, '25 মি.মি এসসিআরএম রড'],
+    [/8\s*wg[:.]\s*wj\s+Gm\s+wm\s+Avi\s+Gg\s+iW/gi, '8 মি.মি এসসিআরএম রড'],
+
+    // BSRM rod
+    [/10\s*wg[:.]\s*wj\s+(?:we|G)\s+Gm\s+Avi\s+Gg\s+iW/gi, '10 মি.মি বিএসআরএম রড'],
+    [/12\s*wg[:.]\s*wj\s+(?:we|G)\s+Gm\s+Avi\s+Gg\s+iW/gi, '12 মি.মি বিএসআরএম রড'],
+    [/16\s*wg[:.]\s*wj\s+(?:we|G)\s+Gm\s+Avi\s+Gg\s+iW/gi, '16 মি.মি বিএসআরএম রড'],
+    [/20\s*wg[:.]\s*wj\s+(?:we|G)\s+Gm\s+Avi\s+Gg\s+iW/gi, '20 মি.মি বিএসআরএম রড'],
+    [/22\s*wg[:.]\s*wj\s+(?:we|G)\s+Gm\s+Avi\s+Gg\s+iW/gi, '22 মি.মি বিএসআরএম রড'],
+    [/25\s*wg[:.]\s*wj\s+(?:we|G)\s+Gm\s+Avi\s+Gg\s+iW/gi, '25 মি.মি বিএসআরএম রড'],
+    [/8\s*wg[:.]\s*wj\s+(?:we|G)\s+Gm\s+Avi\s+Gg\s+iW/gi, '8 মি.মি বিএসআরএম রড'],
+
+    // Fresh rod
+    [/(?:10|12|16|20|22|25|8)\s*wg[:.]\s*wj\s+†d«m\s+iW/gi, (m: string) => m.replace(/wg[:.]\s*wj/gi, 'মি.মি').replace(/†d«m/g, 'ফ্রেশ').replace(/iW/g, 'রড')],
+
+    // KSML rod
+    [/16\s*wg[:.]\s*wj\s+‡K\s+Gm\s+Gg\s+Gj\s+iW/gi, '16 মি.মি কেএসএমএল রড'],
+    [/12\s*wg[:.]\s*wj\s+‡K\s+Gm\s+Gg\s+Gj\s+iW/gi, '12 মি.মি কেএসএমএল রড'],
+    [/10\s*wg[:.]\s*wj\s+‡K\s+Gm\s+Gg\s+Gj\s+iW/gi, '10 মি.মি কেএসএমএল রড'],
+    [/8\s*wg[:.]\s*wj\s+‡K\s+Gm\s+Gg\s+Gj\s+iW/gi, '8 মি.মি কেএসএমএল রড'],
+
+    // Anwar / AKS rod
+    [/(?:10|12|16)\s*wg[:.]\s*wj\s+Av‡bvqvi\s+iW/gi, (m: string) => m.replace(/wg[:.]\s*wj/gi, 'মি.মি').replace(/Av‡bvqvi/g, 'আনোয়ার').replace(/iW/g, 'রড')],
+    [/(?:10|12|16)\s*wg[:.]\s*wj\s+G‡KGm\s+iW/gi, (m: string) => m.replace(/wg[:.]\s*wj/gi, 'মি.মি').replace(/G‡KGm/g, 'একেএস').replace(/iW/g, 'রড')],
+
+    // Cements & Brands
+    [/G¨vsKi\s+wm‡g›U/gi, 'অ্যাংকর সিমেন্ট'],
+    [/wm‡g›U\s+G¨vsKi\s+Avc/gi, 'অ্যাংকর সিমেন্ট'],
+    [/wm‡g›U\s+G¨vsKi/gi, 'অ্যাংকর সিমেন্ট'],
+    [/G¨vsKi\s+Avc/gi, 'অ্যাংকর সিমেন্ট'],
+    [/†nvjwmg\s+wm‡g›U/gi, 'হোলসিম সিমেন্ট'],
+    [/wm‡g›U\s+†nvjwmg/gi, 'হোলসিম সিমেন্ট'],
+    [/‡kL\s+wm‡g›U/gi, 'শেখ সিমেন্ট'],
+    [/kvn\s+wm‡g›U/gi, 'শাহ সিমেন্ট'],
+    [/AvwKR\s+wm‡g›U/gi, 'আকিজ সিমেন্ট'],
+    [/µvDb\s+wm‡g›U/gi, 'ক্রাউন সিমেন্ট'],
+    [/†m‡fb\s+wis\s+wm‡g›U/gi, 'সেভেন রিংস সিমেন্ট'],
+
+    // Charges
+    [/‡jevwi|‡jevix/gi, 'লেবার বিল'],
+    [/fvov/gi, 'ভাড়া']
+  ];
+
+  for (const [pattern, replacement] of PHRASES) {
+    if (typeof replacement === 'string') {
+      str = str.replace(pattern, replacement);
+    } else {
+      str = str.replace(pattern, replacement as any);
+    }
+  }
+
+  // 2. Individual Brand tokens anywhere in text (handles already partially converted text like "10 মি.মি Gm wm Avi Gg রড")
+  str = str.replace(/Gm\s+wm\s+Avi\s+Gg/gi, 'এসসিআরএম');
+  str = str.replace(/we\s+Gm\s+Avi\s+Gg/gi, 'বিএসআরএম');
+  str = str.replace(/G\s+Gm\s+Avi\s+Gg/gi, 'বিএসআরএম');
+  str = str.replace(/‡K\s+Gm\s+Gg\s+Gj/gi, 'কেএসএমএল');
+  str = str.replace(/Av‡bvqvi/gi, 'আনোয়ার');
+  str = str.replace(/G‡KGm/gi, 'একেএস');
+  str = str.replace(/G¨vsKi/gi, 'অ্যাংকর');
+  str = str.replace(/†nvjwmg/gi, 'হোলসিম');
+  str = str.replace(/wm‡g›U/gi, 'সিমেন্ট');
+  str = str.replace(/†d«m/gi, 'ফ্রেশ');
+  str = str.replace(/iW/g, 'রড');
+  str = str.replace(/wg[:.]\s*wj/gi, 'মি.মি');
+
+  // Normalize multi-spaces
+  return str.replace(/\s+/g, ' ').trim();
 }
 

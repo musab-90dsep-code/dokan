@@ -1408,18 +1408,19 @@ export default function SalesReturnsPage() {
                                         </button>
                                         <Input
                                           type="number"
-                                          min="1"
+                                          step="any"
+                                          min="0.01"
                                           max={item.maxQuantity}
                                           value={item.quantity}
                                           onChange={(e) => {
-                                            const entered = Number(e.target.value);
+                                            const entered = parseFloat(e.target.value);
                                             const max = item.maxQuantity || Infinity;
-                                            if (entered > max) {
+                                            if (!isNaN(entered) && entered > max) {
                                               toast.warning(`⚠️ এই চালানে বিক্রিত পরিমাণ ${max} ${item.unit}, এর বেশি ফেরত নেওয়া সম্ভব নয়!`);
                                             }
-                                            const val = Math.min(Math.max(1, entered || 1), max);
+                                            const val = Math.min(Math.max(0.01, isNaN(entered) ? 0.01 : entered), max);
                                             const updated = [...returnCart];
-                                            updated[idx].quantity = val;
+                                            updated[idx].quantity = Math.round(val * 100) / 100;
                                             setReturnCart(updated);
                                           }}
                                           className="w-16 h-7 text-center font-black text-xs rounded-md border-slate-300 p-0"
@@ -1582,18 +1583,19 @@ export default function SalesReturnsPage() {
                                         </button>
                                         <Input
                                           type="number"
-                                          min="1"
+                                          step="any"
+                                          min="0.01"
                                           max={item.maxQuantity}
                                           value={item.quantity}
                                           onChange={(e) => {
-                                            const entered = Number(e.target.value);
+                                            const entered = parseFloat(e.target.value);
                                             const max = item.maxQuantity || Infinity;
-                                            if (entered > max) {
+                                            if (!isNaN(entered) && entered > max) {
                                               toast.warning(`⚠️ স্টকে মাত্র ${max} ${item.unit} রয়েছে!`);
                                             }
-                                            const val = Math.min(Math.max(1, entered || 1), max);
+                                            const val = Math.min(Math.max(0.01, isNaN(entered) ? 0.01 : entered), max);
                                             const updated = [...newTakenCart];
-                                            updated[idx].quantity = val;
+                                            updated[idx].quantity = Math.round(val * 100) / 100;
                                             setNewTakenCart(updated);
                                           }}
                                           className="w-14 h-6 text-center font-black text-xs rounded border-slate-300 p-0"

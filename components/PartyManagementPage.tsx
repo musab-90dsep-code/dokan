@@ -104,6 +104,7 @@ export interface Party {
   note?: string;
   photoUrl?: string;
   totalDue?: number;
+  advanceBalance?: number;
   totalPurchase?: number;
 }
 
@@ -191,6 +192,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
     nid: string;
     tinNumber: string;
     openingBalance: number | string;
+    openingBalanceType: 'due' | 'advance';
     creditLimit: number | string;
     creditDays: number | string;
     discountPercent: number | string;
@@ -216,6 +218,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
     nid: '',
     tinNumber: '',
     openingBalance: '',
+    openingBalanceType: 'due',
     creditLimit: '',
     creditDays: 30,
     discountPercent: '',
@@ -250,7 +253,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       idType: p.idType || (isEngineer ? 'IEB মেম্বারশিপ' : isCustomer ? 'NID' : 'TIN'),
       nid: p.nid || '',
       tinNumber: p.tinNumber || '',
-      openingBalance: p.openingBalance ? String(p.openingBalance) : '',
+      openingBalance: p.openingBalance !== undefined && p.openingBalance !== null && p.openingBalance !== 0 ? String(Math.abs(p.openingBalance)) : '',
+      openingBalanceType: (p.openingBalance || 0) < 0 ? 'advance' : 'due',
       creditLimit: p.creditLimit ? String(p.creditLimit) : '',
       creditDays: p.creditDays || 30,
       discountPercent: p.discountPercent ? String(p.discountPercent) : '',
@@ -287,6 +291,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
         }
 
         let calculatedDue = Number(p.total_due || 0);
+        let dueAmount = 0;
+        let advanceAmount = 0;
 
         if (isEngineer) {
           // Engineer commission calculation matching PartyProfilePage
@@ -323,6 +329,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
           const totalPaid = engineerPayments.reduce((sum, t) => sum + Number(t.paid_amount || t.total_amount || 0), 0);
 
           calculatedDue = Math.max(0, Number(p.opening_balance || 0) + totalCommission - totalPaid);
+          dueAmount = calculatedDue;
         } else if (isCustomer) {
           const custTx = transactions.filter(t => 
             String(t.party) === String(p.id) || 
@@ -333,7 +340,23 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
             const totalPaid = custTx.reduce((sum, t) => sum + Number(t.paid_amount || 0), 0);
             const totalReturns = custTx.filter(t => t.transaction_type === 'sale_return').reduce((sum, t) => sum + Number(t.total_amount || 0), 0);
             calculatedDue = Number(p.opening_balance || 0) + totalSales - totalPaid - totalReturns;
+          } else {
+            calculatedDue = Number(p.opening_balance || 0);
           }
+
+          if (calculatedDue > 0) {
+            dueAmount = calculatedDue;
+            advanceAmount = 0;
+          } else if (calculatedDue < 0) {
+            dueAmount = 0;
+            advanceAmount = Math.abs(calculatedDue);
+          } else {
+            dueAmount = Number(p.total_due || 0);
+            advanceAmount = Number(p.advance_balance || 0);
+          }
+        } else {
+          dueAmount = Number(p.total_due || 0);
+          advanceAmount = Number(p.advance_balance || 0);
         }
 
         return {
@@ -363,7 +386,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
           joinedDate: p.joined_date || '',
           note: cleanNote,
           photoUrl: p.photo_url || '',
-          totalDue: calculatedDue,
+          totalDue: dueAmount,
+          advanceBalance: advanceAmount,
           totalPurchase: Number(p.total_purchases || 0)
         };
       });
@@ -396,6 +420,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       nid: '',
       tinNumber: '',
       openingBalance: '',
+      openingBalanceType: 'due',
       creditLimit: '',
       creditDays: 30,
       discountPercent: '',
@@ -461,7 +486,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
     const rodComm = parseFloat(toEnglishDigits(formData.rodCommissionRate) || '0') || 0;
     const cementComm = parseFloat(toEnglishDigits(formData.cementCommissionRate) || '0') || 0;
-    const openBal = parseFloat(toEnglishDigits(formData.openingBalance) || '0') || 0;
+    const rawOpenBal = parseFloat(toEnglishDigits(formData.openingBalance) || '0') || 0;
+    const openBal = formData.openingBalanceType === 'advance' ? -Math.abs(rawOpenBal) : Math.abs(rawOpenBal);
     const credLim = parseFloat(toEnglishDigits(formData.creditLimit) || '0') || 0;
     const credDays = parseInt(toEnglishDigits(formData.creditDays) || '30', 10) || 30;
     const discPct = parseFloat(toEnglishDigits(formData.discountPercent) || '0') || 0;
@@ -497,7 +523,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       credit_limit: credLim,
       credit_days: credDays,
       discount_percent: discPct,
-      total_due: editing ? (editing.totalDue || 0) : openBal,
+      total_due: editing ? (editing.totalDue || 0) : (openBal > 0 ? openBal : 0),
+      advance_balance: editing ? (editing.advanceBalance || 0) : (openBal < 0 ? Math.abs(openBal) : 0),
       joined_date: formData.joinedDate,
       note: isEngineer ? notePayload : formData.note,
       photo_url: formData.photoUrl
@@ -581,6 +608,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
   });
 
   const totalDue = parties.reduce((a, p) => a + (p.totalDue || 0), 0);
+  const totalAdvance = parties.reduce((a, p) => a + (p.advanceBalance || 0), 0);
 
   return (
     <Shell>
@@ -669,29 +697,29 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
           {/* CARD 3: মোট বাকি/পাওনা */}
           <div className="bg-white border border-amber-100 rounded-md p-4 shadow-2xs flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-md bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 font-bold text-lg">
+            <div className="w-11 h-11 rounded-md bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0 font-bold text-lg">
               ৳
             </div>
             <div>
               <p className="text-xs font-semibold text-slate-500">{isEngineer ? 'মোট কমিশন / পাওনা' : 'মোট বাকি'}</p>
-              <p className="text-xl font-black text-slate-900 mt-0.5">
+              <p className="text-xl font-black text-rose-600 mt-0.5">
                 ৳ {toBnDigits(totalDue.toLocaleString('en-IN'))}
               </p>
               <p className="text-[10px] text-slate-400 font-medium mt-0.5">{isEngineer ? 'ইঞ্জিনিয়ারদের পাওনা ব্যালেন্স' : isCustomer ? 'সকল কাস্টমারের বাকি' : 'সকল পাওয়া পাওনা'}</p>
             </div>
           </div>
 
-          {/* CARD 4: এই মাসে নতুন */}
-          <div className="bg-white border border-rose-100 rounded-md p-4 shadow-2xs flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-md bg-rose-50 text-rose-500 flex items-center justify-center flex-shrink-0">
-              <Users className="w-5 h-5" />
+          {/* CARD 4: মোট অগ্রিম জমা */}
+          <div className="bg-white border border-emerald-100 rounded-md p-4 shadow-2xs flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+              <Wallet className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-500">এই মাসে নতুন</p>
-              <p className="text-xl font-black text-slate-900 mt-0.5">
-                {toBnDigits(parties.length)} <span className="text-xs font-medium text-slate-500">জন</span>
+              <p className="text-xs font-semibold text-slate-500">{isEngineer ? 'মোট অগ্রিম কমিশন' : 'মোট অগ্রিম জমা'}</p>
+              <p className="text-xl font-black text-emerald-600 mt-0.5">
+                ৳ {toBnDigits(totalAdvance.toLocaleString('en-IN'))}
               </p>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">নতুন যোগদান</p>
+              <p className="text-[10px] text-slate-400 font-medium mt-0.5">গ্রাহকদের অগ্রিম জমার পরিমাণ</p>
             </div>
           </div>
 
@@ -1183,24 +1211,30 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                         {/* Financial Balance Banner */}
                         <div className={cn(
                           "p-3 rounded-xl border flex items-center justify-between",
-                          (p.totalDue || 0) > 0
+                          (p.advanceBalance || 0) > 0 || (p.totalDue || 0) < 0
+                            ? "bg-emerald-50/50 border-emerald-200/70"
+                            : (p.totalDue || 0) > 0
                             ? "bg-rose-50/50 border-rose-200/70"
-                            : "bg-emerald-50/50 border-emerald-200/70"
+                            : "bg-slate-50/50 border-slate-200/70"
                         )}>
                           <div>
                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                              {isCustomer ? 'মোট বকেয়া' : 'মোট প্রদেয়'}
+                              {(p.advanceBalance || 0) > 0 || (p.totalDue || 0) < 0 
+                                ? 'অগ্রিম জমা' 
+                                : (isCustomer ? 'মোট বকেয়া' : 'মোট প্রদেয়')}
                             </p>
                             <p className={cn(
                               "text-base font-black tracking-tight mt-0.5",
-                              (p.totalDue || 0) < 0
+                              (p.advanceBalance || 0) > 0 || (p.totalDue || 0) < 0
                                 ? "text-emerald-700"
                                 : (p.totalDue || 0) > 0
                                 ? "text-rose-600"
                                 : "text-slate-700"
                             )}>
-                              {(p.totalDue || 0) < 0
-                                ? `-৳ ${toBnDigits(Math.abs(p.totalDue || 0).toLocaleString('en-IN'))}`
+                              {(p.advanceBalance || 0) > 0
+                                ? `৳ ${toBnDigits((p.advanceBalance || 0).toLocaleString('en-IN'))}`
+                                : (p.totalDue || 0) < 0
+                                ? `৳ ${toBnDigits(Math.abs(p.totalDue || 0).toLocaleString('en-IN'))}`
                                 : `৳ ${toBnDigits((p.totalDue || 0).toLocaleString('en-IN'))}`
                               }
                             </p>
@@ -1209,11 +1243,13 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           <div className="text-right">
                             <span className={cn(
                               "text-[10px] font-black px-2 py-0.5 rounded-md",
-                              (p.totalDue || 0) > 0
+                              (p.advanceBalance || 0) > 0 || (p.totalDue || 0) < 0
+                                ? "bg-emerald-100 text-emerald-800"
+                                : (p.totalDue || 0) > 0
                                 ? "bg-rose-100 text-rose-800"
                                 : "bg-slate-100 text-slate-600"
                             )}>
-                              {(p.totalDue || 0) > 0 ? 'বকেয়া বাকি' : 'পরিশোধিত'}
+                              {(p.advanceBalance || 0) > 0 || (p.totalDue || 0) < 0 ? 'অগ্রিম জমা' : (p.totalDue || 0) > 0 ? 'বকেয়া বাকি' : 'পরিশোধিত'}
                             </span>
                           </div>
                         </div>
@@ -1877,9 +1913,35 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs font-bold text-slate-700 pt-1">
                       <div className="space-y-1">
-                        <Label className="text-xs font-bold text-slate-700">
-                          {isEngineer ? 'প্রারম্ভিক কমিশন / পাওনা (৳)' : 'প্রারম্ভিক বকেয়া / পাওনা (৳)'}
-                        </Label>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs font-bold text-slate-700">
+                            {isEngineer ? 'প্রারম্ভিক কমিশন (৳)' : 'প্রারম্ভিক ব্যালেন্স (৳)'}
+                          </Label>
+                          {!isEngineer && (
+                            <div className="flex items-center gap-2 text-[10px] font-bold">
+                              <label className="flex items-center gap-1 cursor-pointer">
+                                <input 
+                                  type="radio" 
+                                  name="opBalType" 
+                                  checked={formData.openingBalanceType === 'due'} 
+                                  onChange={() => setFormData({ ...formData, openingBalanceType: 'due' })} 
+                                  className="accent-rose-600" 
+                                />
+                                <span className={formData.openingBalanceType === 'due' ? 'text-rose-600 font-black' : 'text-slate-400'}>বকেয়া</span>
+                              </label>
+                              <label className="flex items-center gap-1 cursor-pointer">
+                                <input 
+                                  type="radio" 
+                                  name="opBalType" 
+                                  checked={formData.openingBalanceType === 'advance'} 
+                                  onChange={() => setFormData({ ...formData, openingBalanceType: 'advance' })} 
+                                  className="accent-emerald-600" 
+                                />
+                                <span className={formData.openingBalanceType === 'advance' ? 'text-emerald-600 font-black' : 'text-slate-400'}>অগ্রিম</span>
+                              </label>
+                            </div>
+                          )}
+                        </div>
                         <Input
                           type="text"
                           inputMode="decimal"
@@ -1887,8 +1949,11 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           onChange={(e) =>
                             setFormData({ ...formData, openingBalance: e.target.value })
                           }
-                          placeholder=""
-                          className="rounded-xl h-10 bg-white border-slate-200 font-black text-rose-600"
+                          placeholder="০.০০"
+                          className={cn(
+                            "rounded-xl h-10 bg-white border-slate-200 font-black transition-colors",
+                            formData.openingBalanceType === 'advance' ? "text-emerald-600 focus:border-emerald-500" : "text-rose-600 focus:border-rose-500"
+                          )}
                         />
                       </div>
 

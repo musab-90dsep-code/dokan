@@ -129,6 +129,7 @@ interface Customer {
   name: string;
   businessName?: string;
   totalDue?: number;
+  advanceBalance?: number;
 }
 
 interface Supplier {
@@ -220,6 +221,7 @@ function MasterReportsContent() {
   const [filterCustomer, setFilterCustomer] = useState<string>('all');
 
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [dueReportTab, setDueReportTab] = useState<'due' | 'advance' | 'all'>('due');
 
   // Daily Topsheet & Daily Sales Statement States
   const [topsheetDate, setTopsheetDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
@@ -233,7 +235,7 @@ function MasterReportsContent() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [journalModalOpen, setJournalModalOpen] = useState(false);
   const [journalCommission, setJournalCommission] = useState<Commission | null>(null);
-  const [journalAccountType, setJournalAccountType] = useState<'cash' | 'bank'>('cash');
+  const [journalAccountType, setJournalAccountType] = useState<'cash' | 'bank' | 'adjustment'>('cash');
   const [journalBankId, setJournalBankId] = useState<string>('');
   const [journalConfirmText, setJournalConfirmText] = useState<string>('');
   const [isSubmittingJournal, setIsSubmittingJournal] = useState(false);
@@ -375,12 +377,17 @@ function MasterReportsContent() {
 
       const partyList = await api.parties.list();
       const safePartyList = Array.isArray(partyList) ? partyList : [];
-      setCustomers(safePartyList.filter(p => p.party_type === 'customer' || p.party_type === 'both').map(p => ({
-        id: String(p.id),
-        name: p.name,
-        businessName: p.business_name || '',
-        totalDue: Number(p.total_due || 0)
-      })));
+      setCustomers(safePartyList.filter(p => p.party_type === 'customer' || p.party_type === 'both').map(p => {
+        const adv = Number(p.advance_balance || 0);
+        const opBal = Number(p.opening_balance || 0);
+        return {
+          id: String(p.id),
+          name: p.name,
+          businessName: p.business_name || '',
+          totalDue: Number(p.total_due || 0),
+          advanceBalance: adv > 0 ? adv : (opBal < 0 ? Math.abs(opBal) : 0)
+        };
+      }));
       setSuppliers(safePartyList.filter(p => p.party_type === 'supplier' || p.party_type === 'both').map(p => ({
         id: String(p.id),
         name: p.name,
@@ -1059,16 +1066,24 @@ function MasterReportsContent() {
             {/* 1. বাকী কাস্টমারের তালিকা */}
             {activeTab === 'due_customers' && (() => {
               const dueCustomers = customers.filter(c => (c.totalDue || 0) > 0);
+              const advanceCustomers = customers.filter(c => (c.advanceBalance || 0) > 0);
               const totalCustCount = customers.length;
               const totalCustDue = customers.reduce((sum, c) => sum + (c.totalDue || 0), 0);
+              const totalCustAdvance = customers.reduce((sum, c) => sum + (c.advanceBalance || 0), 0);
+
+              const displayedCustomers = dueReportTab === 'due'
+                ? dueCustomers
+                : dueReportTab === 'advance'
+                  ? advanceCustomers
+                  : customers;
 
               return (
                 <div className="space-y-6 animate-in fade-in duration-300">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                      <h1 className="text-2xl font-black text-slate-900 tracking-tight">বাকী কাস্টমারের তালিকা</h1>
+                      <h1 className="text-2xl font-black text-slate-900 tracking-tight">কাস্টমার বাকি ও অগ্রিম জমার তালিকা</h1>
                       <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold mt-1">
-                        <span>ড্যাশবোর্ড</span><span>&rsaquo;</span><span>রিপোর্ট</span><span>&rsaquo;</span><span className="text-slate-900 font-bold">বাকী কাস্টমারের তালিকা</span>
+                        <span>ড্যাশবোর্ড</span><span>&rsaquo;</span><span>রিপোর্ট</span><span>&rsaquo;</span><span className="text-slate-900 font-bold">কাস্টমার ব্যালেন্স রিপোর্ট</span>
                       </div>
                     </div>
                     <button onClick={() => setActiveTab('hub')} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1.5">
@@ -1078,20 +1093,56 @@ function MasterReportsContent() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <Card className="p-5 border-amber-200/80 bg-gradient-to-br from-amber-50/90 to-yellow-50/40 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-amber-800">মোট কাস্টমার</p><p className="text-2xl font-black text-slate-900">{toBnNum(totalCustCount)} জন</p><p className="text-[11px] font-semibold text-slate-500">সকল নিবন্ধিত কাস্টমার</p></div><div className="w-11 h-11 rounded-2xl bg-amber-500/10 text-amber-700 flex items-center justify-center font-bold"><Users className="w-5 h-5" /></div></div></Card>
-                    <Card className="p-5 border-rose-200/60 bg-gradient-to-br from-rose-50/80 to-red-50/30 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-rose-600">মোট বাকী টাকা</p><p className="text-2xl font-black text-rose-600">{formatBnCurrency(totalCustDue)}</p><p className="text-[11px] font-semibold text-slate-500">সকল কাস্টমারের মোট বাকী</p></div><div className="w-11 h-11 rounded-2xl bg-rose-500/10 text-rose-600 flex items-center justify-center font-bold"><Wallet className="w-5 h-5" /></div></div></Card>
-                    <Card className="p-5 border-emerald-200/60 bg-gradient-to-br from-emerald-50/80 to-teal-50/30 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-emerald-700">বাকি থাকা কাস্টমার</p><p className="text-2xl font-black text-slate-900">{toBnNum(dueCustomers.length)} জন</p><p className="text-[11px] font-semibold text-emerald-600">বর্তমানে পাওনা বাকি</p></div><div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold"><Clock className="w-5 h-5" /></div></div></Card>
-                    <Card className="p-5 border-blue-200/60 bg-gradient-to-br from-blue-50/80 to-indigo-50/30 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-blue-600">গড় কাস্টমার বাকী</p><p className="text-2xl font-black text-slate-900">{formatBnCurrency(dueCustomers.length ? Math.round(totalCustDue / dueCustomers.length) : 0)}</p><p className="text-[11px] font-semibold text-slate-500">প্রতি কাস্টমারে গড়</p></div><div className="w-11 h-11 rounded-2xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold"><TrendingUp className="w-5 h-5" /></div></div></Card>
+                    <Card className="p-5 border-rose-200/60 bg-gradient-to-br from-rose-50/80 to-red-50/30 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-rose-600">মোট বাকী টাকা</p><p className="text-2xl font-black text-rose-600">{formatBnCurrency(totalCustDue)}</p><p className="text-[11px] font-semibold text-slate-500">{toBnNum(dueCustomers.length)} জন কাস্টমারের বাকী</p></div><div className="w-11 h-11 rounded-2xl bg-rose-500/10 text-rose-600 flex items-center justify-center font-bold"><Wallet className="w-5 h-5" /></div></div></Card>
+                    <Card className="p-5 border-emerald-200/60 bg-gradient-to-br from-emerald-50/80 to-teal-50/30 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-emerald-700">মোট অগ্রিম জমা</p><p className="text-2xl font-black text-emerald-600">{formatBnCurrency(totalCustAdvance)}</p><p className="text-[11px] font-semibold text-emerald-600">{toBnNum(advanceCustomers.length)} জন কাস্টমারের অগ্রিম</p></div><div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold"><TrendingUp className="w-5 h-5" /></div></div></Card>
+                    <Card className="p-5 border-blue-200/60 bg-gradient-to-br from-blue-50/80 to-indigo-50/30 rounded-2xl shadow-xs"><div className="flex items-center justify-between"><div className="space-y-1"><p className="text-xs font-bold text-blue-600">গড় কাস্টমার বাকী</p><p className="text-2xl font-black text-slate-900">{formatBnCurrency(dueCustomers.length ? Math.round(totalCustDue / dueCustomers.length) : 0)}</p><p className="text-[11px] font-semibold text-slate-500">বাকি থাকা কাস্টমারে গড়</p></div><div className="w-11 h-11 rounded-2xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold"><Clock className="w-5 h-5" /></div></div></Card>
                   </div>
 
                   <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      <div><Label className="text-[11px] font-bold text-slate-500">কাস্টমার নাম / মোবাইল</Label><Input placeholder="নাম / মোবাইল নম্বর" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="h-10 text-xs font-bold rounded-xl mt-1 bg-slate-50/50 border-slate-200" /></div>
-                      <div className="flex items-end gap-2">
-                        <Button variant="outline" onClick={() => setSearchQuery('')} className="h-10 px-5 rounded-xl text-xs font-bold border-slate-200"><RefreshCcw className="w-3.5 h-3.5 mr-1" /> রিসেট</Button>
-                        <Button onClick={() => toast.success('ফিল্টার প্রয়োগ করা হয়েছে!')} className="h-10 px-6 rounded-xl text-xs font-black bg-gradient-to-r from-[#b88e2d] to-[#d4af37] hover:from-[#a37c22] hover:to-[#be9b2d] text-white shadow-xs">⚡ ফিল্টার করুন</Button>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 w-full sm:w-auto">
+                        <button
+                          type="button"
+                          onClick={() => setDueReportTab('due')}
+                          className={cn(
+                            "px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                            dueReportTab === 'due' ? "bg-white text-rose-700 shadow-xs border border-rose-200" : "text-slate-600 hover:text-slate-900"
+                          )}
+                        >
+                          বাকি তালিকা ({toBnNum(dueCustomers.length)})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDueReportTab('advance')}
+                          className={cn(
+                            "px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                            dueReportTab === 'advance' ? "bg-white text-emerald-700 shadow-xs border border-emerald-200" : "text-slate-600 hover:text-slate-900"
+                          )}
+                        >
+                          অগ্রিম জমা ({toBnNum(advanceCustomers.length)})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDueReportTab('all')}
+                          className={cn(
+                            "px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                            dueReportTab === 'all' ? "bg-white text-slate-900 shadow-xs border border-slate-200" : "text-slate-600 hover:text-slate-900"
+                          )}
+                        >
+                          সকল কাস্টমার ({toBnNum(customers.length)})
+                        </button>
                       </div>
-                      <div className="flex items-end justify-end gap-2">
-                        <Button variant="outline" onClick={() => window.print()} className="h-10 px-4 rounded-xl text-xs font-bold border-slate-200 bg-slate-100"><Printer className="w-4 h-4 mr-1.5" /> প্রিন্ট</Button>
+
+                      <div className="flex items-center gap-2">
+                        <Input 
+                          placeholder="কাস্টমার নাম / মোবাইল খুঁজুন..." 
+                          value={searchQuery} 
+                          onChange={e => setSearchQuery(e.target.value)} 
+                          className="h-10 text-xs font-bold rounded-xl bg-slate-50/50 border-slate-200 w-full sm:w-64" 
+                        />
+                        <Button variant="outline" onClick={() => window.print()} className="h-10 px-4 rounded-xl text-xs font-bold border-slate-200 bg-slate-100 shrink-0">
+                          <Printer className="w-4 h-4 mr-1.5" /> প্রিন্ট
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -1103,24 +1154,47 @@ function MasterReportsContent() {
                           <TableHead className="font-black text-xs text-center w-16">ক্রমিক</TableHead>
                           <TableHead className="font-black text-xs">কাস্টমার কোড</TableHead>
                           <TableHead className="font-black text-xs">কাস্টমার নাম</TableHead>
-                          <TableHead className="font-black text-xs text-right">বাকী (৳)</TableHead>
+                          <TableHead className="font-black text-xs text-right">বকেয়া / অগ্রিম জমা (৳)</TableHead>
                           <TableHead className="font-black text-xs text-center">স্ট্যাটাস</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {dueCustomers.length === 0 ? (
-                          <TableRow><TableCell colSpan={5} className="text-center py-8 text-slate-400 font-bengali">কোনো কাস্টমারের বাকী নেই</TableCell></TableRow>
-                        ) : dueCustomers
+                        {displayedCustomers.length === 0 ? (
+                          <TableRow><TableCell colSpan={5} className="text-center py-8 text-slate-400 font-bengali">কোনো রেকর্ড পাওয়া যায়নি</TableCell></TableRow>
+                        ) : displayedCustomers
                           .filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()))
-                          .map((c, index) => (
-                          <TableRow key={c.id} className="border-b border-slate-100">
-                            <TableCell className="text-center font-bold text-xs">{toBnNum(index + 1)}</TableCell>
-                            <TableCell className="font-mono text-xs font-bold text-slate-600">CUS-{toBnNum(c.id.padStart(4, '0'))}</TableCell>
-                            <TableCell className="font-black text-slate-900 text-sm">{c.name}</TableCell>
-                            <TableCell className="text-right font-black text-rose-600 text-sm">{formatBnCurrency(c.totalDue || 0)}</TableCell>
-                            <TableCell className="text-center"><span className="px-2.5 py-1 rounded-lg text-[11px] font-black bg-rose-100 text-rose-700 border border-rose-200 inline-block">পাওনা বাকী</span></TableCell>
-                          </TableRow>
-                        ))}
+                          .map((c, index) => {
+                            const hasDue = (c.totalDue || 0) > 0;
+                            const hasAdv = (c.advanceBalance || 0) > 0;
+                            return (
+                              <TableRow key={c.id} className="border-b border-slate-100">
+                                <TableCell className="text-center font-bold text-xs">{toBnNum(index + 1)}</TableCell>
+                                <TableCell className="font-mono text-xs font-bold text-slate-600">CUS-{toBnNum(c.id.padStart(4, '0'))}</TableCell>
+                                <TableCell className="font-black text-slate-900 text-sm">
+                                  {c.name}
+                                  {c.businessName && <span className="text-xs text-slate-500 font-normal ml-1.5">({c.businessName})</span>}
+                                </TableCell>
+                                <TableCell className="text-right font-black text-sm">
+                                  {hasDue ? (
+                                    <span className="text-rose-600 font-black">{formatBnCurrency(c.totalDue || 0)}</span>
+                                  ) : hasAdv ? (
+                                    <span className="text-emerald-600 font-black">{formatBnCurrency(c.advanceBalance || 0)}</span>
+                                  ) : (
+                                    <span className="text-slate-400">০.০০</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {hasDue ? (
+                                    <span className="px-2.5 py-1 rounded-lg text-[11px] font-black bg-rose-100 text-rose-700 border border-rose-200 inline-block">পাওনা বাকী</span>
+                                  ) : hasAdv ? (
+                                    <span className="px-2.5 py-1 rounded-lg text-[11px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200 inline-block">অগ্রিম জমা</span>
+                                  ) : (
+                                    <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-600 inline-block">পরিশোধিত</span>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                       </TableBody>
                     </Table>
                   </Card>
@@ -1155,8 +1229,20 @@ function MasterReportsContent() {
                 return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === selectedDateStr;
               });
 
+              // Filter payment_in (customer collections & advance deposits) on selected date
+              const dayCustomerPayments = transactions.filter(t => {
+                const tType = (t.type || '').toLowerCase();
+                const isPayIn = tType === 'payment_in' || tType === 'payment' || (tType === 'income' && t.raw?.transaction_type === 'payment_in');
+                if (!isPayIn) return false;
+                if (!t.createdAt) return false;
+                const d = new Date(t.createdAt);
+                return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === selectedDateStr;
+              });
+              const customerPaymentInflow = dayCustomerPayments.reduce((sum, t) => sum + (t.paidAmount || t.amount || 0), 0);
+
               // Cash Inflows & Outflows
               const cashSalesInflow = dayOrders.reduce((sum, o) => sum + (o.paidAmount || 0), 0);
+              const totalCashInflow = cashSalesInflow + customerPaymentInflow;
               const dueSalesTotal = dayOrders.reduce((sum, o) => sum + (o.dueAmount || 0), 0);
               const totalDailySalesVal = dayOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
 
@@ -1164,7 +1250,7 @@ function MasterReportsContent() {
               const expenseOutflow = dayExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
               const totalOutflow = cashPurchaseOutflow + expenseOutflow;
               
-              const netCashDifference = cashSalesInflow - totalOutflow;
+              const netCashDifference = totalCashInflow - totalOutflow;
 
               // Quantity summaries for Rod & Cement
               let rodSoldKg = 0;
@@ -1249,8 +1335,10 @@ function MasterReportsContent() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-center">
                     <Card className="p-5 border-emerald-200 bg-gradient-to-br from-emerald-50 to-emerald-100/30 rounded-3xl shadow-xs">
                       <p className="text-xs font-bold text-emerald-800">আজকের মোট ক্যাশ জমা (Inflow)</p>
-                      <p className="text-2xl font-black text-emerald-700 mt-1">{formatBnCurrency(cashSalesInflow)}</p>
-                      <p className="text-[10px] font-semibold text-emerald-600 mt-1">নগদ বিক্রি জমা</p>
+                      <p className="text-2xl font-black text-emerald-700 mt-1">{formatBnCurrency(totalCashInflow)}</p>
+                      <p className="text-[10px] font-semibold text-emerald-600 mt-1">
+                        নগদ বিক্রি: {formatBnCurrency(cashSalesInflow)} | আদায়/অগ্রিম: {formatBnCurrency(customerPaymentInflow)}
+                      </p>
                     </Card>
 
                     <Card className="p-5 border-rose-200 bg-gradient-to-br from-rose-50 to-rose-100/30 rounded-3xl shadow-xs">
@@ -1297,12 +1385,16 @@ function MasterReportsContent() {
                             <TableCell className="text-right font-black text-emerald-700 px-6">{formatBnCurrency(cashSalesInflow)}</TableCell>
                           </TableRow>
                           <TableRow className="border-b border-slate-100 text-xs">
+                            <TableCell className="font-bold text-slate-800">কাস্টমার থেকে নগদ আদায় ও অগ্রিম জমা (Customer Collections & Advance)</TableCell>
+                            <TableCell className="text-right font-black text-emerald-700 px-6">{formatBnCurrency(customerPaymentInflow)}</TableCell>
+                          </TableRow>
+                          <TableRow className="border-b border-slate-100 text-xs">
                             <TableCell className="font-bold text-slate-800">আজকের তৈরি বকেয়া (Customer Due Created)</TableCell>
                             <TableCell className="text-right font-black text-slate-600 px-6">{formatBnCurrency(dueSalesTotal)}</TableCell>
                           </TableRow>
                           <TableRow className="bg-emerald-50/80 font-black text-xs text-emerald-900 border-t border-emerald-200">
                             <TableCell className="py-3 px-4 font-black">সর্বমোট ক্যাশ কালেকশন (Cash Inflow)</TableCell>
-                            <TableCell className="text-right text-emerald-700 text-sm px-6 font-black">{formatBnCurrency(cashSalesInflow)}</TableCell>
+                            <TableCell className="text-right text-emerald-700 text-sm px-6 font-black">{formatBnCurrency(totalCashInflow)}</TableCell>
                           </TableRow>
                         </TableBody>
                       </Table>
@@ -1386,8 +1478,9 @@ function MasterReportsContent() {
                           <table className="w-full text-xs border-collapse">
                             <tbody>
                               <tr className="border-b"><td className="py-1">নগদ বিক্রয় জমা:</td><td className="text-right font-bold">৳{cashSalesInflow.toLocaleString()}</td></tr>
+                              <tr className="border-b"><td className="py-1">বকেয়া আদায় ও অগ্রিম জমা:</td><td className="text-right font-bold">৳{customerPaymentInflow.toLocaleString()}</td></tr>
                               <tr className="border-b"><td className="py-1">বকেয়া তৈরি:</td><td className="text-right font-bold">৳{dueSalesTotal.toLocaleString()}</td></tr>
-                              <tr className="font-bold"><td className="py-2">মোট জমা:</td><td className="text-right py-2">৳{cashSalesInflow.toLocaleString()}</td></tr>
+                              <tr className="font-bold"><td className="py-2">মোট জমা:</td><td className="text-right py-2">৳{totalCashInflow.toLocaleString()}</td></tr>
                             </tbody>
                           </table>
                         </div>
@@ -2994,13 +3087,16 @@ ${cementBlockLines.join('\n')}
               const totalBankBal = banks.reduce((sum, b) => sum + (b.balance || 0), 0);
               const totalCustDue = customers.reduce((sum, c) => sum + (c.totalDue || 0), 0);
               const customersWithDue = customers.filter(c => (c.totalDue || 0) > 0);
+              const customersWithAdvance = customers.filter(c => (c.advanceBalance || 0) > 0);
+              const totalCustAdvance = customers.reduce((sum, c) => sum + (c.advanceBalance || 0), 0);
 
               const totalAssets = rodStockVal + cementStockVal + ringStockVal + otherStockVal + totalCash + totalBankBal + totalCustDue;
 
               const suppliersWithDue = suppliers.filter(s => (s.totalDue || 0) > 0);
               const totalSuppDue = suppliers.reduce((sum, s) => sum + (s.totalDue || 0), 0);
+              const totalLiabilities = totalSuppDue + totalCustAdvance;
 
-              const currentCapital = totalAssets - totalSuppDue; // বর্তমান চালান (সম্পদ)
+              const currentCapital = totalAssets - totalLiabilities; // বর্তমান চালান (সম্পদ)
               const initialInvestedCapital = initialCapital; // চালান প্রদান করা হয়েছিলো
               const netProfit = currentCapital - initialInvestedCapital; // প্রফিট
 
@@ -3073,9 +3169,11 @@ ${cementBlockLines.join('\n')}
                     </Card>
 
                     <Card className="p-4 border-rose-200 bg-gradient-to-br from-rose-50/90 to-red-50/40 rounded-2xl shadow-xs">
-                      <p className="text-xs font-bold text-rose-800">মোট ঋণ (Total Liabilities)</p>
-                      <p className="text-2xl font-black text-rose-600 mt-1">{formatBnCurrency(totalSuppDue)}</p>
-                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">সাপ্লায়ার ও অন্যান্য দেনা</p>
+                      <p className="text-xs font-bold text-rose-800">মোট ঋণ ও দায় (Total Liabilities)</p>
+                      <p className="text-2xl font-black text-rose-600 mt-1">{formatBnCurrency(totalLiabilities)}</p>
+                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+                        সাপ্লায়ার: {formatBnCurrency(totalSuppDue)} | কাস্টমার অগ্রিম: {formatBnCurrency(totalCustAdvance)}
+                      </p>
                     </Card>
 
                     <Card className="p-4 border-blue-200 bg-gradient-to-br from-blue-50/90 to-indigo-50/40 rounded-2xl shadow-xs">
@@ -3378,13 +3476,24 @@ ${cementBlockLines.join('\n')}
                             ))
                           )}
 
+                          {totalCustAdvance > 0 && (
+                            <tr style={{ pageBreakInside: 'avoid' }}>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px', color: '#b45309' }}>
+                                কাস্টমারদের অগ্রিম জমা (Advance Deposit) -
+                              </td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px', color: '#b45309' }}>
+                                {formatBnNumber(totalCustAdvance)}
+                              </td>
+                            </tr>
+                          )}
+
                           {/* মোট ঋণ সাবটোটাল */}
                           <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
                             <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
-                              মোট ঋণ
+                              মোট ঋণ ও দায়
                             </td>
                             <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
-                              {formatBnNumber(totalSuppDue)}
+                              {formatBnNumber(totalLiabilities)}
                             </td>
                           </tr>
 

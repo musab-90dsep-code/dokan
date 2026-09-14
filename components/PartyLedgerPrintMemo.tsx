@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { toBnDigits, PartyProfile } from '@/components/PartyProfilePage';
-import { numberToBengaliWords } from '@/lib/bengaliUtils';
+import { numberToBengaliWords, cleanLegacyBengaliText } from '@/lib/bengaliUtils';
 import { format } from 'date-fns';
 import { bn } from 'date-fns/locale';
 
@@ -45,7 +45,8 @@ export function buildLedgerPrintRows(
   isCustomer: boolean,
   isEngineer: boolean = false,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  isSupplier: boolean = false
 ): { rows: PrintLedgerRow[]; totalAmount: number; totalDeposit: number; netBalance: number } {
   const rows: PrintLedgerRow[] = [];
   let totalAmount = 0;
@@ -73,8 +74,19 @@ export function buildLedgerPrintRows(
     if (startObj && txDate < startObj) {
       // Accumulate into prior balance
       const txType = tx.transactionType;
-      const bill = Number(tx.totalAmount || 0);
+      let bill = Number(tx.totalAmount || 0);
       const paid = Number(tx.paidAmount || 0);
+
+      // Exclude labor & shipping charges for suppliers and purchase transactions
+      if (txType === 'purchase' || !isCustomer || isSupplier) {
+        let meta: any = {};
+        if (tx.notes && typeof tx.notes === 'string' && tx.notes.trim().startsWith('{')) {
+          try { meta = JSON.parse(tx.notes.split('\n')[0]); } catch {}
+        }
+        const labCost = Number(meta.laborCost || (tx as any).laborCost || (tx as any).labor_cost || 0);
+        const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || (tx as any).transportCost || 0);
+        bill = Math.max(0, bill - (labCost + shipCost));
+      }
 
       if (txType === 'payment_in' || txType === 'payment_out' || (isEngineer && txType === 'payment')) {
         priorBalance -= (paid || bill);
@@ -171,30 +183,7 @@ export function buildLedgerPrintRows(
       const items = tx.items || [];
       if (items.length > 0) {
         items.forEach((it: any) => {
-          let name = it.product_name || it.name || 'পণ্য';
-          // Clean any legacy Bijoy/Sutonny tokens if present
-          if (name.includes('wg:') || name.includes('iW') || name.includes('†d«m') || name.includes('G¨vsKi') || name.includes('Avi Gg')) {
-            name = name
-              .replace(/10 wg: wj †d«m iW/g, '10 মি.মি ফ্রেশ রড')
-              .replace(/12 wg: wj †d«m iW/g, '12 মি.মি ফ্রেশ রড')
-              .replace(/16 wg: wj †d«m iW/g, '16 মি.মি ফ্রেশ রড')
-              .replace(/20 wg: wj †d«m iW/g, '20 মি.মি ফ্রেশ রড')
-              .replace(/8 wg: wj †d«m iW/g, '8 মি.মি ফ্রেশ রড')
-              .replace(/16 wg: wj ‡K Gm Gg Gj iW/g, '16 মি.মি কেএসএমএল রড')
-              .replace(/10 wg: wj ‡K Gm Gg Gj iW/g, '10 মি.মি কেএসএমএল রড')
-              .replace(/8 wg: wj G Gm Avi Gg iW/g, '8 মি.মি বিএসআরএম রড')
-              .replace(/8 wg: wj we Gm Avi Gg iW/g, '8 মি.মি বিএসআরএম রড')
-              .replace(/10 wg: wj we Gm Avi Gg iW/g, '10 মি.মি বিএসআরএম রড')
-              .replace(/12 wg: wj we Gm Avi Gg iW/g, '12 মি.মি বিএসআরএম রড')
-              .replace(/16 wg: wj we Gm Avi Gg iW/g, '16 মি.মি বিএসআরএম রড')
-              .replace(/20 wg: wj we Gm Avi Gg iW/g, '20 মি.মি বিএসআরএম রড')
-              .replace(/G¨vsKi wm‡g›U/g, 'অ্যাংকর সিমেন্ট')
-              .replace(/G¨vsKi/g, 'অ্যাংকর')
-              .replace(/†d«m/g, 'ফ্রেশ')
-              .replace(/iW/g, 'রড')
-              .replace(/wg: wj/g, 'মি.মি')
-              .replace(/wg\.wj/g, 'মি.মি');
-          }
+          let name = cleanLegacyBengaliText(it.product_name || it.name || 'পণ্য');
           const qty = Number(it.quantity || 1);
           const price = Number(it.price || 0);
           const itemTotal = Number(it.total) || (qty * price);
@@ -212,7 +201,12 @@ export function buildLedgerPrintRows(
           });
         });
       } else {
-        const bill = Number(tx.totalAmount || 0);
+        let bill = Number(tx.totalAmount || 0);
+        if (txType === 'purchase' || !isCustomer || isSupplier) {
+          const labCost = Number(meta.laborCost || (tx as any).laborCost || (tx as any).labor_cost || 0);
+          const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || (tx as any).transportCost || 0);
+          bill = Math.max(0, bill - (labCost + shipCost));
+        }
         totalAmount += bill;
         rows.push({
           date: txDateStr,
@@ -226,9 +220,9 @@ export function buildLedgerPrintRows(
         });
       }
 
-      // Labor charge
+      // Labor charge: Only for customer sales invoices, NEVER added to supplier ledger
       const labCost = Number(meta.laborCost || (tx as any).laborCost || (tx as any).labor_cost || 0);
-      if (labCost > 0) {
+      if (labCost > 0 && isCustomer && !isSupplier && txType !== 'purchase') {
         totalAmount += labCost;
         rows.push({
           date: txDateStr,
@@ -242,9 +236,9 @@ export function buildLedgerPrintRows(
         });
       }
 
-      // Transport / shipping charge
-      const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || 0);
-      if (shipCost > 0) {
+      // Transport / shipping charge: Only for customer sales invoices, NEVER added to supplier ledger
+      const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || (tx as any).transportCost || 0);
+      if (shipCost > 0 && isCustomer && !isSupplier && txType !== 'purchase') {
         totalAmount += shipCost;
         rows.push({
           date: txDateStr,
@@ -305,7 +299,8 @@ export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
     isCustomer,
     isEngineer,
     startDate,
-    endDate
+    endDate,
+    isSupplier
   );
 
   return (

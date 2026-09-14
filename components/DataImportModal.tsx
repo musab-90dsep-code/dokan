@@ -15,7 +15,7 @@ import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { toBengaliDigits, toEnglishDigits } from '@/lib/bengaliUtils';
+import { toBengaliDigits, toEnglishDigits, cleanLegacyBengaliText } from '@/lib/bengaliUtils';
 import {
   FileSpreadsheet,
   UploadCloud,
@@ -246,6 +246,24 @@ export function DataImportModal({
     ['20 wg.wj †d«m iW', '20 মি.মি ফ্রেশ রড'],
     ['8 wg.wj †d«m iW', '8 মি.মি ফ্রেশ রড'],
 
+    // SCRM rod
+    ['10 wg: wj Gm wm Avi Gg iW', '10 মি.মি এসসিআরএম রড'],
+    ['12 wg: wj Gm wm Avi Gg iW', '12 মি.মি এসসিআরএম রড'],
+    ['16 wg: wj Gm wm Avi Gg iW', '16 মি.মি এসসিআরএম রড'],
+    ['20 wg: wj Gm wm Avi Gg iW', '20 মি.মি এসসিআরএম রড'],
+    ['22 wg: wj Gm wm Avi Gg iW', '22 মি.মি এসসিআরএম রড'],
+    ['25 wg: wj Gm wm Avi Gg iW', '25 মি.মি এসসিআরএম রড'],
+    ['8 wg: wj Gm wm Avi Gg iW', '8 মি.মি এসসিআরএম রড'],
+
+    ['10 wg.wj Gm wm Avi Gg', '10 মি.মি এসসিআরএম রড'],
+    ['12 wg.wj Gm wm Avi Gg', '12 মি.মি এসসিআরএম রড'],
+    ['16 wg.wj Gm wm Avi Gg', '16 মি.মি এসসিআরএম রড'],
+    ['20 wg.wj Gm wm Avi Gg', '20 মি.মি এসসিআরএম রড'],
+    ['22 wg.wj Gm wm Avi Gg', '22 মি.মি এসসিআরএম রড'],
+    ['25 wg.wj Gm wm Avi Gg', '25 মি.মি এসসিআরএম রড'],
+    ['8 wg.wj Gm wm Avi Gg', '8 মি.মি এসসিআরএম রড'],
+    ['Gm wm Avi Gg', 'এসসিআরএম রড'],
+
     // BSRM rod
     ['10 wg: wj we Gm Avi Gg iW', '10 মি.মি বিএসআরএম রড'],
     ['12 wg: wj we Gm Avi Gg iW', '12 মি.মি বিএসআরএম রড'],
@@ -344,13 +362,13 @@ export function DataImportModal({
         str = str.split(k).join(v);
       }
     }
-    // Clean residual Bijoy tokens
+    // Clean residual Bijoy tokens & apply universal legacy cleaner
     str = str.split('iW').join('রড');
     str = str.split('†d«m').join('ফ্রেশ');
     str = str.split('wg: wj').join('মি.মি');
     str = str.split('wg.wj').join('মি.মি');
     str = str.split('G¨vsKi').join('অ্যাংকর');
-    return str.trim();
+    return cleanLegacyBengaliText(str);
   };
 
   const serialToDateString = (val: any): string => {
