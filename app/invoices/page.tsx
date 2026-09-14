@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Shell } from '@/components/Shell';
-import { api } from '@/lib/api';
+import { api, CustomerSiteData } from '@/lib/api';
 import { 
   Search, Eye, Printer, X, FileText, Receipt, Banknote, AlertCircle, Plus, 
   ShoppingCart, User, Phone, Tag, CheckCircle2, DollarSign, Trash2, ArrowRight, ArrowLeft,
-  Lightbulb, Calendar, Building, UserCheck, Percent, HelpCircle, Edit2, Filter, ChevronUp, ChevronDown, RotateCcw, Zap, ArrowUpDown, ChevronLeft, ChevronRight
+  Lightbulb, Calendar, Building, UserCheck, Percent, HelpCircle, Edit2, Filter, ChevronUp, ChevronDown, RotateCcw, Zap, ArrowUpDown, ChevronLeft, ChevronRight,
+  MapPin
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -53,6 +54,7 @@ interface Customer {
   balance?: number;
   previousDue?: number;
   openingBalance?: number;
+  sites?: CustomerSiteData[];
 }
 
 interface OrderItem {
@@ -79,6 +81,10 @@ interface Invoice {
   customerAddress?: string;
   businessName?: string;
   customerId?: string;
+  customerSiteId?: string;
+  siteName?: string;
+  siteAddress?: string;
+  siteContact?: string;
   engineerId?: string;
   engineerName?: string;
   engineerPhone?: string;
@@ -228,6 +234,57 @@ function InvoicesContent() {
   const [driverPhone, setDriverPhone] = useState<string>('');
   const [deliveryAddress, setDeliveryAddress] = useState<string>('');
   
+  // Customer Project/Delivery Sites State
+  const [customerSites, setCustomerSites] = useState<CustomerSiteData[]>([]);
+  const [selectedSiteId, setSelectedSiteId] = useState<string>('none');
+  const [siteName, setSiteName] = useState<string>('');
+  const [siteAddress, setSiteAddress] = useState<string>('');
+  const [siteContact, setSiteContact] = useState<string>('');
+  const [saveSiteForFuture, setSaveSiteForFuture] = useState<boolean>(true);
+  const [isLoadingSites, setIsLoadingSites] = useState<boolean>(false);
+
+  const loadSitesForCustomer = useCallback(async (custId?: string | number) => {
+    if (!custId) {
+      setCustomerSites([]);
+      return;
+    }
+    setIsLoadingSites(true);
+    try {
+      const sites = await api.customerSites.list({ customer: custId });
+      setCustomerSites(sites);
+    } catch (err) {
+      console.error('Error fetching customer sites:', err);
+      setCustomerSites([]);
+    } finally {
+      setIsLoadingSites(false);
+    }
+  }, []);
+
+  const handleSiteSelectionChange = (val: string | null) => {
+    const activeVal = val || 'none';
+    setSelectedSiteId(activeVal);
+    if (activeVal === 'none') {
+      setSiteName('');
+      setSiteAddress('');
+      setSiteContact('');
+      setDeliveryAddress(selectedCustomer?.address || '');
+    } else if (activeVal === 'new') {
+      setSiteName('');
+      setSiteAddress('');
+      setSiteContact('');
+      setDeliveryAddress('');
+    } else {
+      const site = customerSites.find(s => String(s.id) === String(activeVal));
+      if (site) {
+        setSiteName(site.name);
+        setSiteAddress(site.address || '');
+        const contactInfo = site.contact_person ? `${site.contact_person}${site.contact_phone ? ` (${site.contact_phone})` : ''}` : (site.contact_phone || '');
+        setSiteContact(contactInfo);
+        setDeliveryAddress(site.address || '');
+      }
+    }
+  };
+  
   // Rate-based vs manual extra charge states
   const [chargeCalcMode, setChargeCalcMode] = useState<'rate' | 'manual'>('rate');
   const [rodLaborRate, setRodLaborRate] = useState<number>(() => {
@@ -343,6 +400,10 @@ function InvoicesContent() {
           stage: s.status === 'pending' || s.status === 'draft' ? 'pending' : 'approved',
           status: s.status || 'pending',
           createdAt: s.created_at,
+          customerSiteId: s.customer_site ? String(s.customer_site) : (meta.customerSiteId ? String(meta.customerSiteId) : ''),
+          siteName: s.site_name || meta.siteName || meta.site_name || '',
+          siteAddress: s.site_address || meta.siteAddress || meta.site_address || meta.deliveryAddress || '',
+          siteContact: s.site_contact || meta.siteContact || meta.site_contact || '',
           vehicleNo: meta.vehicleNo || '',
           driverName: meta.driverName || '',
           driverPhone: meta.driverPhone || '',
@@ -497,6 +558,7 @@ function InvoicesContent() {
         if (foundCust) {
           setSelectedCustomer(foundCust);
           setIsNewCustomer(false);
+          loadSitesForCustomer(foundCust.id);
         } else {
           setSelectedCustomer(null);
           setIsNewCustomer(true);
@@ -505,7 +567,30 @@ function InvoicesContent() {
             phone: raw.party_phone || '',
             address: ''
           });
+          setCustomerSites([]);
         }
+
+        // Check for site details in order
+        let parsedOrderMeta: any = {};
+        if (raw.notes && raw.notes.trim().startsWith('{')) {
+          try {
+            parsedOrderMeta = JSON.parse(raw.notes.split('\n')[0]);
+          } catch {}
+        }
+        const orderSiteId = raw.customer_site ? String(raw.customer_site) : (parsedOrderMeta.customerSiteId ? String(parsedOrderMeta.customerSiteId) : '');
+        const orderSiteName = raw.site_name || parsedOrderMeta.siteName || '';
+        const orderSiteAddress = raw.site_address || parsedOrderMeta.siteAddress || '';
+        const orderSiteContact = raw.site_contact || parsedOrderMeta.siteContact || '';
+        if (orderSiteId) {
+          setSelectedSiteId(orderSiteId);
+        } else if (orderSiteName) {
+          setSelectedSiteId('new');
+        } else {
+          setSelectedSiteId('none');
+        }
+        setSiteName(orderSiteName);
+        setSiteAddress(orderSiteAddress);
+        setSiteContact(orderSiteContact);
 
         // Map order items to invoice cart items
         const rawItems: OrderItem[] = (raw.items || []).map(i => ({
@@ -765,6 +850,12 @@ function InvoicesContent() {
     setDriverName('');
     setDriverPhone('');
     setDeliveryAddress('');
+    setCustomerSites([]);
+    setSelectedSiteId('none');
+    setSiteName('');
+    setSiteAddress('');
+    setSiteContact('');
+    setSaveSiteForFuture(true);
     
     // Load default per-unit rates from localStorage
     const defRodLab = typeof window !== 'undefined' ? (parseFloat(localStorage.getItem('dokan_sales_rod_labor_rate') || '0') || 0) : 0;
@@ -839,6 +930,23 @@ function InvoicesContent() {
     setDriverName(inv.driverName || '');
     setDriverPhone(inv.driverPhone || '');
     setDeliveryAddress(inv.deliveryAddress || inv.customerAddress || '');
+
+    // Restore customer site fields
+    const targetCustId = cust?.id || inv.customerId;
+    if (targetCustId) {
+      loadSitesForCustomer(targetCustId);
+    }
+    if (inv.customerSiteId) {
+      setSelectedSiteId(String(inv.customerSiteId));
+    } else if (inv.siteName) {
+      setSelectedSiteId('new');
+    } else {
+      setSelectedSiteId('none');
+    }
+    setSiteName(inv.siteName || '');
+    setSiteAddress(inv.siteAddress || '');
+    setSiteContact(inv.siteContact || '');
+    setSaveSiteForFuture(true);
 
     const invAny = inv as any;
     if (invAny.rodLaborRate !== undefined) setRodLaborRate(Number(invAny.rodLaborRate || 0));
@@ -925,6 +1033,27 @@ function InvoicesContent() {
         cheque_status: 'pending' as const
       } : {};
 
+      let savedSiteRecord: CustomerSiteData | null = null;
+      if (finalCustId && siteName.trim() && (selectedSiteId === 'new' || saveSiteForFuture)) {
+        const exists = customerSites.some(s => s.name.trim().toLowerCase() === siteName.trim().toLowerCase());
+        if (!exists && saveSiteForFuture) {
+          try {
+            savedSiteRecord = await api.customerSites.create({
+              customer: finalCustId,
+              name: siteName.trim(),
+              address: siteAddress.trim() || deliveryAddress.trim(),
+              contact_person: siteContact.trim()
+            });
+          } catch (err) {
+            console.error('Failed to auto-save customer site:', err);
+          }
+        }
+      }
+
+      const activeSiteId = savedSiteRecord?.id 
+        ? String(savedSiteRecord.id) 
+        : (selectedSiteId !== 'none' && selectedSiteId !== 'new' ? selectedSiteId : undefined);
+
       const logisticsMeta = {
         discountType,
         discountPercent: Number(discountPercent || 0),
@@ -949,7 +1078,11 @@ function InvoicesContent() {
         vehicleNo: vehicleNo || '',
         driverName: driverName || '',
         driverPhone: driverPhone || '',
-        deliveryAddress: deliveryAddress || '',
+        deliveryAddress: (siteAddress.trim() || deliveryAddress.trim()) || '',
+        customerSiteId: activeSiteId,
+        siteName: siteName.trim(),
+        siteAddress: (siteAddress.trim() || deliveryAddress.trim()) || '',
+        siteContact: siteContact.trim(),
         paymentMethodName: invoicePaymentMethod,
         bankName: bankName || senderBankName || selectedShopBank || '',
         accountNo: accountNo || senderAccountNo || '',
@@ -986,6 +1119,13 @@ function InvoicesContent() {
       const safePaidAmount = round2(finalPaidAmount);
       const safeDueAmount = round2(cartDueAmount);
 
+      const sitePayload = {
+        customer_site: activeSiteId ? Number(activeSiteId) : null,
+        site_name: siteName.trim() || null,
+        site_address: (siteAddress.trim() || deliveryAddress.trim()) || null,
+        site_contact: siteContact.trim() || null,
+      };
+
       if (editingInvoiceId) {
         await api.transactions.update(editingInvoiceId, {
           party: finalCustId ? Number(finalCustId) : null,
@@ -995,6 +1135,7 @@ function InvoicesContent() {
           paid_amount: safePaidAmount,
           due_amount: safeDueAmount,
           payment_method: effectivePaymentMethod,
+          ...sitePayload,
           ...chequePayload,
           items: cart.map(i => {
             const prodId = Number(i.id);
@@ -1019,6 +1160,7 @@ function InvoicesContent() {
           paid_amount: safePaidAmount,
           due_amount: safeDueAmount,
           payment_method: effectivePaymentMethod,
+          ...sitePayload,
           ...chequePayload,
           items: cart.map(i => {
             const prodId = Number(i.id);
@@ -1045,6 +1187,7 @@ function InvoicesContent() {
           paid_amount: safePaidAmount,
           due_amount: safeDueAmount,
           payment_method: effectivePaymentMethod,
+          ...sitePayload,
           ...chequePayload,
           items: cart.map(i => {
             const prodId = Number(i.id);
@@ -1635,11 +1778,18 @@ function InvoicesContent() {
                         {inv.customerPhone && (
                           <p className="text-xs text-slate-400 font-sans mt-0.5">{inv.customerPhone}</p>
                         )}
-                        {inv.engineerName && (
-                          <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-50 text-orange-700 border border-orange-200">
-                            👷‍♂️ {inv.engineerName}
-                          </span>
-                        )}
+                        <div className="flex flex-wrap items-center gap-1 mt-1">
+                          {inv.siteName && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200" title={inv.siteAddress || undefined}>
+                              📍 {inv.siteName}
+                            </span>
+                          )}
+                          {inv.engineerName && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-50 text-orange-700 border border-orange-200">
+                              👷‍♂️ {inv.engineerName}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right font-bengali font-bold text-slate-900 text-sm py-4 px-4">
                         ৳{toBengaliDigits((inv.totalAmount || 0).toLocaleString('en-IN'))}
@@ -1822,8 +1972,14 @@ function InvoicesContent() {
                       <button
                         type="button"
                         onClick={() => {
-                          setIsNewCustomer(!isNewCustomer);
+                          const nextState = !isNewCustomer;
+                          setIsNewCustomer(nextState);
                           setSelectedCustomer(null);
+                          setCustomerSites([]);
+                          setSelectedSiteId('none');
+                          setSiteName('');
+                          setSiteAddress('');
+                          setSiteContact('');
                         }}
                         className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
                       >
@@ -1839,8 +1995,28 @@ function InvoicesContent() {
                           <CustomerSearchSelect
                             customers={customers}
                             selectedCustomer={selectedCustomer}
-                            onSelectCustomer={(cust) => setSelectedCustomer(cust)}
-                            onAddNewClick={() => setIsNewCustomer(true)}
+                            onSelectCustomer={(cust) => {
+                              setSelectedCustomer(cust);
+                              if (cust?.id) {
+                                loadSitesForCustomer(cust.id);
+                              } else {
+                                setCustomerSites([]);
+                              }
+                              setSelectedSiteId('none');
+                              setSiteName('');
+                              setSiteAddress('');
+                              setSiteContact('');
+                              setDeliveryAddress(cust?.address || '');
+                            }}
+                            onAddNewClick={() => {
+                              setIsNewCustomer(true);
+                              setSelectedCustomer(null);
+                              setCustomerSites([]);
+                              setSelectedSiteId('none');
+                              setSiteName('');
+                              setSiteAddress('');
+                              setSiteContact('');
+                            }}
                             placeholder="কাস্টমার / দোকান সার্চ করুন..."
                           />
                         ) : (
@@ -2007,8 +2183,118 @@ function InvoicesContent() {
                         </div>
                       )}
                     </div>
-                  </CardContent>
-                </Card>
+
+                    {/* CUSTOMER SITE / DELIVERY PROJECT SELECTION */}
+                    <div className="mt-4 p-4 bg-sky-50/50 border border-sky-200/80 rounded-lg space-y-3 font-bengali">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                          <Label className="text-xs font-black text-sky-950 flex items-center gap-1.5">
+                            <MapPin className="w-4 h-4 text-sky-600" />
+                            গ্রাহকের প্রজেক্ট / ডেলিভারি সাইট (কাজের স্থান)
+                          </Label>
+                          {isLoadingSites && (
+                            <span className="text-[11px] text-sky-600 font-semibold animate-pulse">
+                              সাইটের তথ্য লোড হচ্ছে...
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-bold text-slate-600">সাইট নির্বাচন করুন বা নতুন যোগ করুন</Label>
+                            <Select 
+                              value={selectedSiteId} 
+                              onValueChange={handleSiteSelectionChange}
+                            >
+                              <SelectTrigger className="rounded-md h-10 bg-white border-sky-300 text-xs font-bold text-slate-800">
+                                <SelectValue placeholder="সাইট নির্বাচন করুন" />
+                              </SelectTrigger>
+                              <SelectContent className="font-bengali text-xs font-bold">
+                                <SelectItem value="none">
+                                  🏠 সাধারণ ডেলিভারি (মূল কাস্টমার ঠিকানা / নির্দিষ্ট সাইট ছাড়া)
+                                </SelectItem>
+                                {customerSites.map(site => (
+                                  <SelectItem key={String(site.id)} value={String(site.id)}>
+                                    📍 {site.name} {site.address ? `(${site.address})` : ''}
+                                  </SelectItem>
+                                ))}
+                                <SelectItem value="new" className="text-emerald-700 font-black">
+                                  ➕ নতুন সাইট এন্ট্রি করুন (New Site)
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* If an existing site is picked */}
+                          {selectedSiteId !== 'none' && selectedSiteId !== 'new' && (
+                            <div className="p-2.5 bg-white border border-sky-200 rounded-md text-xs space-y-1 self-end">
+                              <div className="flex items-center gap-1 font-black text-sky-900">
+                                <span>📍 নির্বাচিত সাইট: {siteName}</span>
+                              </div>
+                              {siteAddress && (
+                                <p className="text-slate-600 text-[11px]">ঠিকানা: {siteAddress}</p>
+                              )}
+                              {siteContact && (
+                                <p className="text-slate-600 text-[11px]">যোগাযোগ: {siteContact}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* If New Site is chosen or entering custom site */}
+                        {selectedSiteId === 'new' && (
+                          <div className="p-3 bg-white border border-emerald-300 rounded-md space-y-3 mt-2">
+                            <div className="flex items-center gap-1.5 text-xs font-black text-emerald-800 border-b border-emerald-100 pb-1.5">
+                              <span>➕ নতুন সাইটের বিবরণ লিখুন</span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div className="space-y-1">
+                                <Label className="text-[11px] font-bold text-slate-700">সাইটের নাম <span className="text-rose-500">*</span></Label>
+                                <Input 
+                                  placeholder="যেমন: উত্তরা সেক্টর-১০ প্রজেক্ট"
+                                  value={siteName}
+                                  onChange={e => setSiteName(e.target.value)}
+                                  className="rounded-md h-9 bg-slate-50 border-slate-300 text-xs font-bold"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[11px] font-bold text-slate-700">সাইটের ডেলিভারি ঠিকানা</Label>
+                                <Input 
+                                  placeholder="রোড-৪, বাড়ি-১২, উত্তরা, ঢাকা"
+                                  value={siteAddress}
+                                  onChange={e => {
+                                    setSiteAddress(e.target.value);
+                                    setDeliveryAddress(e.target.value);
+                                  }}
+                                  className="rounded-md h-9 bg-slate-50 border-slate-300 text-xs font-bold"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[11px] font-bold text-slate-700">সাইট ইনচার্জ / কন্টাক্ট</Label>
+                                <Input 
+                                  placeholder="নাম ও মোবাইল (যেমন: রফিক - 017...)"
+                                  value={siteContact}
+                                  onChange={e => setSiteContact(e.target.value)}
+                                  className="rounded-md h-9 bg-slate-50 border-slate-300 text-xs font-bold"
+                                />
+                              </div>
+                            </div>
+
+                            {selectedCustomer && (
+                              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-emerald-800 pt-1">
+                                <input 
+                                  type="checkbox"
+                                  checked={saveSiteForFuture}
+                                  onChange={e => setSaveSiteForFuture(e.target.checked)}
+                                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                                />
+                                <span>ভবিষ্যতের চালানে ব্যবহারের জন্য এই সাইটটি কাস্টমারের প্রোফাইলে সংরক্ষণ করুন</span>
+                              </label>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
 
                 {/* STEP 2: Item Lines */}
                 <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">

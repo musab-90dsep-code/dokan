@@ -138,6 +138,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
   const driverPhone = invoice.driverPhone || meta.driverPhone || '';
   const deliveryAddress = invoice.siteAddress || invoice.deliveryAddress || meta.deliveryAddress || meta.siteAddress || invoice.customerAddress || '';
   const siteContact = invoice.siteContact || meta.contactPerson || meta.siteContact || '';
+  const siteName = invoice.siteName || invoice.site_name || meta.siteName || meta.site_name || '';
   const warehouse = invoice.warehouse || meta.warehouse || 'প্রধান গুদাম (Main Depot)';
 
   // System Roles
@@ -349,6 +350,13 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
               <span className="font-black text-slate-900 text-sm">{invoice.customerName || 'খুচরা গ্রাহক'}</span>
             </div>
 
+            {siteName && (
+              <div className="flex justify-between items-center bg-sky-50 px-2.5 py-1.5 rounded-lg border border-sky-200">
+                <span className="text-sky-800 font-bold flex items-center gap-1">📍 ডেলিভারি সাইট / প্রজেক্ট</span>
+                <span className="font-black text-sky-950 text-right">{siteName}</span>
+              </div>
+            )}
+
             <div className="flex justify-between items-center">
               <span className="text-slate-500">যোগাযোগ ব্যক্তি</span>
               <span className="font-bold text-slate-800">{siteContact || invoice.customerName || '—'}</span>
@@ -427,8 +435,15 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
           </div>
 
           <div className="space-y-2 text-xs font-medium text-slate-700">
+            {siteName && (
+              <div className="flex justify-between items-center bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
+                <span className="text-emerald-800 font-bold flex items-center gap-1">📍 প্রজেক্ট / সাইটের নাম</span>
+                <span className="font-black text-emerald-950 text-right">{siteName}</span>
+              </div>
+            )}
+
             <div className="flex justify-between items-start">
-              <span className="text-slate-500 shrink-0">ডেলিভারি সাইট</span>
+              <span className="text-slate-500 shrink-0">ডেলিভারি ঠিকানা</span>
               <span className="font-bold text-slate-800 text-right leading-tight">{deliveryAddress || '—'}</span>
             </div>
 

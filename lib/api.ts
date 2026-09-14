@@ -18,6 +18,18 @@ export interface ShopSettingsData {
   receipt_footer?: string;
 }
 
+export interface CustomerSiteData {
+  id?: number | string;
+  customer: number | string;
+  customer_name?: string;
+  name: string;
+  address?: string;
+  contact_person?: string;
+  contact_phone?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface PartyData {
   id?: string | number;
   party_type: 'customer' | 'supplier' | 'engineer' | 'both';
@@ -47,6 +59,7 @@ export interface PartyData {
   joined_date?: string;
   note?: string;
   photo_url?: string;
+  sites?: CustomerSiteData[];
 }
 
 export interface ProductData {
@@ -121,6 +134,10 @@ export interface TransactionData {
   party_name?: string;
   party_phone?: string;
   party_type?: 'customer' | 'supplier' | 'engineer';
+  customer_site?: number | string | null;
+  site_name?: string | null;
+  site_address?: string | null;
+  site_contact?: string | null;
   transaction_type: 'sale' | 'purchase' | 'sale_return' | 'purchase_return' | 'payment_in' | 'payment_out';
   status?: string;
   subtotal?: number;
@@ -250,9 +267,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
         errorJson = JSON.parse(errorText);
       } catch (e) {}
 
-      if (response.status === 401 && (errorJson?.detail === 'Invalid token.' || errorText.includes('Invalid token'))) {
+      if (response.status === 401 && (errorJson?.detail === 'Invalid token.' || errorText.includes('Invalid token') || response.status === 401)) {
         if (typeof window !== 'undefined') {
           localStorage.removeItem('dokan_auth_token');
+          localStorage.removeItem('dokan_auth_user');
+          window.dispatchEvent(new Event('dokan:unauthorized'));
         }
       }
 
@@ -380,6 +399,38 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       });
+    }
+  },
+
+  // Customer Sites (Multiple Delivery / Project Sites)
+  customerSites: {
+    list: async (params?: { customer?: string | number; search?: string }): Promise<CustomerSiteData[]> => {
+      try {
+        const query = new URLSearchParams();
+        if (params?.customer) query.append('customer', String(params.customer));
+        if (params?.search) query.append('search', params.search);
+        const queryStr = query.toString() ? `?${query.toString()}` : '';
+        const res: any = await request<CustomerSiteData[]>(`/customer-sites/${queryStr}`);
+        return Array.isArray(res) ? res : (res?.results || []);
+      } catch (e) {
+        console.error('customerSites.list error:', e);
+        return [];
+      }
+    },
+    create: async (data: Partial<CustomerSiteData>): Promise<CustomerSiteData> => {
+      return request<CustomerSiteData>('/customer-sites/', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+    update: async (id: string | number, data: Partial<CustomerSiteData>): Promise<CustomerSiteData> => {
+      return request<CustomerSiteData>(`/customer-sites/${id}/`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+    },
+    delete: async (id: string | number): Promise<void> => {
+      return request<void>(`/customer-sites/${id}/`, { method: 'DELETE' });
     }
   },
 

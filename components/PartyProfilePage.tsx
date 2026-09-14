@@ -85,6 +85,9 @@ export interface TransactionDoc {
   customerId?: string;
   customerPhone?: string;
   customerAddress?: string;
+  siteName?: string;
+  siteAddress?: string;
+  siteContact?: string;
   supplierName?: string; 
   supplierId?: string;
   supplierPhone?: string;
@@ -552,6 +555,9 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           discount: Number(t.discount || 0),
           shippingCost: Number(meta.shippingCost || (t as any).shipping_cost || 0),
           laborCost: Number(meta.laborCost || (t as any).labor_cost || 0),
+          siteName: t.site_name || meta.siteName || meta.site_name || '',
+          siteAddress: t.site_address || meta.siteAddress || meta.site_address || '',
+          siteContact: t.site_contact || meta.siteContact || meta.site_contact || '',
           createdAt: t.created_at || new Date().toISOString()
         };
       }));
@@ -1986,6 +1992,13 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                 }
 
                 if (isCustomer || isEngineer || selectedInvoiceTx.transactionType === 'sale') {
+                  let meta: any = {};
+                  const rawNote = selectedInvoiceTx.note || selectedInvoiceTx.notes || '';
+                  if (rawNote && typeof rawNote === 'string' && rawNote.trim().startsWith('{')) {
+                    try {
+                      meta = JSON.parse(rawNote.split('\n')[0]);
+                    } catch {}
+                  }
                   const invoiceData = {
                     id: selectedInvoiceTx.id,
                     invoiceNo: selectedInvoiceTx.orderId || selectedInvoiceTx.invoiceNo || `INV-${String(selectedInvoiceTx.id).slice(0, 6).toUpperCase()}`,
@@ -1993,6 +2006,9 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                     customerName: selectedInvoiceTx.customerName || (isCustomer ? (party?.name || 'সম্মানিত গ্রাহক') : 'সম্মানিত গ্রাহক'),
                     customerPhone: selectedInvoiceTx.customerPhone || (isCustomer ? (party?.phone || '') : ''),
                     customerAddress: selectedInvoiceTx.customerAddress || (isCustomer ? (party?.address || '') : ''),
+                    siteName: (selectedInvoiceTx as any).siteName || (selectedInvoiceTx as any).site_name || meta.siteName || meta.site_name || '',
+                    siteAddress: (selectedInvoiceTx as any).siteAddress || (selectedInvoiceTx as any).site_address || meta.siteAddress || meta.site_address || '',
+                    siteContact: (selectedInvoiceTx as any).siteContact || (selectedInvoiceTx as any).site_contact || meta.siteContact || meta.site_contact || '',
                     totalAmount: selectedInvoiceTx.totalAmount,
                     paidAmount: selectedInvoiceTx.paidAmount,
                     dueAmount: selectedInvoiceTx.dueAmount,

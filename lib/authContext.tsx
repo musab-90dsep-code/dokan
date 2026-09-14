@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import Image from 'next/image';
 import { api, AuthUserData } from '@/lib/api';
 
 export type UserRole = 'developer' | 'admin' | 'staff';
@@ -46,13 +47,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const savedToken = localStorage.getItem(TOKEN_KEY);
         const savedUser = localStorage.getItem(USER_KEY);
         if (savedToken && savedUser) {
-          setToken(savedToken);
-          setUser(JSON.parse(savedUser));
-          
-          // Verify with backend silently
+          // Verify with backend before confirming state
           try {
-            const freshUser = await api.auth.me();
+            const verifyPromise = api.auth.me();
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('AUTH_TIMEOUT')), 5000)
+            );
+
+            const freshUser = await Promise.race([verifyPromise, timeoutPromise]);
             if (freshUser) {
+              setToken(savedToken);
               setUser(freshUser);
               localStorage.setItem(USER_KEY, JSON.stringify(freshUser));
             }
@@ -63,6 +67,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               setUser(null);
               localStorage.removeItem(TOKEN_KEY);
               localStorage.removeItem(USER_KEY);
+            } else {
+              // Network timeout or temporary backend wake-up delay: fallback to cached user
+              setToken(savedToken);
+              try {
+                setUser(JSON.parse(savedUser));
+              } catch {
+                setUser(null);
+              }
             }
           }
         } else {
@@ -80,6 +92,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     initAuth();
   }, []);
+
+  // Listen for unauthorized 401 events dispatched from API calls
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setToken(null);
+      setUser(null);
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+      if (pathname !== '/login') {
+        router.replace('/login');
+      }
+    };
+
+    window.addEventListener('dokan:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('dokan:unauthorized', handleUnauthorized);
+  }, [pathname, router]);
 
   // Route Protection: Redirect to /login if unauthenticated
   useEffect(() => {
@@ -155,13 +183,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const canApproveInvoice = isAdmin || isDeveloper;
   const canModifyData = isAdmin || isDeveloper;
 
+  const isProtected = pathname !== '/login';
+  const shouldShowLoader = !isInitialized || (isProtected && !user);
+
   return (
     <AuthContext.Provider
       value={{
         user,
         token,
         isAuthenticated: !!user,
-        isLoading,
+        isLoading: isLoading || !isInitialized,
         role,
         isDeveloper,
         isAdmin,
@@ -177,7 +208,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         refreshUser,
       }}
     >
-      {children}
+      {shouldShowLoader && isProtected ? (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-[#faf8f5]">
+          <div className="flex flex-col items-center gap-4 p-6 text-center animate-in fade-in duration-200">
+            <div className="relative w-16 h-16 rounded-2xl bg-white shadow-sm border border-[#b88e2d]/25 flex items-center justify-center p-2.5">
+              <Image src="/logo.png" alt="মেসার্স দেলোয়ার এন্ড ব্রাদার্স" width={48} height={48} className="object-contain" priority />
+            </div>
+            <div className="flex items-center gap-2.5">
+              <div className="w-4 h-4 border-2 border-[#b88e2d] border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-sm font-semibold text-[#6b583e] font-bengali">
+                লোড হচ্ছে...
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 };

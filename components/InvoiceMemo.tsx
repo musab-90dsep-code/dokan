@@ -27,6 +27,7 @@ export interface InvoiceMemoProps {
     customerName: string;
     customerPhone?: string;
     customerAddress?: string;
+    siteName?: string;
     siteAddress?: string;
     siteContact?: string;
     contactPerson?: string;
@@ -188,6 +189,8 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
   const effectiveVehicleNo = invoice.vehicleNo || meta.vehicleNo || '';
   const effectiveDriverName = invoice.driverName || invoice.driverInfo || meta.driverName || '';
   const effectiveDriverPhone = invoice.driverPhone || meta.driverPhone || '';
+  const effectiveSiteName = invoice.siteName || (invoice as any).site_name || meta.siteName || meta.site_name || '';
+  const effectiveSiteContact = invoice.siteContact || (invoice as any).site_contact || (invoice as any).contactPerson || meta.siteContact || meta.contactPerson || '';
   const effectiveDeliveryAddress = invoice.siteAddress || invoice.deliveryAddress || meta.deliveryAddress || meta.siteAddress || '';
   const effectiveDeliveryFrom = invoice.deliveryFrom || meta.deliveryFrom || shop.name || '';
   const effectiveDeliveryTo = invoice.deliveryTo || meta.deliveryTo || invoice.customerName || '';
@@ -387,6 +390,13 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                 <span className="shrink-0 px-1">:</span>
                 <span className="font-bold text-slate-900">{invoice.customerName || 'খুচরা গ্রাহক'}</span>
               </div>
+              {effectiveSiteName && (
+                <div className="flex">
+                  <span className="w-28 shrink-0 font-bold text-orange-600">প্রজেক্ট / সাইট</span>
+                  <span className="shrink-0 px-1">:</span>
+                  <span className="font-bold text-slate-900">{effectiveSiteName}</span>
+                </div>
+              )}
               <div className="flex">
                 <span className="w-28 shrink-0 text-slate-700">যোগাযোগ ব্যক্তি</span>
                 <span className="shrink-0 px-1">:</span>
@@ -478,6 +488,13 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                   <span>{effectiveDeliveryTo}</span>
                 </div>
               )}
+              {effectiveSiteName && (
+                <div className="flex">
+                  <span className="w-32 shrink-0 font-bold text-orange-600">ডেলিভারি প্রজেক্ট/সাইট</span>
+                  <span className="shrink-0 px-1">:</span>
+                  <span className="font-bold text-slate-900">{effectiveSiteName}</span>
+                </div>
+              )}
               <div className="flex">
                 <span className="w-32 shrink-0 text-slate-700">ডেলিভারি ঠিকানা</span>
                 <span className="shrink-0 px-1">:</span>
@@ -489,9 +506,9 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                 <span className="font-mono">{dateStr}</span>
               </div>
               <div className="flex">
-                <span className="w-32 shrink-0 text-slate-700">গ্রহীতা (সাইট কন্টাক্ট)</span>
+                <span className="w-32 shrink-0 text-slate-700">সাইট কন্টাক্ট / গ্রহীতা</span>
                 <span className="shrink-0 px-1">:</span>
-                <span>{effectiveReceivedBy || '—'}</span>
+                <span>{effectiveSiteContact || effectiveReceivedBy || '—'}</span>
               </div>
             </div>
           </div>
