@@ -763,8 +763,9 @@ function TransactionsContent() {
           paid_amount: transferAmount,
           due_amount: 0,
           payment_method: 'cash',
-          cheque_bank: sourceBank!.name,
-          cheque_number: transferRefNo,
+          cheque_bank: '',
+          cheque_number: '',
+          cheque_status: 'cleared',
           notes: metaJson + '\n' + `[ব্যালেন্স ট্রান্সফার: ${sourceBank!.name} থেকে ক্যাশ উত্তোলন] ${transferNote}`
         });
 
@@ -796,8 +797,9 @@ function TransactionsContent() {
           paid_amount: transferAmount,
           due_amount: 0,
           payment_method: 'bank',
-          cheque_bank: `${sourceBank!.name} ➔ ${targetBank!.name}`,
-          cheque_number: transferRefNo,
+          cheque_bank: '',
+          cheque_number: '',
+          cheque_status: 'cleared',
           notes: metaJson + '\n' + `[ব্যালেন্স ট্রান্সফার: ${sourceBank!.name} থেকে ${targetBank!.name}] ${transferNote}`
         });
 
@@ -823,9 +825,10 @@ function TransactionsContent() {
           total_amount: transferAmount,
           paid_amount: transferAmount,
           due_amount: 0,
-          payment_method: 'bank',
-          cheque_bank: targetBank!.name,
-          cheque_number: transferRefNo,
+          payment_method: 'cash',
+          cheque_bank: '',
+          cheque_number: '',
+          cheque_status: 'cleared',
           notes: metaJson + '\n' + `[ব্যালেন্স ট্রান্সফার: ক্যাশ থেকে ${targetBank!.name} এ জমা] ${transferNote}`
         });
       }

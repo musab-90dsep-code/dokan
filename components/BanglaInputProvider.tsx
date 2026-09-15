@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import { transliterateWord } from '@/lib/banglaPhonetic';
 import { BIJOY_KEY_MAP, BIJOY_G_VOWELS, IS_PRE_KAR, bijoyClassicToUnicode } from '@/lib/bijoyKeyboard';
@@ -24,7 +25,8 @@ const BanglaInputContext = createContext<BanglaInputContextType>({
 export const useBanglaInput = () => useContext(BanglaInputContext);
 
 export function BanglaInputProvider({ children }: { children: React.ReactNode }) {
-  // Always true: No English typing allowed in ERP
+  const pathname = usePathname();
+  // Always true: No English typing allowed in ERP (except login and explicit no-bangla fields)
   const isBanglaEnabled = true;
 
   // Typing mode: 'bijoy' (Default) or 'avro'
@@ -95,12 +97,22 @@ export function BanglaInputProvider({ children }: { children: React.ReactNode })
       const target = e.target as HTMLInputElement | HTMLTextAreaElement;
       if (!target || !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
 
+      // Bypass completely on login page
+      if (pathname === '/login') {
+        return;
+      }
+
       // Skip non-text inputs (password, date, number, etc.)
       const inputType = target.getAttribute('type') || 'text';
       if (['password', 'email', 'file', 'checkbox', 'radio', 'range', 'color', 'date', 'time', 'datetime-local', 'number'].includes(inputType)) {
         return;
       }
-      if (target.dataset.noBangla === 'true') {
+      if (
+        target.dataset.noBangla === 'true' || 
+        target.getAttribute('lang') === 'en' || 
+        target.classList.contains('no-bangla') ||
+        target.closest('[data-no-bangla="true"]')
+      ) {
         return;
       }
 
@@ -224,7 +236,13 @@ export function BanglaInputProvider({ children }: { children: React.ReactNode })
     const handlePaste = (e: ClipboardEvent) => {
       const target = e.target as HTMLInputElement | HTMLTextAreaElement;
       if (!target || !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
-      if (target.dataset.noBangla === 'true') return;
+      if (pathname === '/login') return;
+      if (
+        target.dataset.noBangla === 'true' || 
+        target.getAttribute('lang') === 'en' || 
+        target.classList.contains('no-bangla') ||
+        target.closest('[data-no-bangla="true"]')
+      ) return;
 
       const inputType = target.getAttribute('type') || 'text';
       if (['password', 'email', 'file', 'checkbox', 'radio', 'range', 'color', 'date', 'time', 'datetime-local', 'number'].includes(inputType)) return;

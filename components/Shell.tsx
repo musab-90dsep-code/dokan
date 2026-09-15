@@ -284,14 +284,23 @@ export function Shell({ children }: { children: ReactNode }) {
         )
         .filter(t => {
           if (t.cheque_status === 'cleared' || t.cheque_status === 'bounced') return false;
-          if (t.payment_method === 'cheque' || t.payment_method === 'check' || t.payment_method === 'split' || !!t.cheque_number || !!t.cheque_bank) return true;
+
+          // Never treat internal balance transfers as cheques
+          let meta: any = {};
           if (t.notes && typeof t.notes === 'string' && t.notes.trim().startsWith('{')) {
             try {
-              const meta = JSON.parse(t.notes.split('\n')[0]);
-              if (meta.paymentMethodName === 'Split' || meta.paymentMethodName === 'Cheque' || Number(meta.chequePaidAmount) > 0 || Number(meta.splitChequeAmount) > 0 || !!meta.chequeNo) {
-                return true;
-              }
+              meta = JSON.parse(t.notes.split('\n')[0]);
+              if (meta.isTransfer === true) return false;
             } catch {}
+          }
+          const notesStr = String(t.notes || '');
+          if (notesStr.includes('ব্যালেন্স ট্রান্সফার') || notesStr.includes('ক্যাশ উত্তোলন') || notesStr.includes('isTransfer')) return false;
+          const pName = String(t.party_name || '');
+          if (pName.includes('➔') || pName.includes('ক্যাশ বাক্স')) return false;
+
+          if (t.payment_method === 'cheque' || t.payment_method === 'check' || t.payment_method === 'split' || !!t.cheque_number || !!t.cheque_bank) return true;
+          if (meta.paymentMethodName === 'Split' || meta.paymentMethodName === 'Cheque' || Number(meta.chequePaidAmount) > 0 || Number(meta.splitChequeAmount) > 0 || !!meta.chequeNo) {
+            return true;
           }
           return false;
         })

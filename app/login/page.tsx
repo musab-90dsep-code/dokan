@@ -33,8 +33,10 @@ export default function LoginPage() {
       const isRemembered = localStorage.getItem(REMEMBER_ME_KEY) === 'true';
       const savedIdentifier = localStorage.getItem(SAVED_IDENTIFIER_KEY);
       if (isRemembered && savedIdentifier) {
-        setIdentifier(savedIdentifier);
-        setRememberMe(true);
+        setTimeout(() => {
+          setIdentifier(savedIdentifier);
+          setRememberMe(true);
+        }, 0);
       }
     } catch (e) {}
   }, []);
@@ -53,7 +55,7 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanId = toEnglishDigits(identifier).trim();
-    const cleanPass = toEnglishDigits(password).trim();
+    const cleanPass = password;
 
     if (!cleanId) {
       setErrorMessage('অনুগ্রহ করে আপনার ইমেইল, ইউজারনেম অথবা মোবাইল নম্বর দিন।');
@@ -145,13 +147,14 @@ export default function LoginPage() {
                   autoFocus
                   placeholder="Username, email or mobile..."
                   value={identifier}
-                  onChange={(e) => setIdentifier(toEnglishDigits(e.target.value))}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  data-no-bangla="true"
                   lang="en"
                   dir="ltr"
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
-                  className="pl-10 bg-slate-50/70 border-slate-200 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-600/20 text-xs sm:text-sm h-11 rounded-xl transition-all font-sans font-medium"
+                  className="no-bangla pl-10 bg-slate-50/70 border-slate-200 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-600/20 text-xs sm:text-sm h-11 rounded-xl transition-all font-sans font-medium"
                 />
               </div>
             </div>
@@ -171,15 +174,16 @@ export default function LoginPage() {
                   required
                   placeholder="Enter password..."
                   value={password}
-                  onChange={(e) => setPassword(toEnglishDigits(e.target.value))}
+                  onChange={(e) => setPassword(e.target.value)}
                   onKeyUp={handleKeyUp}
                   onKeyDown={handleKeyUp}
+                  data-no-bangla="true"
                   lang="en"
                   dir="ltr"
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
-                  className="pl-10 pr-11 bg-slate-50/70 border-slate-200 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-600/20 text-xs sm:text-sm h-11 rounded-xl transition-all font-sans font-medium"
+                  className="no-bangla pl-10 pr-11 bg-slate-50/70 border-slate-200 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-600/20 text-xs sm:text-sm h-11 rounded-xl transition-all font-sans font-medium"
                 />
                 <button
                   type="button"

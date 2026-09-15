@@ -21,10 +21,12 @@ export const formatLedgerNum = (val: number | string | undefined | null, emptyVa
   if (val === undefined || val === null || val === '') return emptyValue;
   const num = Number(val);
   if (isNaN(num) || num === 0) return emptyValue;
-  const parts = num.toFixed(1).split('.');
+  const isNegative = num < 0;
+  const absNum = Math.abs(num);
+  const parts = absNum.toFixed(1).split('.');
   const intPart = Number(parts[0]).toLocaleString('en-IN');
   const decPart = parts[1];
-  return toBnDigits(`${intPart}.${decPart}`);
+  return `${isNegative ? '-' : ''}${toBnDigits(`${intPart}.${decPart}`)}`;
 };
 
 export const formatLedgerDate = (dateVal: any): string => {
@@ -163,6 +165,21 @@ export function buildLedgerPrintRows(
           rawAmount: 0,
         });
       }
+
+      const payDiscount = Number(tx.discount || 0);
+      if (payDiscount > 0) {
+        totalDeposit += payDiscount;
+        rows.push({
+          date: txDateStr,
+          description: 'ছাড় / বাট্টা',
+          quantity: '-',
+          rate: '-',
+          deposit: formatLedgerNum(payDiscount),
+          amount: '-',
+          rawDeposit: payDiscount,
+          rawAmount: 0,
+        });
+      }
     } else if (txType === 'sale_return' || txType === 'purchase_return') {
       const retAmt = Number(tx.totalAmount || 0);
       if (retAmt > 0) {
@@ -250,6 +267,30 @@ export function buildLedgerPrintRows(
           rawDeposit: 0,
           rawAmount: shipCost,
         });
+      }
+
+      // Special discount from invoice: deduct so ledger matches the actual invoice bill
+      if (items.length > 0) {
+        const discountPercent = Number(meta.discountPercent || 0);
+        let invDiscount = Number(tx.discount !== undefined && tx.discount !== null ? tx.discount : (meta.discountFlat || meta.discount || meta.discountAmount || 0));
+        if (invDiscount <= 0 && discountPercent > 0) {
+          const sub = items.reduce((sum: number, it: any) => sum + (Number(it.total) || (Number(it.quantity || 1) * Number(it.price || 0))), 0);
+          invDiscount = (sub * discountPercent) / 100;
+        }
+
+        if (invDiscount > 0) {
+          totalAmount -= invDiscount;
+          rows.push({
+            date: txDateStr,
+            description: 'বিশেষ ছাড়',
+            quantity: '-',
+            rate: '-',
+            deposit: '-',
+            amount: `-${formatLedgerNum(invDiscount)}`,
+            rawDeposit: 0,
+            rawAmount: -invDiscount,
+          });
+        }
       }
 
       // Immediate cash payment on invoice
@@ -417,19 +458,19 @@ export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
             <td colSpan={4} rowSpan={3} className="border border-black p-2.5 align-middle text-left bg-white">
               <div className="flex items-start gap-2">
                 <span className="font-black whitespace-nowrap">কথায় ঃ</span>
-                <span className="font-bold text-black">{numberToBengaliWords(netBalance)} টাকা মাত্র।</span>
+                <span className="font-bold text-black">{numberToBengaliWords(netBalance).replace(' টাকা মাত্র', '')} টাকা মাত্র।</span>
               </div>
             </td>
             <td className="border border-black py-1 px-2 text-center font-black">মোট</td>
-            <td className="border border-black py-1 px-2 text-right font-black">{formatLedgerNum(totalAmount)}</td>
+            <td className="border border-black py-1 px-2 text-right font-black">{formatLedgerNum(totalAmount, toBnDigits('০.০'))}</td>
           </tr>
           <tr className="border-t border-black font-bold break-inside-avoid">
             <td className="border border-black py-1 px-2 text-center font-black">জমা</td>
-            <td className="border border-black py-1 px-2 text-right font-black">{formatLedgerNum(totalDeposit)}</td>
+            <td className="border border-black py-1 px-2 text-right font-black">{formatLedgerNum(totalDeposit, toBnDigits('০.০'))}</td>
           </tr>
           <tr className="border-t border-black font-bold break-inside-avoid">
             <td className="border border-black py-1 px-2 text-center font-black">বাকী</td>
-            <td className="border border-black py-1 px-2 text-right font-black">{formatLedgerNum(netBalance)}</td>
+            <td className="border border-black py-1 px-2 text-right font-black">{formatLedgerNum(netBalance, toBnDigits('০.০'))}</td>
           </tr>
         </tfoot>
       </table>
