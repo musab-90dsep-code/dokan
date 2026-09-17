@@ -34,7 +34,122 @@ interface Product {
   needsPriceReview?: boolean;
 }
 
-const categories = ['রড', 'সিমেন্ট', 'রিং', 'অন্যান্য'];
+const categories = ['রড', 'রিং', 'সিমেন্ট', 'অন্যান্য'];
+
+export const getCustomProductSortRank = (p: Product) => {
+  const cat = (p.category || '').trim();
+  const name = (p.name || '').trim().toLowerCase();
+  const brand = (p.brand || '').trim().toLowerCase();
+
+  // 1. Primary Category Rank: রড (1), রিং (2), সিমেন্ট (3), অন্যান্য (4)
+  let catRank = 4;
+  if (cat === 'রড' || name.includes('রড') || brand.includes('bsrm') || brand.includes('scrm') || brand.includes('hkg') || brand.includes('ksml') || brand.includes('dsrm')) {
+    catRank = 1;
+  } else if (cat === 'রিং' || name.includes('রিং') || name.includes('ring') || brand.includes('ring') || brand.includes('মেইড')) {
+    catRank = 2;
+  } else if (cat === 'সিমেন্ট' || name.includes('সিমেন্ট') || name.includes('cement') || brand.includes('holcim') || brand.includes('king') || brand.includes('aman')) {
+    catRank = 3;
+  }
+
+  // 2. Sub-category / Brand Rank
+  let subRank = 999;
+  let sizeNum = 999;
+
+  if (catRank === 1) {
+    // রড Brands Order:
+    // 1. BSRM
+    // 2. SCRM
+    // 3. SCRM TMX
+    // 4. KSML
+    // 5. HKG
+    // 6. DSRM
+    if (brand.includes('bsrm') || name.includes('bsrm')) {
+      subRank = 10;
+    } else if (brand.includes('scrm tmx') || name.includes('scrm tmx') || name.includes('tmx')) {
+      subRank = 30;
+    } else if (brand.includes('scrm') || name.includes('scrm')) {
+      subRank = 20;
+    } else if (brand.includes('ksml') || name.includes('ksml')) {
+      subRank = 40;
+    } else if (brand.includes('hkg') || name.includes('hkg')) {
+      subRank = 50;
+    } else if (brand.includes('dsrm') || name.includes('dsrm')) {
+      subRank = 60;
+    } else {
+      subRank = 70;
+    }
+
+    // Size in mm for rods (8, 10, 12, 16, 20, 25, etc.)
+    const mmMatch = name.match(/([০-৯0-9.]+)\s*(?:মিলি|মি\.লি|মিমি|mm)/i);
+    if (mmMatch) {
+      const bnToEn = mmMatch[1].replace(/[০-৯]/g, d => '0123456789'['০১২৩৪৫৬৭৮৯'.indexOf(d)]);
+      sizeNum = parseFloat(bnToEn) || 999;
+    }
+  } else if (catRank === 2) {
+    // RING Order:
+    // 1. 3-3
+    // 2. 3-4
+    // 3. 3-7
+    // 4. 7-7
+    // 5. 7-9
+    // 6. Pistol ring
+    if (name.includes('3-3') || name.includes('3*3') || name.includes('3x3') || name.includes('৩-৩') || name.includes('৩*৩')) {
+      subRank = 10;
+    } else if (name.includes('3-4') || name.includes('3*4') || name.includes('3x4') || name.includes('৩-৪') || name.includes('৩*৪')) {
+      subRank = 20;
+    } else if (name.includes('3-7') || name.includes('3*7') || name.includes('3x7') || name.includes('৩-৭') || name.includes('৩*৭')) {
+      subRank = 30;
+    } else if (name.includes('7-7') || name.includes('7*7') || name.includes('7x7') || name.includes('৭-৭') || name.includes('৭*৭')) {
+      subRank = 40;
+    } else if (name.includes('7-9') || name.includes('7*9') || name.includes('7x9') || name.includes('৭-৯') || name.includes('৭*৯')) {
+      subRank = 50;
+    } else if (name.includes('pistol') || name.includes('পিস্তল')) {
+      subRank = 60;
+    } else {
+      subRank = 70;
+    }
+  } else if (catRank === 3) {
+    // সিমেন্ট Order:
+    // 1. Holcim Strong structure
+    // 2. Holcim Supercrete
+    // 3. Holcim Supercrete Plus
+    // 4. Holcim Coastal Guard
+    // 5. Holcim Waterprotect
+    // 6. King Brand
+    // 7. Aman
+    if (name.includes('strong structure') || name.includes('স্ট্রং স্ট্রাকচার')) {
+      subRank = 10;
+    } else if (name.includes('supercrete plus') || name.includes('সুপারক্রিট প্লাস')) {
+      subRank = 30;
+    } else if (name.includes('supercrete') || name.includes('সুপারক্রিট')) {
+      subRank = 20;
+    } else if (name.includes('coastal guard') || name.includes('কোস্টাল গার্ড') || name.includes('coastal')) {
+      subRank = 40;
+    } else if (name.includes('waterprotect') || name.includes('ওয়াটারপ্রটেক্ট') || name.includes('water protect')) {
+      subRank = 50;
+    } else if (brand.includes('king') || name.includes('king brand') || name.includes('কিং ব্র্যান্ড') || name.includes('কিং')) {
+      subRank = 60;
+    } else if (brand.includes('aman') || name.includes('aman') || name.includes('আমান')) {
+      subRank = 70;
+    } else {
+      subRank = 80;
+    }
+  }
+
+  return { catRank, subRank, sizeNum, name };
+};
+
+export const sortProductsCustom = (list: Product[]): Product[] => {
+  return [...list].sort((a, b) => {
+    const rankA = getCustomProductSortRank(a);
+    const rankB = getCustomProductSortRank(b);
+
+    if (rankA.catRank !== rankB.catRank) return rankA.catRank - rankB.catRank;
+    if (rankA.subRank !== rankB.subRank) return rankA.subRank - rankB.subRank;
+    if (rankA.sizeNum !== rankB.sizeNum) return rankA.sizeNum - rankB.sizeNum;
+    return rankA.name.localeCompare(rankB.name, 'bn');
+  });
+};
 
 const formatBnDate = (dateVal: Date | string | undefined | null, pattern: string = 'dd MMMM - yyyy') => {
   if (!dateVal) return '—';
@@ -125,7 +240,7 @@ export default function InventoryPage() {
       setLoading(true);
       const data = await api.inventory.list();
       const safeData = Array.isArray(data) ? data : [];
-      setProducts(safeData.map(p => ({
+      const mapped = safeData.map(p => ({
         id: String(p.id),
         name: p.name,
         category: p.category_name || 'অন্যান্য',
@@ -136,7 +251,8 @@ export default function InventoryPage() {
         unit: p.unit || 'পিস',
         alertThreshold: Number(p.min_stock || 10),
         needsPriceReview: Boolean(p.needs_price_review)
-      })));
+      }));
+      setProducts(sortProductsCustom(mapped));
     } catch (err) {
       console.error('Error loading inventory:', err);
     } finally {
@@ -272,10 +388,10 @@ export default function InventoryPage() {
     }
   };
 
-  const filtered = products.filter(p => 
+  const filtered = sortProductsCustom(products.filter(p => 
     (filterCat === 'সব' || p.category === filterCat) &&
     (p.name.toLowerCase().includes(search.toLowerCase()) || (p.brand && p.brand.toLowerCase().includes(search.toLowerCase())))
-  );
+  ));
 
   const alertItems = products.filter(p => p.stock <= p.alertThreshold);
   const priceReviewItems = products.filter(p => p.needsPriceReview);
@@ -1180,7 +1296,7 @@ export default function InventoryPage() {
 
           <tbody>
             {(() => {
-              const knownOrder = ['রড', 'সিমেন্ট', 'রিং', 'অন্যান্য'];
+              const knownOrder = ['রড', 'রিং', 'সিমেন্ট', 'অন্যান্য'];
               const allCategories = Array.from(new Set(products.map(p => p.category || 'অন্যান্য')));
               const sortedCats = [
                 ...knownOrder.filter(c => allCategories.includes(c)),
@@ -1190,7 +1306,7 @@ export default function InventoryPage() {
               const activeCats = sortedCats.filter(c => products.some(p => p.category === c));
 
               return activeCats.map((catName, catIdx) => {
-                const catProducts = products.filter(p => p.category === catName);
+                const catProducts = sortProductsCustom(products.filter(p => p.category === catName));
                 if (catProducts.length === 0) return null;
 
                 const catTotalQty = catProducts.reduce((sum, p) => sum + Number(p.stock || 0), 0);
