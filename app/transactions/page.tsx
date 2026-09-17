@@ -10,7 +10,7 @@ import {
   Receipt, Calendar, DollarSign, AlertCircle, CheckCircle2, Printer, UploadCloud, X,
   Building2, User, Phone, ShieldCheck, FileText, Check, ArrowLeft, Eye, Edit2,
   FileSpreadsheet, FileDown, Clock, PieChart, ChevronLeft, ChevronRight, Lightbulb, PlusCircle,
-  ChevronUp, ChevronDown, RotateCcw, MoreVertical, HardHat
+  ChevronUp, ChevronDown, RotateCcw, MoreVertical, HardHat, MapPin
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -46,6 +46,7 @@ interface Transaction {
   partyPhone?: string;
   partyAddress?: string;
   businessName?: string;
+  siteName?: string;
   invoiceNo?: string;
   referenceNo?: string;
   paymentMethod?: string;
@@ -107,6 +108,7 @@ interface OrderInvoice {
   totalPrice?: number;
   paidAmount?: number;
   dueAmount?: number;
+  siteName?: string;
   paymentStatus?: string;
   createdAt: any;
 }
@@ -226,6 +228,8 @@ function TransactionsContent() {
   const [selectedParty, setSelectedParty] = useState<any>(null);
   const [selectedPartyObj, setSelectedPartyObj] = useState<any>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>('');
+  const [selectedSiteName, setSelectedSiteName] = useState<string>('');
+  const [customerSites, setCustomerSites] = useState<any[]>([]);
 
   // Collect/Pay State
   const [selectedInvoice, setSelectedInvoice] = useState<OrderInvoice | null>(null);
@@ -417,6 +421,7 @@ function TransactionsContent() {
           partyPhone: resolvedPartyPhone,
           partyAddress: resolvedPartyAddress,
           businessName: resolvedBusinessName,
+          siteName: rawT.site_name || meta.siteName || '',
           invoiceNo: rawT.invoice_no || meta.invoiceNo || '—',
           referenceNo: rawT.reference_no || meta.referenceNo || userNote || '—',
           paymentMethod: meta.paymentMethodName || (rawT.payment_method === 'split' ? 'Split' : rawT.payment_method === 'cheque' ? 'Cheque' : rawT.payment_method === 'bank' ? 'Bank' : (rawT.account_type === 'bank' ? 'Bank' : 'Cash')),
@@ -531,6 +536,7 @@ function TransactionsContent() {
           totalAmount: Number(o.total_amount || 0),
           paidAmount: Number(o.paid_amount || 0),
           dueAmount: Number(o.due_amount || 0),
+          siteName: o.site_name || meta.siteName || meta.site || '',
           createdAt: o.created_at
         };
       }));
@@ -597,6 +603,7 @@ function TransactionsContent() {
     }
     setSelectedInvoiceId('');
     setSelectedInvoice(null);
+    setSelectedSiteName('');
     setPaidAmount(0);
     setDiscountAmount(0);
     setReferenceNo(`REF-${Math.floor(100 + Math.random() * 900)}`);
@@ -612,6 +619,22 @@ function TransactionsContent() {
     setTransactionRef('');
     setIsAddOpen(true);
   }, [partyParam, engineers, suppliers, customers, availableBankOptions]);
+
+  useEffect(() => {
+    let isCurrent = true;
+    if (selectedPartyId && paymentType === 'income') {
+      api.customerSites.list({ customer: selectedPartyId })
+        .then(res => {
+          if (isCurrent) setCustomerSites(res || []);
+        })
+        .catch(() => {
+          if (isCurrent) setCustomerSites([]);
+        });
+    }
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedPartyId, paymentType]);
 
   // Edit Existing Transaction
   const handleEditTransaction = (t: Transaction) => {
@@ -642,6 +665,7 @@ function TransactionsContent() {
 
     setSelectedInvoiceId('');
     setSelectedInvoice(null);
+    setSelectedSiteName(t.siteName || (t.raw as any)?.site_name || '');
     setPaidAmount(t.amount || 0);
     setDiscountAmount(t.discountAmount || 0);
     setReferenceNo(t.referenceNo !== '—' ? (t.referenceNo || '') : '');
@@ -900,6 +924,7 @@ function TransactionsContent() {
     }
     setSelectedInvoiceId('');
     setSelectedInvoice(null);
+    setSelectedSiteName('');
   };
 
   // Update Invoice Selection
@@ -909,6 +934,9 @@ function TransactionsContent() {
     const inv = invList.find(i => i.id === invId) || null;
     setSelectedInvoice(inv);
     if (inv) {
+      if ((inv as any).siteName) {
+        setSelectedSiteName((inv as any).siteName);
+      }
       if (expensePartyType === 'engineer') {
         const commAmt = (inv as any).engineerCommission || inv.dueAmount || 0;
         setPaidAmount(commAmt);
@@ -946,6 +974,7 @@ function TransactionsContent() {
       businessName: partyObj.businessName || partyObj.business_name || '',
       invoiceNo: selectedInvoice?.orderId || selectedInvoice?.purchaseId || selectedInvoice?.id || selectedInvoiceId || '',
       referenceNo: referenceNo || '',
+      siteName: selectedSiteName.trim() || undefined,
       paymentMethodName: paymentMethod,
       bankName: (paymentType === 'income' ? (selectedShopBank || bankName) : bankName) || '',
       accountNo: senderAccountNo || '',
@@ -1000,6 +1029,7 @@ function TransactionsContent() {
         party_phone: partyObj.phone || '',
         party_address: partyObj.address || '',
         invoice_no: selectedInvoice?.orderId || selectedInvoice?.purchaseId || selectedInvoice?.id || referenceNo || '',
+        site_name: selectedSiteName.trim() || undefined,
         transaction_type: paymentType === 'income' ? 'payment_in' : 'payment_out',
         total_amount: paidAmount,
         paid_amount: paidAmount,
@@ -1009,6 +1039,11 @@ function TransactionsContent() {
         status: 'completed',
         notes: metaJson + '\n' + (paymentNote || '')
       };
+
+      const matchingSite = customerSites.find(s => s.name?.trim().toLowerCase() === selectedSiteName.trim().toLowerCase());
+      if (matchingSite?.id) {
+        payload.customer_site = matchingSite.id;
+      }
 
       if (effPayMethod === 'cheque' || effPayMethod === 'split' || chequeNo || finalChequeAmt > 0) {
         payload.cheque_number = chequeNo || `CHQ-${Date.now().toString().slice(-6)}`;
@@ -1588,7 +1623,13 @@ function TransactionsContent() {
                               </span>
                             </TableCell>
                             <TableCell className="font-black text-slate-900">
-                              {t.partyName || 'সাধারণ পার্টি'}
+                              <div>{t.partyName || 'সাধারণ পার্টি'}</div>
+                              {t.siteName && (
+                                <div className="text-[10px] text-blue-600 font-bold flex items-center gap-1 mt-0.5">
+                                  <MapPin className="w-2.5 h-2.5" />
+                                  <span>{t.siteName}</span>
+                                </div>
+                              )}
                             </TableCell>
                             <TableCell>
                               <span className={cn("inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-md border text-[11px]",
@@ -2053,7 +2094,7 @@ function TransactionsContent() {
                           </div>
 
                           {/* Sales / Purchase Invoice Select (Optional) */}
-                          <div className="sm:col-span-12 space-y-1.5 pt-2 border-t border-slate-100">
+                          <div className={cn("space-y-1.5 pt-2 border-t border-slate-100", paymentType === 'income' ? "sm:col-span-6" : "sm:col-span-12")}>
                             <Label className="text-xs font-bold text-slate-600">
                               {paymentType === 'income' 
                                 ? 'বিক্রয় ইনভয়েস (ঐচ্ছিক)' 
@@ -2078,6 +2119,52 @@ function TransactionsContent() {
                               </SelectContent>
                             </Select>
                           </div>
+
+                          {/* Site Select / Entry for Customer Payments */}
+                          {paymentType === 'income' && (
+                            <div className="sm:col-span-6 space-y-1.5 pt-2 border-t border-slate-100">
+                              <Label className="text-xs font-bold text-slate-600 flex items-center justify-between">
+                                <span className="flex items-center gap-1.5">
+                                  <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                                  সাইট (ঐচ্ছিক)
+                                </span>
+                                {selectedSiteName && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedSiteName('')}
+                                    className="text-[10px] text-rose-500 hover:underline font-normal cursor-pointer"
+                                  >
+                                    মুছুন
+                                  </button>
+                                )}
+                              </Label>
+                              {customerSites.length > 0 ? (
+                                <Select 
+                                  value={selectedSiteName || 'none'} 
+                                  onValueChange={(val: string | null) => setSelectedSiteName(val === 'none' ? '' : (val || ''))}
+                                >
+                                  <SelectTrigger className="rounded-md h-10 bg-slate-50/50 border-slate-200 font-bold text-xs">
+                                    <SelectValue placeholder="সাইট নির্বাচন করুন..." />
+                                  </SelectTrigger>
+                                  <SelectContent className="font-bengali text-xs font-bold max-h-60 z-[99999]">
+                                    <SelectItem value="none">কোনো নির্দিষ্ট সাইট নয় (সাধারণ জমা)</SelectItem>
+                                    {customerSites.map(s => (
+                                      <SelectItem key={s.id || s.name} value={s.name}>
+                                        📍 {s.name} {s.address ? `(${s.address})` : ''}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Input
+                                  value={selectedSiteName}
+                                  onChange={e => setSelectedSiteName(e.target.value)}
+                                  placeholder="সাইটের নাম লিখুন (যদি থাকে)..."
+                                  className="rounded-md h-10 bg-slate-50/50 border-slate-200 font-bold text-xs font-bengali"
+                                />
+                              )}
+                            </div>
+                          )}
 
                         </div>
                       </CardContent>
@@ -2522,6 +2609,16 @@ function TransactionsContent() {
                         {/* Quick Metadata List */}
                         <div className="space-y-2.5 pt-3 border-t border-slate-100 text-xs">
                           
+                          {selectedSiteName && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500 font-medium">সাইট</span>
+                              <span className="px-2 py-0.5 bg-sky-50 text-sky-700 border border-sky-200 rounded font-bold text-[11px] flex items-center gap-1">
+                                <MapPin className="w-3 h-3" />
+                                {selectedSiteName}
+                              </span>
+                            </div>
+                          )}
+
                           <div className="flex justify-between items-center">
                             <span className="text-slate-500 font-medium">পেমেন্ট পদ্ধতি</span>
                             <span className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-md font-bold text-[11px]">

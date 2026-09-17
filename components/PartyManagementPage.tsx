@@ -332,29 +332,8 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
           calculatedDue = Math.max(0, Number(p.opening_balance || 0) + totalCommission - totalPaid);
           dueAmount = calculatedDue;
         } else if (isCustomer) {
-          const custTx = transactions.filter(t => 
-            String(t.party) === String(p.id) || 
-            (t.party_name && String(t.party_name).trim().toLowerCase() === String(p.name).trim().toLowerCase())
-          );
-          if (custTx.length > 0) {
-            const totalSales = custTx.filter(t => t.transaction_type === 'sale').reduce((sum, t) => sum + Number(t.total_amount || 0), 0);
-            const totalPaid = custTx.reduce((sum, t) => sum + Number(t.paid_amount || 0), 0);
-            const totalReturns = custTx.filter(t => t.transaction_type === 'sale_return').reduce((sum, t) => sum + Number(t.total_amount || 0), 0);
-            calculatedDue = Number(p.opening_balance || 0) + totalSales - totalPaid - totalReturns;
-          } else {
-            calculatedDue = Number(p.opening_balance || 0);
-          }
-
-          if (calculatedDue > 0) {
-            dueAmount = calculatedDue;
-            advanceAmount = 0;
-          } else if (calculatedDue < 0) {
-            dueAmount = 0;
-            advanceAmount = Math.abs(calculatedDue);
-          } else {
-            dueAmount = Number(p.total_due || 0);
-            advanceAmount = Number(p.advance_balance || 0);
-          }
+          dueAmount = Number(p.total_due !== undefined && p.total_due !== null ? p.total_due : 0);
+          advanceAmount = Number(p.advance_balance || 0);
         } else {
           dueAmount = Number(p.total_due || 0);
           advanceAmount = Number(p.advance_balance || 0);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Shell } from '@/components/Shell';
 import { api } from '@/lib/api';
 import { 
@@ -76,6 +76,7 @@ export interface PartyProfile {
   updatedAt?: string;
   totalDue?: number;
   totalSales?: number;
+  sites?: Array<{ id: number | string; name: string; address?: string; contact_person?: string; contact_phone?: string }>;
 }
 
 export interface TransactionDoc {
@@ -431,6 +432,15 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [selectedInvoiceTx, setSelectedInvoiceTx] = useState<TransactionDoc | null>(null);
 
+  // Customer Sites State
+  const [customerSites, setCustomerSites] = useState<any[]>([]);
+  const [selectedSite, setSelectedSite] = useState<string>('all');
+  const [isAddSiteOpen, setIsAddSiteOpen] = useState(false);
+  const [newSiteName, setNewSiteName] = useState('');
+  const [newSiteAddress, setNewSiteAddress] = useState('');
+  const [newSiteContact, setNewSiteContact] = useState('');
+  const [isSavingSite, setIsSavingSite] = useState(false);
+
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -472,9 +482,9 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
         discountPercent: Number(p.discount_percent || 0),
         rodCommissionRate,
         cementCommissionRate,
-        idType: (p as any).id_type || (isEngineer ? 'IEB মেম্বারশিপ' : 'NID'),
+        idType: (p as any).id_type || (isEngineer ? 'IEB মেম্বারশিপ' : isCustomer ? 'NID' : 'TIN'),
         nid: (p as any).nid || '',
-        tinNumber: (p as any).tin_number || (p as any).vat_tin || '',
+        tinNumber: (p as any).tin_number || '',
         referencePerson: (p as any).reference_person || '',
         joinedDate: p.joined_date || (p as any).created_at || '',
         photoUrl: p.photo_url || '',
@@ -582,6 +592,84 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
       isMounted = false;
     };
   }, [id, loadData]);
+
+  // Site creation & helper methods
+  const handleCreateSite = async () => {
+    if (!newSiteName.trim()) {
+      toast.error('সাইটের নাম লিখুন');
+      return;
+    }
+    try {
+      setIsSavingSite(true);
+      const created = await api.customerSites.create({
+        customer: Number(id),
+        name: newSiteName.trim(),
+        address: newSiteAddress.trim(),
+        contact_person: newSiteContact.trim()
+      });
+      setCustomerSites(prev => [created, ...prev]);
+      toast.success(`"${newSiteName}" সাইট সফলভাবে যুক্ত হয়েছে`);
+      setNewSiteName('');
+      setNewSiteAddress('');
+      setNewSiteContact('');
+      setIsAddSiteOpen(false);
+    } catch (e) {
+      console.error(e);
+      toast.error('সাইট সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    } finally {
+      setIsSavingSite(false);
+    }
+  };
+
+  const availableSites = useMemo(() => {
+    const siteSet = new Set<string>();
+    customerSites.forEach(s => {
+      if (s.name && s.name.trim()) siteSet.add(s.name.trim());
+    });
+    transactions.forEach(t => {
+      if (t.siteName && t.siteName.trim()) siteSet.add(t.siteName.trim());
+    });
+    return Array.from(siteSet);
+  }, [customerSites, transactions]);
+
+  const hasUnassignedSiteTx = useMemo(() => {
+    return transactions.some(t => !t.siteName || t.siteName.trim() === '');
+  }, [transactions]);
+
+  const siteTransactions = useMemo(() => {
+    if (selectedSite === 'all') return transactions;
+    if (selectedSite === '__no_site__') {
+      return transactions.filter(t => !t.siteName || t.siteName.trim() === '');
+    }
+    return transactions.filter(t => {
+      const sName = (t.siteName || '').trim().toLowerCase();
+      return sName === selectedSite.trim().toLowerCase();
+    });
+  }, [transactions, selectedSite]);
+
+  const siteTotalBill = useMemo(() => {
+    return siteTransactions.filter(t => t.transactionType === 'sale' || !t.transactionType).reduce((sum, t) => sum + (t.totalAmount || 0), 0);
+  }, [siteTransactions]);
+
+  const siteTotalPaid = useMemo(() => {
+    return siteTransactions.reduce((sum, t) => sum + (t.paidAmount || 0), 0);
+  }, [siteTransactions]);
+
+  const siteTotalDue = useMemo(() => {
+    if (selectedSite === '__no_site__') {
+      const opBal = Number(party?.openingBalance || 0);
+      return Math.max(0, siteTotalBill + opBal - siteTotalPaid);
+    }
+    return Math.max(0, siteTotalBill - siteTotalPaid);
+  }, [selectedSite, siteTotalBill, siteTotalPaid, party?.openingBalance]);
+
+  const unassignedSiteDue = useMemo(() => {
+    const unTx = transactions.filter(t => !t.siteName || t.siteName.trim() === '');
+    const uBill = unTx.filter(t => t.transactionType === 'sale' || !t.transactionType).reduce((sum, t) => sum + (t.totalAmount || 0), 0);
+    const uPaid = unTx.reduce((sum, t) => sum + (t.paidAmount || 0), 0);
+    const opBal = Number(party?.openingBalance || 0);
+    return Math.max(0, uBill + opBal - uPaid);
+  }, [transactions, party?.openingBalance]);
 
   const engineerTotalCommissionEarned = isEngineer
     ? transactions.reduce((sum, tx) => {
@@ -702,14 +790,15 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
   };
 
   // Generate Chronological Ledger Entries
-  const ledgerEntries = generateLedgerEntries(party, transactions, isCustomer, isEngineer);
+  const ledgerParty = (selectedSite !== 'all' && selectedSite !== '__no_site__') ? { ...party!, openingBalance: 0 } : party;
+  const ledgerEntries = generateLedgerEntries(ledgerParty, siteTransactions, isCustomer, isEngineer);
 
   const finalClosingBalance = ledgerEntries.length > 0
     ? ledgerEntries[ledgerEntries.length - 1].runningBalance
     : (Number(party?.openingBalance || 0));
 
-  const totalDue = finalClosingBalance > 0 ? finalClosingBalance : 0;
-  const advanceBalance = finalClosingBalance < 0 ? Math.abs(finalClosingBalance) : 0;
+  const totalDue = (selectedSite !== 'all') ? siteTotalDue : (finalClosingBalance > 0 ? finalClosingBalance : 0);
+  const advanceBalance = (selectedSite !== 'all') ? 0 : (finalClosingBalance < 0 ? Math.abs(finalClosingBalance) : 0);
 
 
   const filteredLedgerEntries = ledgerEntries.filter(entry => {
@@ -770,6 +859,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           isEngineer={isEngineer}
           startDate={startDate}
           endDate={endDate}
+          selectedSite={selectedSite}
         />
       </div>
 
@@ -1229,6 +1319,172 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
 
             </div>
 
+            {/* CARD: 📍 কাস্টমারের ডেলিভারি / কনস্ট্রাকশন সাইটসমূহ */}
+            {isCustomer && (
+              <Card className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+                <CardContent className="p-5 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                        <MapPin className="w-4 h-4" />
+                      </span>
+                      <div>
+                        <h3 className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                          <span>কাস্টমারের সাইটসমূহ (Delivery / Construction Sites)</span>
+                          <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                            {toBnDigits(availableSites.length)} টি সাইট
+                          </span>
+                        </h3>
+                        <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                          এখানে প্রতিটি সাইটের মাল ডেলিভারি ও বকেয়া আলাদাভাবে দেখা যায় এবং সাইট অনুযায়ী স্টেটমেন্ট প্রিন্ট করা যায়
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => setIsAddSiteOpen(true)}
+                      className="h-8 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>নতুন সাইট যোগ করুন</span>
+                    </Button>
+                  </div>
+
+                  {availableSites.length === 0 ? (
+                    <div className="text-center py-6 bg-slate-50/70 rounded-xl border border-dashed border-slate-200 text-slate-500 text-xs space-y-1">
+                      <MapPin className="w-6 h-6 text-slate-400 mx-auto opacity-60" />
+                      <p className="font-bold text-slate-700">এখনও কোনো আলাদা সাইট যুক্ত করা হয়নি</p>
+                      <p className="text-[11px] text-slate-400">চালান কাটার সময় সাইটের নাম লিখলে তা স্বয়ংক্রিয়ভাবে এখানে চলে আসবে, অথবা উপরের বাটনে চাপ দিয়ে নতুন সাইট যোগ করুন।</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {hasUnassignedSiteTx && (
+                        <div 
+                          className="p-3.5 rounded-xl border border-amber-200/90 hover:border-amber-300 hover:shadow-xs bg-amber-50/40 transition-all space-y-2.5"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-6 h-6 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 font-bold text-xs">
+                                📦
+                              </span>
+                              <span className="font-black text-slate-900 text-xs">সাধারণ খাতা (সাইট ছাড়া)</span>
+                            </div>
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100/80 text-amber-800 border border-amber-200">
+                              {toBnDigits(transactions.filter(t => !t.siteName || t.siteName.trim() === '').length)} টি রেকর্ড
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-1 text-[11px] pt-1.5 border-t border-amber-200/60">
+                            <div>
+                              <span className="text-slate-500 block text-[10px]">সাধারণ বিক্রি/বিল:</span>
+                              <span className="font-bold text-slate-900">
+                                ৳ {toBnDigits(transactions.filter(t => !t.siteName || t.siteName.trim() === '').filter(t => t.transactionType === 'sale' || !t.transactionType).reduce((sum, t) => sum + (t.totalAmount || 0), 0).toLocaleString('en-IN'))}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block text-[10px]">সাধারণ বকেয়া:</span>
+                              <span className="font-bold text-amber-700">৳ {toBnDigits(unassignedSiteDue.toLocaleString('en-IN'))}</span>
+                            </div>
+                          </div>
+
+                          <div className="pt-1 flex items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedSite('__no_site__');
+                                setActiveMainTab('ledger');
+                              }}
+                              className="flex-1 h-7 text-[11px] font-bold border-amber-200 text-amber-800 hover:bg-amber-100 hover:border-amber-300 rounded-lg cursor-pointer"
+                            >
+                              <span>লেজার দেখুন →</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setSelectedSite('__no_site__');
+                                setTimeout(() => {
+                                  handlePrintLedger();
+                                }, 150);
+                              }}
+                              className="h-7 px-2.5 text-[11px] font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-lg cursor-pointer flex items-center gap-1 shadow-2xs"
+                              title="সাধারণ খাতার হিসাব প্রিন্ট করুন"
+                            >
+                              <Printer className="w-3 h-3" />
+                              <span>প্রিন্ট</span>
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                      {availableSites.map((siteName, idx) => {
+                        const sTx = transactions.filter(t => (t.siteName || '').trim().toLowerCase() === siteName.trim().toLowerCase());
+                        const sBill = sTx.filter(t => t.transactionType === 'sale' || !t.transactionType).reduce((sum, t) => sum + (t.totalAmount || 0), 0);
+                        const sPaid = sTx.reduce((sum, t) => sum + (t.paidAmount || 0), 0);
+                        const sDue = Math.max(0, sBill - sPaid);
+                        return (
+                          <div 
+                            key={idx}
+                            className="p-3.5 rounded-xl border border-slate-200/90 hover:border-blue-300 hover:shadow-xs bg-slate-50/40 transition-all space-y-2.5"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-6 h-6 rounded-lg bg-blue-100/80 text-blue-700 flex items-center justify-center shrink-0">
+                                  <MapPin className="w-3.5 h-3.5" />
+                                </span>
+                                <span className="font-black text-slate-900 text-xs">{siteName}</span>
+                              </div>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">
+                                {toBnDigits(sTx.length)} টি রেকর্ড
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-1 text-[11px] pt-1.5 border-t border-slate-200/60">
+                              <div>
+                                <span className="text-slate-500 block text-[10px]">মোট ডেলিভারি/বিক্রি:</span>
+                                <span className="font-bold text-slate-900">৳ {toBnDigits(sBill.toLocaleString('en-IN'))}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 block text-[10px]">সাইটের বকেয়া:</span>
+                                <span className="font-bold text-rose-600">৳ {toBnDigits(sDue.toLocaleString('en-IN'))}</span>
+                              </div>
+                            </div>
+
+                            <div className="pt-1 flex items-center gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedSite(siteName);
+                                  setActiveMainTab('ledger');
+                                }}
+                                className="flex-1 h-7 text-[11px] font-bold border-slate-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 rounded-lg cursor-pointer"
+                              >
+                                <span>লেজার দেখুন →</span>
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedSite(siteName);
+                                  setTimeout(() => {
+                                    handlePrintLedger();
+                                  }, 150);
+                                }}
+                                className="h-7 px-2.5 text-[11px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer flex items-center gap-1 shadow-2xs"
+                                title="এই সাইটের হিসাব প্রিন্ট করুন"
+                              >
+                                <Printer className="w-3 h-3" />
+                                <span>প্রিন্ট</span>
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {/* CARD 5: 📄 ডকুমেন্টস (Documents) */}
             <Card className="bg-white border border-slate-200/80 rounded-2xl shadow-xs">
               <CardContent className="p-5 space-y-4">
@@ -1285,7 +1541,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
 
                   {/* Transaction Type Select */}
                   <Select value={activeTab} onValueChange={(val: any) => setActiveTab(val)}>
-                    <SelectTrigger className="w-40 h-9 bg-white border-slate-200 rounded-xl text-xs font-bold">
+                    <SelectTrigger className="w-36 h-9 bg-white border-slate-200 rounded-xl text-xs font-bold">
                       <SelectValue placeholder="সব লেনদেন" />
                     </SelectTrigger>
                     <SelectContent className="font-bengali text-xs">
@@ -1294,6 +1550,29 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                       <SelectItem value="receive">পেমেন্ট</SelectItem>
                     </SelectContent>
                   </Select>
+
+                  {/* Site Filter Select for Customers */}
+                  {isCustomer && (
+                    <Select value={selectedSite} onValueChange={(val: any) => setSelectedSite(val || 'all')}>
+                      <SelectTrigger className="w-44 h-9 bg-white border-slate-200 rounded-xl text-xs font-bold text-slate-800">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <MapPin className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          <SelectValue placeholder="সব সাইট" />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent className="font-bengali text-xs">
+                        <SelectItem value="all">সব সাইট (একত্রিত)</SelectItem>
+                        {hasUnassignedSiteTx && (
+                          <SelectItem value="__no_site__">📦 সাধারণ খাতা (সাইট ছাড়া)</SelectItem>
+                        )}
+                        {availableSites.map((s, idx) => (
+                          <SelectItem key={idx} value={s}>
+                            📍 {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
 
                   {/* Search Box */}
                   <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -1329,6 +1608,40 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   </Button>
                 </div>
               </div>
+
+              {/* Site-Specific Active Summary Banner */}
+              {selectedSite !== 'all' && (
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-blue-50/90 border border-blue-200 rounded-xl text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="bg-blue-600 text-white font-black px-2.5 py-0.5 rounded text-[11px] flex items-center gap-1 shadow-xs">
+                      {selectedSite === '__no_site__' ? (
+                        <>📦 সাধারণ খাতা (কোন সাইট ছাড়া)</>
+                      ) : (
+                        <><MapPin className="w-3 h-3" /> {selectedSite} (সাইটের হিসাব)</>
+                      )}
+                    </span>
+                    <span className="text-slate-700 font-bold">
+                      মোট বিল: <span className="text-slate-950">৳ {toBnDigits(siteTotalBill.toLocaleString('en-IN'))}</span>
+                    </span>
+                    <span className="text-slate-400">|</span>
+                    <span className="text-slate-700 font-bold">
+                      পরিশোধ: <span className="text-emerald-700">৳ {toBnDigits(siteTotalPaid.toLocaleString('en-IN'))}</span>
+                    </span>
+                    <span className="text-slate-400">|</span>
+                    <span className="text-slate-700 font-bold">
+                      অবশিষ্ট জের: <span className="text-rose-600">৳ {toBnDigits(siteTotalDue.toLocaleString('en-IN'))}</span>
+                    </span>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    onClick={() => setSelectedSite('all')} 
+                    className="h-7 px-2 text-[11px] font-bold text-blue-700 hover:text-blue-900 hover:bg-blue-100 cursor-pointer"
+                  >
+                    ✕ সব সাইট দেখুন
+                  </Button>
+                </div>
+              )}
 
               {/* 2. LEDGER TABLE */}
               <div className="border border-slate-200/80 rounded-xl overflow-hidden">
@@ -1559,6 +1872,29 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                     </SelectContent>
                   </Select>
 
+                  {/* Site Filter Select for Customers */}
+                  {isCustomer && (
+                    <Select value={selectedSite} onValueChange={(val: any) => setSelectedSite(val || 'all')}>
+                      <SelectTrigger className="w-40 h-9 bg-white border-slate-200 rounded-xl text-xs font-bold text-slate-800">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <MapPin className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          <SelectValue placeholder="সব সাইট" />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent className="font-bengali text-xs">
+                        <SelectItem value="all">সব সাইট (একত্রিত)</SelectItem>
+                        {hasUnassignedSiteTx && (
+                          <SelectItem value="__no_site__">📦 সাধারণ খাতা (সাইট ছাড়া)</SelectItem>
+                        )}
+                        {availableSites.map((s, idx) => (
+                          <SelectItem key={idx} value={s}>
+                            📍 {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
                   {/* Search Input Box */}
                   <div className="relative flex-1 min-w-[200px] max-w-sm">
                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1600,8 +1936,8 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                     </TableRow>
                   </TableHeader>
                   <TableBody className="text-xs font-bold text-slate-800 divide-y divide-slate-100">
-                    {transactions.length > 0 ? (
-                      transactions.map(t => {
+                    {siteTransactions.filter(t => t.transactionType === 'sale' || !t.transactionType).length > 0 ? (
+                      siteTransactions.filter(t => t.transactionType === 'sale' || !t.transactionType).map(t => {
                         let meta: any = {};
                         if (t.notes && typeof t.notes === 'string' && t.notes.trim().startsWith('{')) {
                           try { meta = JSON.parse(t.notes.split('\n')[0]); } catch {}
@@ -1620,7 +1956,12 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                             onClick={() => setSelectedInvoiceTx(t)}
                           >
                             <TableCell className="py-3.5 px-4 text-left font-mono font-bold text-blue-600 hover:underline">
-                              {t.invoiceNo || `INV-${t.id.slice(0, 6).toUpperCase()}`}
+                              <div>{t.invoiceNo || `INV-${t.id.slice(0, 6).toUpperCase()}`}</div>
+                              {t.siteName && (
+                                <div className="inline-flex items-center gap-1 text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded font-sans font-semibold mt-0.5">
+                                  <MapPin className="w-2.5 h-2.5" /> {t.siteName}
+                                </div>
+                              )}
                             </TableCell>
 
                             <TableCell className="py-3.5 px-4 text-left text-slate-700 font-medium">
@@ -1953,6 +2294,8 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
 
       </div>
 
+
+
       {/* 📄 INVOICE & TRANSACTION DETAILS VIEW MODAL */}
       <Dialog open={!!selectedInvoiceTx} onOpenChange={open => !open && setSelectedInvoiceTx(null)}>
         <DialogContent className="w-[96vw] max-w-5xl max-h-[92vh] overflow-y-auto p-4 sm:p-6 bg-slate-50/90 rounded-2xl border border-slate-200/80 shadow-2xl font-bengali">
@@ -2108,6 +2451,60 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           toast.success('কাস্টমার লেজার সফলভাবে হালনাগাদ করা হয়েছে!');
         }}
       />
+
+      {/* 📍 ADD NEW CUSTOMER SITE MODAL */}
+      <Dialog open={isAddSiteOpen} onOpenChange={setIsAddSiteOpen}>
+        <DialogContent className="max-w-md font-bengali">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black text-slate-900 flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-blue-600" />
+              <span>কাস্টমারের নতুন সাইট যুক্ত করুন</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3.5 py-2 text-xs">
+            <div>
+              <Label className="text-xs font-bold text-slate-700">সাইটের নাম *</Label>
+              <Input
+                value={newSiteName}
+                onChange={e => setNewSiteName(e.target.value)}
+                placeholder="যেমন: মিয়াপাড়া সাইট, বাসভবন, মার্কেট প্রজেক্ট..."
+                className="mt-1 h-9 rounded-xl text-xs"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-bold text-slate-700">সাইটের পূর্ণ ঠিকানা (ঐচ্ছিক)</Label>
+              <Input
+                value={newSiteAddress}
+                onChange={e => setNewSiteAddress(e.target.value)}
+                placeholder="যেমন: মিয়াপাড়া মোড়, গোপালগঞ্জ"
+                className="mt-1 h-9 rounded-xl text-xs"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-bold text-slate-700">সাইটের দায়িত্বপ্রাপ্ত ব্যক্তি / মিস্ত্রি (ঐচ্ছিক)</Label>
+              <Input
+                value={newSiteContact}
+                onChange={e => setNewSiteContact(e.target.value)}
+                placeholder="যেমন: রফিক মিস্ত্রি (০১৭১১...)"
+                className="mt-1 h-9 rounded-xl text-xs"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setIsAddSiteOpen(false)} className="rounded-xl font-bold">
+              বাতিল
+            </Button>
+            <Button 
+              size="sm" 
+              onClick={handleCreateSite} 
+              disabled={isSavingSite} 
+              className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold"
+            >
+              {isSavingSite ? 'সংরক্ষণ হচ্ছে...' : 'সাইট যুক্ত করুন'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Shell>
   );
 }

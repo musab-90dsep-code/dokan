@@ -48,7 +48,8 @@ export function buildLedgerPrintRows(
   isEngineer: boolean = false,
   startDate?: string,
   endDate?: string,
-  isSupplier: boolean = false
+  isSupplier: boolean = false,
+  selectedSite?: string
 ): { rows: PrintLedgerRow[]; totalAmount: number; totalDeposit: number; netBalance: number } {
   const rows: PrintLedgerRow[] = [];
   let totalAmount = 0;
@@ -58,8 +59,10 @@ export function buildLedgerPrintRows(
   const endObj = endDate ? new Date(endDate) : null;
   if (endObj) endObj.setHours(23, 59, 59, 999);
 
-  // Separate opening / previous balance from transactions prior to startDate
-  let priorBalance = Number(party?.openingBalance || 0);
+  const isSiteFiltered = Boolean(selectedSite && selectedSite !== 'all');
+
+  // Separate opening / previous balance from transactions prior to startDate (only for combined/all sites or general account)
+  let priorBalance = (isSiteFiltered && selectedSite !== '__no_site__') ? 0 : Number(party?.openingBalance || 0);
 
   const sorted = [...transactions].sort((a, b) => {
     const da = new Date(a.createdAt || 0);
@@ -71,6 +74,17 @@ export function buildLedgerPrintRows(
 
   sorted.forEach(tx => {
     if (tx.status === 'cancelled' || tx.status === 'rejected' || tx.status === 'pending' || tx.status === 'draft') return;
+    
+    // Site filter when specific site is chosen
+    if (isSiteFiltered) {
+      const txSite = (tx.siteName || tx.site_name || '').trim();
+      if (selectedSite === '__no_site__') {
+        if (txSite !== '') return;
+      } else {
+        if (txSite.toLowerCase() !== selectedSite!.trim().toLowerCase()) return;
+      }
+    }
+
     const txDate = new Date(tx.createdAt || 0);
 
     if (startObj && txDate < startObj) {
@@ -323,6 +337,7 @@ interface PartyLedgerPrintMemoProps {
   isEngineer?: boolean;
   startDate?: string;
   endDate?: string;
+  selectedSite?: string;
 }
 
 export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
@@ -332,7 +347,8 @@ export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
   isSupplier = false,
   isEngineer = false,
   startDate,
-  endDate
+  endDate,
+  selectedSite
 }) => {
   const { rows, totalAmount, totalDeposit, netBalance } = buildLedgerPrintRows(
     party,
@@ -341,8 +357,11 @@ export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
     isEngineer,
     startDate,
     endDate,
-    isSupplier
+    isSupplier,
+    selectedSite
   );
+
+  const hasSelectedSite = Boolean(selectedSite && selectedSite !== 'all');
 
   return (
     <div 
@@ -403,16 +422,24 @@ export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
       {/* 2. INVOICE META & CUSTOMER DETAILS BOX */}
       <div className="border border-black mb-1 bg-white">
         <div className="relative border-b border-black py-0.5 px-3 text-center">
-          <span className="font-black text-xs tracking-widest uppercase">INVOICE</span>
+          <span className="font-black text-xs tracking-widest uppercase">
+            {hasSelectedSite ? (selectedSite === '__no_site__' ? 'INVOICE / খতিয়ান (সাধারণ খাতা - সাইট ছাড়া)' : `INVOICE / খতিয়ান (সাইট: ${selectedSite})`) : 'INVOICE'}
+          </span>
           <span className="absolute right-3 top-0.5 font-bold text-xs">০১</span>
         </div>
-        <div className="grid grid-cols-2 text-xs">
+        <div className={`grid ${hasSelectedSite ? 'grid-cols-3' : 'grid-cols-2'} text-xs`}>
           <div className="border-r border-black py-1 px-3 flex items-center gap-2">
             <span className="font-black whitespace-nowrap">
               {isCustomer ? 'ক্রেতা ঃ' : isSupplier ? 'সরবরাহকারী ঃ' : 'পার্টি ঃ'}
             </span>
             <span className="font-bold text-black">{party?.name || ''}</span>
           </div>
+          {hasSelectedSite && (
+            <div className="border-r border-black py-1 px-3 flex items-center gap-2 bg-slate-50">
+              <span className="font-black whitespace-nowrap text-blue-950">সাইট ঃ</span>
+              <span className="font-black text-blue-900">{selectedSite === '__no_site__' ? 'সাধারণ খাতা (সাইট ছাড়া)' : selectedSite}</span>
+            </div>
+          )}
           <div className="py-1 px-3 flex items-center gap-2">
             <span className="font-black whitespace-nowrap">ঠিকানা ঃ</span>
             <span className="font-normal text-black">{party?.address || party?.businessName || '—'}</span>

@@ -34,6 +34,7 @@ export interface PaymentVoucherMemoProps {
     chequeDate?: string;
     transactionRef?: string;
     previousBalance?: number;
+    siteName?: string;
     operatorName?: string;
     status?: string;
     createdAt?: any;
@@ -350,6 +351,13 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
                   <span className="shrink-0 px-1">:</span>
                   <span className="leading-tight">{voucher.partyAddress || '—'}</span>
                 </div>
+                {(voucher.siteName || meta.siteName) && (
+                  <div className="flex">
+                    <span className="w-28 shrink-0 text-slate-700">সাইট</span>
+                    <span className="shrink-0 px-1">:</span>
+                    <span className="font-bold text-blue-900">📍 {voucher.siteName || meta.siteName}</span>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -393,6 +393,14 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
                     {voucher.partyAddress || '—'}
                   </span>
                 </div>
+                {(voucher.siteName || meta.siteName) && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">সাইট</span>
+                    <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      📍 {voucher.siteName || meta.siteName}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
