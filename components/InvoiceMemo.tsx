@@ -897,7 +897,7 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
         </div>
 
         {/* --- 6. FOOTER (QR CODE, SOFTWARE BRANDING & BARCODE) --- */}
-        <div className="border-t border-slate-300 pt-3 flex items-center justify-between text-[11px] font-bold text-slate-700 keep-together">
+        <div data-has-dev-footer="true" className="border-t border-slate-300 pt-3 flex items-center justify-between text-[11px] font-bold text-slate-700 keep-together">
           
           {/* Left QR Code & Thank You */}
           <div className="flex items-center gap-2">
@@ -931,7 +931,7 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
 
           {/* Center Software Contact */}
           <div className="text-center text-[10px] text-slate-600 space-y-0.5">
-            <p>সফটওয়্যার পরিচালনায়: <strong className="text-slate-900">{shop.software || 'Hasanah Tech Solution'}</strong></p>
+            <p>সফটওয়্যার পরিচালনায়: <strong className="text-slate-900">{shop.softwareCompany || shop.software || 'Hasanah Tech Solution'}</strong></p>
             {shop.softwarePhone && <p>হটলাইন: <span className="font-mono">{toBengaliDigits(shop.softwarePhone)}</span></p>}
             {shop.softwareWebsite && <p>ওয়েবসাইট: <span className="font-mono">{shop.softwareWebsite}</span></p>}
           </div>

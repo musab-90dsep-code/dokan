@@ -99,13 +99,6 @@ const CEMENT_BRAND_OPTIONS = [
   'Holcim Waterprotect',
   'King Brand',
   'Aman',
-  'শাহ সিমেন্ট',
-  'সেভেন রিংস সিমেন্ট',
-  'ক্রাউন সিমেন্ট',
-  'বসুন্ধরা সিমেন্ট',
-  'ফ্রেশ সিমেন্ট',
-  'প্রিমিয়ার সিমেন্ট',
-  'আকিজ সিমেন্ট',
 ];
 
 const RING_SIZE_OPTIONS = [
@@ -211,7 +204,7 @@ export function CascadingProductSelector({
   const [selectedBrand, setSelectedBrand] = useState<string>(
     initialCategory === 'সিমেন্ট' ? 'Holcim Supercrete' : initialCategory === 'রিং' ? '৮ মিলি রিং' : 'BSRM'
   );
-  const [enableCementType, setEnableCementType] = useState<boolean>(false);
+  const [enableCementType, setEnableCementType] = useState<boolean>(true);
   const [cementType, setCementType] = useState<'OPC' | 'PCC'>('PCC');
   const [otherProductId, setOtherProductId] = useState<string>('');
   const [customName, setCustomName] = useState<string>('');
@@ -369,6 +362,7 @@ export function CascadingProductSelector({
       const defaultBrand = onlyInStock ? (availableCementBrands[0] || '') : 'Holcim Supercrete';
       setSelectedMm('');
       setSelectedBrand(defaultBrand);
+      setCementType('PCC');
       if (onUnitChange) onUnitChange('বস্তা');
     } else if (cat === 'রিং') {
       const defaultSz = onlyInStock ? (availableRingSizes[0] || '') : '3-3';
@@ -482,27 +476,9 @@ export function CascadingProductSelector({
     return true;
   }, [onlyInStock, cementTypeAvailability]);
 
-  // Derive effective cement type and enableCementType based on stock availability
-  const effectiveEnableCementType = useMemo(() => {
-    if (!onlyInStock || category !== 'সিমেন্ট') return enableCementType;
-    const { hasOpc, hasPcc, hasPlain } = cementTypeAvailability;
-    if (hasOpc || hasPcc) {
-      if (!hasPlain) return true; // only typed products in stock
-      return enableCementType;
-    }
-    if (hasPlain && !hasOpc && !hasPcc) {
-      return false; // only plain in stock
-    }
-    return enableCementType;
-  }, [onlyInStock, category, enableCementType, cementTypeAvailability]);
-
-  const effectiveCementType = useMemo<'OPC' | 'PCC'>(() => {
-    if (!onlyInStock || category !== 'সিমেন্ট') return cementType;
-    const { hasOpc, hasPcc } = cementTypeAvailability;
-    if (hasPcc && !hasOpc) return 'PCC';
-    if (hasOpc && !hasPcc) return 'OPC';
-    return cementType;
-  }, [onlyInStock, category, cementType, cementTypeAvailability]);
+  // Cement type is always enabled for cement with PCC as default unless switched to OPC
+  const effectiveEnableCementType = category === 'সিমেন্ট';
+  const effectiveCementType: 'OPC' | 'PCC' = cementType || 'PCC';
 
   // Derive constructed product name & match inventory product
   const matchedProductInfo = useMemo(() => {
@@ -595,11 +571,12 @@ export function CascadingProductSelector({
         if (effectiveEnableCementType && effectiveCementType) {
           const typeLower = effectiveCementType.toLowerCase();
           const otherType = effectiveCementType === 'OPC' ? 'pcc' : 'opc';
-          return pName.includes(bCore) && pName.includes(typeLower) && !pName.includes(otherType);
-        } else {
-          // Untyped cement: match product by brand/sub-brand core
-          if (pName === activeBrand.toLowerCase() || pName === `${activeBrand} সিমেন্ট`.toLowerCase()) return true;
-          return pName.includes(bCore);
+          if (pName.includes(bCore) && pName.includes(typeLower) && !pName.includes(otherType)) {
+            return true;
+          }
+          if (pName.includes(bCore) && !pName.includes('opc') && !pName.includes('pcc')) {
+            return true;
+          }
         }
       }
       if (category === 'রিং' && activeMm) {
@@ -637,7 +614,12 @@ export function CascadingProductSelector({
         if (effectiveEnableCementType && effectiveCementType) {
           const typeLower = effectiveCementType.toLowerCase();
           const otherType = effectiveCementType === 'OPC' ? 'pcc' : 'opc';
-          return activeBrand && pName.includes(bCore) && pName.includes(typeLower) && !pName.includes(otherType);
+          if (activeBrand && pName.includes(bCore) && pName.includes(typeLower) && !pName.includes(otherType)) {
+            return true;
+          }
+          if (activeBrand && pName.includes(bCore) && !pName.includes('opc') && !pName.includes('pcc')) {
+            return true;
+          }
         }
         return activeBrand && pName.includes(bCore);
       }
@@ -835,151 +817,107 @@ export function CascadingProductSelector({
 
             <div className="sm:col-span-5 space-y-1">
               <div className="flex items-center justify-between">
-                <Label 
-                  className={cn(
-                    "text-[11px] font-bold flex items-center gap-1.5 select-none",
-                    canToggleCementType ? "cursor-pointer text-slate-600" : "cursor-default text-slate-400"
-                  )} 
-                  onClick={() => {
-                    if (!canToggleCementType) return;
-                    const nextState = !effectiveEnableCementType;
-                    setEnableCementType(nextState);
-                    setEnteredTotal('');
-                    onPriceChange(0);
-                    if (onSellPriceChange) onSellPriceChange(0);
-                  }}
-                >
-                  <span>৩. সিমেন্ট টাইপ (OPC / PCC)</span>
+                <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 select-none">
+                  <span>৩. সিমেন্ট টাইপ</span>
                   <span className={cn(
                     "text-[10px] px-1.5 py-0.2 rounded font-black tracking-wide transition-colors",
-                    effectiveEnableCementType ? "bg-emerald-100 text-emerald-700 border border-emerald-300" : "bg-slate-100 text-slate-500 border border-slate-200"
+                    effectiveCementType === 'PCC' ? "bg-emerald-100 text-emerald-800 border border-emerald-300" : "bg-blue-100 text-blue-800 border border-blue-300"
                   )}>
-                    {effectiveEnableCementType ? "চালু" : "বন্ধ"}
+                    {effectiveCementType === 'PCC' ? 'PCC (ডিফল্ট)' : 'OPC'}
                   </span>
                 </Label>
 
-                {/* Animated Switch Toggle Button */}
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={effectiveEnableCementType}
-                  disabled={!canToggleCementType}
+                {/* 2-Way Animated Toggle Switch (Left is PCC, Right is OPC) */}
+                <div 
+                  className="flex items-center gap-1.5 cursor-pointer select-none"
                   onClick={() => {
-                    if (!canToggleCementType) return;
-                    const nextState = !effectiveEnableCementType;
-                    setEnableCementType(nextState);
+                    const nextType = effectiveCementType === 'PCC' ? 'OPC' : 'PCC';
+                    setCementType(nextType);
                     setEnteredTotal('');
                     onPriceChange(0);
                     if (onSellPriceChange) onSellPriceChange(0);
                   }}
-                  className={cn(
-                    "relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden",
-                    !canToggleCementType ? "cursor-not-allowed opacity-60" : "cursor-pointer",
-                    effectiveEnableCementType ? "bg-emerald-600" : "bg-slate-300"
-                  )}
-                  title={
-                    !canToggleCementType
-                      ? (effectiveEnableCementType ? "স্টকে শুধুমাত্র টাইপযুক্ত সিমেন্ট রয়েছে" : "স্টকে এই ব্র্যান্ডের কোনো OPC/PCC নেই")
-                      : (effectiveEnableCementType ? "টাইপ বন্ধ করুন" : "টাইপ (OPC / PCC) চালু করুন")
-                  }
+                  title="PCC ও OPC এর মধ্যে সুইচ করুন"
                 >
-                  <span
-                    aria-hidden="true"
+                  <span className={cn(
+                    "text-[11px] font-black transition-colors",
+                    effectiveCementType === 'PCC' ? "text-emerald-700 font-bold" : "text-slate-400"
+                  )}>
+                    PCC
+                  </span>
+
+                  <div
+                    role="switch"
+                    aria-checked={effectiveCementType === 'OPC'}
                     className={cn(
-                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out",
-                      effectiveEnableCementType ? "translate-x-5" : "translate-x-0"
+                      "relative inline-flex h-6 w-12 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out cursor-pointer shadow-inner",
+                      effectiveCementType === 'OPC' ? "bg-blue-600" : "bg-emerald-600"
                     )}
-                  />
-                </button>
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "pointer-events-none h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out flex items-center justify-center text-[9px] font-black",
+                        effectiveCementType === 'OPC' ? "translate-x-6 text-blue-700" : "translate-x-0 text-emerald-700"
+                      )}
+                    >
+                      {effectiveCementType === 'OPC' ? 'O' : 'P'}
+                    </span>
+                  </div>
+
+                  <span className={cn(
+                    "text-[11px] font-black transition-colors",
+                    effectiveCementType === 'OPC' ? "text-blue-700 font-bold" : "text-slate-400"
+                  )}>
+                    OPC
+                  </span>
+                </div>
               </div>
 
-              {/* When Switch is ON: OPC / PCC Selection Buttons */}
-              {effectiveEnableCementType ? (
-                <div className="grid grid-cols-2 gap-1.5 h-10">
-                  <button
-                    type="button"
-                    disabled={onlyInStock && !cementTypeAvailability.hasOpc}
-                    onClick={() => {
-                      if (onlyInStock && !cementTypeAvailability.hasOpc) return;
-                      setCementType('OPC');
-                      setEnteredTotal('');
-                      onPriceChange(0);
-                      if (onSellPriceChange) onSellPriceChange(0);
-                    }}
-                    className={cn(
-                      "h-10 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 border",
-                      onlyInStock && !cementTypeAvailability.hasOpc
-                        ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-50"
-                        : effectiveCementType === 'OPC'
-                          ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-700 shadow-md shadow-blue-500/20 scale-[1.01] cursor-pointer"
-                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300 cursor-pointer"
-                    )}
-                    title={onlyInStock && !cementTypeAvailability.hasOpc ? "স্টকে OPC নেই" : "OPC নির্বাচন করুন"}
-                  >
-                    <span>OPC</span>
-                    {effectiveCementType === 'OPC' && <span className="text-[11px] font-black">✓</span>}
-                    {onlyInStock && !cementTypeAvailability.hasOpc && (
-                      <span className="text-[9px] font-normal text-rose-500 bg-rose-50 border border-rose-200 px-1 py-0.2 rounded">স্টকে নেই</span>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={onlyInStock && !cementTypeAvailability.hasPcc}
-                    onClick={() => {
-                      if (onlyInStock && !cementTypeAvailability.hasPcc) return;
-                      setCementType('PCC');
-                      setEnteredTotal('');
-                      onPriceChange(0);
-                      if (onSellPriceChange) onSellPriceChange(0);
-                    }}
-                    className={cn(
-                      "h-10 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 border",
-                      onlyInStock && !cementTypeAvailability.hasPcc
-                        ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-50"
-                        : effectiveCementType === 'PCC'
-                          ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-700 shadow-md shadow-emerald-500/20 scale-[1.01] cursor-pointer"
-                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300 cursor-pointer"
-                    )}
-                    title={onlyInStock && !cementTypeAvailability.hasPcc ? "স্টকে PCC নেই" : "PCC নির্বাচন করুন"}
-                  >
-                    <span>PCC</span>
-                    {effectiveCementType === 'PCC' && <span className="text-[11px] font-black">✓</span>}
-                    {onlyInStock && !cementTypeAvailability.hasPcc && (
-                      <span className="text-[9px] font-normal text-rose-500 bg-rose-50 border border-rose-200 px-1 py-0.2 rounded">স্টকে নেই</span>
-                    )}
-                  </button>
-                </div>
-              ) : (
-                <div 
+              {/* 2-Way Segmented Switch: One side PCC, other side OPC */}
+              <div className="grid grid-cols-2 gap-1.5 h-10 p-1 bg-slate-100/90 rounded-xl border border-slate-200 select-none">
+                {/* PCC Button (Left) */}
+                <button
+                  type="button"
                   onClick={() => {
-                    if (!canToggleCementType) return;
-                    setEnableCementType(true);
+                    setCementType('PCC');
                     setEnteredTotal('');
                     onPriceChange(0);
                     if (onSellPriceChange) onSellPriceChange(0);
                   }}
                   className={cn(
-                    "h-10 rounded-xl bg-white border border-dashed text-[11px] font-bold flex items-center justify-center gap-1.5 select-none transition-all",
-                    canToggleCementType
-                      ? "border-slate-300 text-slate-500 cursor-pointer hover:bg-emerald-50/50 hover:border-emerald-300 hover:text-emerald-700"
-                      : "border-slate-200 text-slate-400 cursor-not-allowed bg-slate-50"
+                    "h-8 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 border cursor-pointer",
+                    effectiveCementType === 'PCC'
+                      ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-700 shadow-md shadow-emerald-500/20 scale-[1.01]"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300"
                   )}
-                  title={canToggleCementType ? "সুইচ অন করে OPC বা PCC নির্বাচন করুন" : "স্টকে এই ব্র্যান্ডের কোনো OPC/PCC নেই"}
+                  title="PCC নির্বাচন করুন (ডিফল্ট)"
                 >
-                  {canToggleCementType ? (
-                    <>
-                      <span className="text-emerald-600 font-bold">⚡</span>
-                      <span>টাইপ যোগ করতে সুইচ অন করুন</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-slate-400">ℹ️</span>
-                      <span>এই ব্র্যান্ডের কোনো OPC/PCC স্টকে নেই</span>
-                    </>
+                  <span>PCC</span>
+                  {effectiveCementType === 'PCC' && <span className="text-[10px] font-bold">✓ (ডিফল্ট)</span>}
+                </button>
+
+                {/* OPC Button (Right) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCementType('OPC');
+                    setEnteredTotal('');
+                    onPriceChange(0);
+                    if (onSellPriceChange) onSellPriceChange(0);
+                  }}
+                  className={cn(
+                    "h-8 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 border cursor-pointer",
+                    effectiveCementType === 'OPC'
+                      ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-700 shadow-md shadow-blue-500/20 scale-[1.01]"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300"
                   )}
-                </div>
-              )}
+                  title="OPC নির্বাচন করুন"
+                >
+                  <span>OPC</span>
+                  {effectiveCementType === 'OPC' && <span className="text-[10px] font-bold">✓</span>}
+                </button>
+              </div>
             </div>
           </>
         )}

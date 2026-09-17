@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { Shell } from '@/components/Shell';
 import { api } from '@/lib/api';
 import {
-  Plus, Search, Filter, Trash2, ArrowUpRight, ArrowDownRight, Wallet,
+  Plus, Search, Filter, ArrowUpRight, ArrowDownRight, Wallet,
   TrendingUp, Calendar, DollarSign, AlertCircle, CheckCircle2, Printer, UploadCloud, X,
   Building2, User, Phone, ShieldCheck, FileText, Check, ArrowLeft, Eye, Edit2,
   FileSpreadsheet, FileDown, Clock, PieChart, ChevronLeft, ChevronRight, Lightbulb,
@@ -358,17 +358,6 @@ export default function ExpensePage() {
     }
   };
 
-  const handleDeleteExpense = async (id: string) => {
-    if (!confirm('আপনি কি নিশ্চিত যে এই খরচের এন্ট্রিটি মুছে ফেলতে চান?')) return;
-    try {
-      await api.expenses.delete(id);
-      toast.success('খরচ মুছে ফেলা হয়েছে');
-      fetchExpensesAndBanks();
-    } catch (err) {
-      console.error(err);
-      toast.error('মুছে ফেলা সম্ভব হয়নি');
-    }
-  };
 
   // Filtered Expenses
   const filteredExpenses = expenses.filter(exp => {
@@ -1189,24 +1178,6 @@ export default function ExpensePage() {
               <span>প্রিন্ট ভাউচার</span>
             </button>
 
-            {canModifyData && (
-              <>
-                <div className="my-1 border-t border-slate-100" />
-
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOpenMenuId(null);
-                    handleDeleteExpense(targetExp.id);
-                  }}
-                  className="w-full px-3.5 py-2 text-left text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 transition-colors cursor-pointer"
-                >
-                  <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span>মুছে ফেলুন</span>
-                </button>
-              </>
-            )}
           </div>
         );
       })()}

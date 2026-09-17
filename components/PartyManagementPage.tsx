@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Shell } from '@/components/Shell';
 import { api, PartyData } from '@/lib/api';
@@ -135,6 +135,9 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
   const [minDue, setMinDue] = useState('');
   const [maxDue, setMaxDue] = useState('');
   const [filterDivision, setFilterDivision] = useState('সব');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [prevFilterKey, setPrevFilterKey] = useState<string>('');
   const [userViewMode, setUserViewMode] = useState<'card' | 'table' | null>(null);
   const viewMode = userViewMode ?? (isEngineer ? 'card' : 'table');
 
@@ -147,6 +150,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
     setMinDue('');
     setMaxDue('');
     setFilterDivision('সব');
+    setCurrentPage(1);
   };
 
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -210,7 +214,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
     email: '',
     country: 'বাংলাদেশ',
     division: 'ঢাকা',
-    district: 'ঢাকা',
+    district: 'গোপালগঞ্জ',
     thana: '',
     address: '',
     postcode: '',
@@ -246,7 +250,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       email: p.email || '',
       country: p.country || 'বাংলাদেশ',
       division: p.division || 'ঢাকা',
-      district: p.district || 'ঢাকা',
+      district: p.district || 'গোপালগঞ্জ',
       thana: p.thana || '',
       address: p.address || '',
       postcode: p.postcode || '',
@@ -350,7 +354,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
           email: p.email || '',
           country: p.country || 'বাংলাদেশ',
           division: p.division || 'ঢাকা',
-          district: p.district || 'ঢাকা',
+          district: p.district || 'গোপালগঞ্জ',
           thana: p.thana || '',
           address: p.address || '',
           postcode: p.postcode || '',
@@ -392,7 +396,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       email: '',
       country: 'বাংলাদেশ',
       division: 'ঢাকা',
-      district: 'ঢাকা',
+      district: 'গোপালগঞ্জ',
       thana: '',
       address: '',
       postcode: '',
@@ -586,6 +590,19 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
 
     return Boolean(matchesSearch) && matchesType && matchesDue && matchesDate && matchesDueAmount && matchesDivision;
   });
+
+  const currentFilterKey = `${search}|${filterType}|${filterDue}|${startDate}|${endDate}|${minDue}|${maxDue}|${filterDivision}`;
+
+  if (prevFilterKey !== currentFilterKey) {
+    setPrevFilterKey(currentFilterKey);
+    setCurrentPage(1);
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (validCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, filtered.length);
+  const paginatedParties = filtered.slice(startIndex, endIndex);
 
   const totalDue = parties.reduce((a, p) => a + (p.totalDue || 0), 0);
   const totalAdvance = parties.reduce((a, p) => a + (p.advanceBalance || 0), 0);
@@ -915,7 +932,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
               </Card>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {filtered.map((p) => {
+                {paginatedParties.map((p) => {
                   const isWholesale = p.customerType === 'পাইকারি গ্রাহক';
                   const isContractor = p.customerType === 'কন্ট্রাকটর';
                   const suppType = p.customerType || p.supplyType || 'রড';
@@ -1274,24 +1291,91 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
             {/* Pagination Footer for Card View */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs font-semibold text-slate-500 bg-white border border-slate-200/80 rounded-md p-3 shadow-2xs">
               <div>
-                মোট <strong className="text-slate-900 font-bold">{toBnDigits(parties.length)}</strong> জন {isEngineer ? 'ইঞ্জিনিয়ারের' : isCustomer ? 'কাস্টমারের' : 'সরবরাহকারীর'} মধ্যে ১ থেকে {toBnDigits(filtered.length)} দেখানো হচ্ছে
+                মোট <strong className="text-slate-900 font-bold">{toBnDigits(filtered.length)}</strong> জন {isEngineer ? 'ইঞ্জিনিয়ারের' : isCustomer ? 'কাস্টমারের' : 'সরবরাহকারীর'} মধ্যে {filtered.length === 0 ? '০' : `${toBnDigits(startIndex + 1)} থেকে ${toBnDigits(endIndex)}`} দেখানো হচ্ছে
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <Button variant="outline" size="icon" className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600">«</Button>
-                <Button variant="outline" size="icon" className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600">‹</Button>
-                <Button className="w-7 h-7 rounded-lg text-xs font-bold p-0 bg-blue-600 text-white">১</Button>
-                <Button variant="outline" className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 p-0 font-bold">২</Button>
-                <Button variant="outline" className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 p-0 font-bold">৩</Button>
-                <Button variant="outline" size="icon" className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600">›</Button>
-                <Button variant="outline" size="icon" className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600">»</Button>
-                <Select defaultValue="10">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  disabled={validCurrentPage <= 1}
+                  onClick={() => setCurrentPage(1)}
+                  className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                  title="প্রথম পেজ"
+                >
+                  «
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  disabled={validCurrentPage <= 1}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                  title="পূর্ববর্তী পেজ"
+                >
+                  ‹
+                </Button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(p => p === 1 || p === totalPages || Math.abs(p - validCurrentPage) <= 1)
+                  .map((page, idx, arr) => {
+                    const prev = arr[idx - 1];
+                    const showEllipsis = prev && page - prev > 1;
+                    return (
+                      <React.Fragment key={page}>
+                        {showEllipsis && <span className="text-slate-400 px-1 text-xs">...</span>}
+                        <Button
+                          variant={validCurrentPage === page ? "default" : "outline"}
+                          onClick={() => setCurrentPage(page)}
+                          className={cn(
+                            "w-7 h-7 rounded-lg text-xs font-bold p-0",
+                            validCurrentPage === page
+                              ? "bg-blue-600 hover:bg-blue-700 text-white"
+                              : "border-slate-200 text-slate-600 hover:bg-slate-100"
+                          )}
+                        >
+                          {toBnDigits(page)}
+                        </Button>
+                      </React.Fragment>
+                    );
+                  })}
+
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  disabled={validCurrentPage >= totalPages}
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                  title="পরবর্তী পেজ"
+                >
+                  ›
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  disabled={validCurrentPage >= totalPages}
+                  onClick={() => setCurrentPage(totalPages)}
+                  className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                  title="শেষ পেজ"
+                >
+                  »
+                </Button>
+
+                <Select 
+                  value={String(pageSize)} 
+                  onValueChange={(val) => {
+                    setPageSize(Number(val));
+                    setCurrentPage(1);
+                  }}
+                >
                   <SelectTrigger className="w-24 h-7 rounded-lg border-slate-200 text-xs font-bold ml-2">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="font-bengali text-xs">
                     <SelectItem value="10">১০ / পেজ</SelectItem>
                     <SelectItem value="25">২৫ / পেজ</SelectItem>
+                    <SelectItem value="50">৫০ / পেজ</SelectItem>
+                    <SelectItem value="100">১০০ / পেজ</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1336,7 +1420,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filtered.map((p, idx) => {
+                    paginatedParties.map((p, idx) => {
                       const isWholesale = p.customerType === 'পাইকারি গ্রাহক';
                       const isContractor = p.customerType === 'কন্ট্রাকটর';
                       const suppType = p.customerType || p.supplyType || 'রড';
@@ -1350,7 +1434,7 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           className="hover:bg-slate-50/70 transition-colors cursor-pointer"
                         >
                           <TableCell className="py-3.5 px-4 text-left text-slate-500 font-mono font-bold">
-                            {toBnDigits(String(idx + 1).padStart(2, '0'))}
+                            {toBnDigits(String(startIndex + idx + 1).padStart(2, '0'))}
                           </TableCell>
 
                           <TableCell className="py-3.5 px-4 text-left">
@@ -1468,24 +1552,91 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
             {/* Pagination Footer */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs font-semibold text-slate-500">
               <div>
-                মোট <strong className="text-slate-900 font-bold">{toBnDigits(parties.length)}</strong> জন {isEngineer ? 'ইঞ্জিনিয়ারের' : isCustomer ? 'কাস্টমারের' : 'সরবরাহকারীর'} মধ্যে ১ থেকে {toBnDigits(filtered.length)} দেখানো হচ্ছে
+                মোট <strong className="text-slate-900 font-bold">{toBnDigits(filtered.length)}</strong> জন {isEngineer ? 'ইঞ্জিনিয়ারের' : isCustomer ? 'কাস্টমারের' : 'সরবরাহকারীর'} মধ্যে {filtered.length === 0 ? '০' : `${toBnDigits(startIndex + 1)} থেকে ${toBnDigits(endIndex)}`} দেখানো হচ্ছে
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <Button variant="outline" size="icon" className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600">«</Button>
-                <Button variant="outline" size="icon" className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600">‹</Button>
-                <Button className="w-7 h-7 rounded-lg text-xs font-bold p-0 bg-blue-600 text-white">১</Button>
-                <Button variant="outline" className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 p-0 font-bold">২</Button>
-                <Button variant="outline" className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 p-0 font-bold">৩</Button>
-                <Button variant="outline" size="icon" className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600">›</Button>
-                <Button variant="outline" size="icon" className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600">»</Button>
-                <Select defaultValue="10">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  disabled={validCurrentPage <= 1}
+                  onClick={() => setCurrentPage(1)}
+                  className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                  title="প্রথম পেজ"
+                >
+                  «
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  disabled={validCurrentPage <= 1}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                  title="পূর্ববর্তী পেজ"
+                >
+                  ‹
+                </Button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(p => p === 1 || p === totalPages || Math.abs(p - validCurrentPage) <= 1)
+                  .map((page, idx, arr) => {
+                    const prev = arr[idx - 1];
+                    const showEllipsis = prev && page - prev > 1;
+                    return (
+                      <React.Fragment key={page}>
+                        {showEllipsis && <span className="text-slate-400 px-1 text-xs">...</span>}
+                        <Button
+                          variant={validCurrentPage === page ? "default" : "outline"}
+                          onClick={() => setCurrentPage(page)}
+                          className={cn(
+                            "w-7 h-7 rounded-lg text-xs font-bold p-0",
+                            validCurrentPage === page
+                              ? "bg-blue-600 hover:bg-blue-700 text-white"
+                              : "border-slate-200 text-slate-600 hover:bg-slate-100"
+                          )}
+                        >
+                          {toBnDigits(page)}
+                        </Button>
+                      </React.Fragment>
+                    );
+                  })}
+
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  disabled={validCurrentPage >= totalPages}
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                  title="পরবর্তী পেজ"
+                >
+                  ›
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  disabled={validCurrentPage >= totalPages}
+                  onClick={() => setCurrentPage(totalPages)}
+                  className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                  title="শেষ পেজ"
+                >
+                  »
+                </Button>
+
+                <Select 
+                  value={String(pageSize)} 
+                  onValueChange={(val) => {
+                    setPageSize(Number(val));
+                    setCurrentPage(1);
+                  }}
+                >
                   <SelectTrigger className="w-24 h-7 rounded-lg border-slate-200 text-xs font-bold ml-2">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="font-bengali text-xs">
                     <SelectItem value="10">১০ / পেজ</SelectItem>
                     <SelectItem value="25">২৫ / পেজ</SelectItem>
+                    <SelectItem value="50">৫০ / পেজ</SelectItem>
+                    <SelectItem value="100">১০০ / পেজ</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1728,8 +1879,11 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
                           onValueChange={(val: string | null) => {
                             const newDiv = val || 'ঢাকা';
                             const divObj = bdLocationData.find(d => d.name === newDiv);
-                            const firstDist = divObj && divObj.districts.length > 0 ? divObj.districts[0].name : '';
-                            const firstThana = divObj && divObj.districts.length > 0 && divObj.districts[0].thanas.length > 0 ? divObj.districts[0].thanas[0] : '';
+                            const firstDist = newDiv === 'ঢাকা'
+                              ? (divObj?.districts.find(d => d.name === 'গোপালগঞ্জ')?.name || divObj?.districts[0]?.name || '')
+                              : (divObj && divObj.districts.length > 0 ? divObj.districts[0].name : '');
+                            const distObj = divObj?.districts.find(d => d.name === firstDist);
+                            const firstThana = distObj && distObj.thanas.length > 0 ? distObj.thanas[0] : '';
                             setFormData({
                               ...formData,
                               division: newDiv,

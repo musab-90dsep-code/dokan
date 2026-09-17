@@ -1103,7 +1103,8 @@ function InvoicesContent() {
           party_type: 'customer',
           name: newCustomerData.name.trim(),
           phone: toEnglishDigits(newCustomerData.phone).trim(),
-          address: newCustomerData.address.trim()
+          address: newCustomerData.address.trim(),
+          district: 'গোপালগঞ্জ'
         });
         finalCustId = String(createdParty.id);
       }
@@ -1158,6 +1159,8 @@ function InvoicesContent() {
         discountType,
         discountPercent: Number(discountPercent || 0),
         discountFlat: Number(discountFlat || 0),
+        discountAmount: round2(cartTotalDiscount),
+        cartTotalDiscount: round2(cartTotalDiscount),
         chargeCalcMode,
         rodLaborRate: Number(rodLaborRate || 0),
         rodShippingRate: Number(rodShippingRate || 0),
@@ -2514,67 +2517,14 @@ function InvoicesContent() {
                   </CardContent>
                 </Card>
 
-                {/* STEP 3: Transport & Delivery Details */}
-                <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
-                  <CardContent className="p-5 space-y-4">
-                    <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">৩</span>
-                      পরিবহন ও সাইটের তথ্য
-                    </Label>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
-                      <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">গাড়ির নম্বর / ট্রাক নং</Label>
-                        <Input
-                          value={vehicleNo}
-                          onChange={e => setVehicleNo(e.target.value)}
-                          placeholder="ঢাকা মেট্রো-ট ১১-৫৪৩২"
-                          className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">ড্রাইভারের নাম</Label>
-                        <Input
-                          value={driverName}
-                          onChange={e => setDriverName(e.target.value)}
-                          placeholder="মোঃ রফিক"
-                          className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">ড্রাইভারের মোবাইল নম্বর</Label>
-                        <Input
-                          value={driverPhone}
-                          maxLength={11}
-                          onChange={e => setDriverPhone(toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11))}
-                          placeholder="০১৭XXXXXXXX"
-                          className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-mono"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">ডেলিভারি সাইট ঠিকানা</Label>
-                        <Input
-                          value={deliveryAddress}
-                          onChange={e => setDeliveryAddress(e.target.value)}
-                          placeholder="সাইট-২, উত্তরা, ঢাকা"
-                          className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
-                        />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* STEP 4 & STEP 5 ROW */}
+                {/* STEP 3 & STEP 4 ROW */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   
-                  {/* STEP 4: Totals, Discount & Tax */}
+                  {/* STEP 3: Totals, Discount & Tax */}
                   <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
                     <CardContent className="p-5 space-y-4">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">৪</span>
+                        <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">৩</span>
                         মোট বিল, ছাড় ও অতিরিক্ত খরচ
                       </Label>
 
@@ -2774,11 +2724,11 @@ function InvoicesContent() {
                     </CardContent>
                   </Card>
 
-                  {/* STEP 5: Register Payment */}
+                  {/* STEP 4: Register Payment */}
                   <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
                     <CardContent className="p-5 space-y-4">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5 font-bengali">
-                        <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">৫</span>
+                        <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">৪</span>
                         পেমেন্ট এন্ট্রি বিবরণ
                       </Label>
 
@@ -3039,82 +2989,23 @@ function InvoicesContent() {
 
                 </div>
 
-                {/* STEP 6 & STEP 7 ROW */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  
-                  {/* STEP 6: Signatures & Handled By */}
-                  <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
-                    <CardContent className="p-5 space-y-3">
-                      <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">৬</span>
-                        কর্মকর্তা ও গোডাউন নির্ধারণ
-                      </Label>
+                {/* STEP 5: Notes (Optional) */}
+                <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
+                  <CardContent className="p-5 space-y-3">
+                    <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">৫</span>
+                      বিশেষ নির্দেশনার নোট (ঐচ্ছিক)
+                    </Label>
 
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">ইনভয়েস প্রস্তুতকারী</Label>
-                          <Input 
-                            value={preparedBy}
-                            onChange={e => setPreparedBy(e.target.value)}
-                            placeholder="প্রস্তুতকারীর নাম"
-                            className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">অনুমোদনকারী কর্মকর্তা</Label>
-                          <Input 
-                            value={authorizedBy}
-                            onChange={e => setAuthorizedBy(e.target.value)}
-                            placeholder="ম্যানেজারের নাম"
-                            className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">পণ্য গ্রহণকারী</Label>
-                          <Input 
-                            value={receivedBy}
-                            onChange={e => setReceivedBy(e.target.value)}
-                            placeholder="গ্রহীতার নাম"
-                            className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">গোডাউন / ওয়্যারহাউজ</Label>
-                          <Select value={warehouse} onValueChange={(val: string | null) => setWarehouse(val || 'Main')}>
-                            <SelectTrigger className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="font-bengali text-xs font-bold">
-                              <SelectItem value="Main">প্রধান গোডাউন</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* STEP 7: Notes (Optional) */}
-                  <Card className="bg-white border-slate-200/80 rounded-md shadow-xs">
-                    <CardContent className="p-5 space-y-3">
-                      <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-sm bg-emerald-100 text-emerald-700 text-[11px] font-black flex items-center justify-center">৭</span>
-                        বিশেষ নির্দেশনার নোট (ঐচ্ছিক)
-                      </Label>
-
-                      <textarea
-                        rows={3}
-                        value={invoiceNote}
-                        onChange={e => setInvoiceNote(e.target.value)}
-                        placeholder="যে কোনো বিশেষ নির্দেশনার নোট লিখুন..."
-                        className="w-full rounded-md p-3 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-emerald-500"
-                      />
-                    </CardContent>
-                  </Card>
-
-                </div>
+                    <textarea
+                      rows={3}
+                      value={invoiceNote}
+                      onChange={e => setInvoiceNote(e.target.value)}
+                      placeholder="যে কোনো বিশেষ নির্দেশনার নোট লিখুন..."
+                      className="w-full rounded-md p-3 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-emerald-500"
+                    />
+                  </CardContent>
+                </Card>
 
               </div>
 

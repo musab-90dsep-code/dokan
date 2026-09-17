@@ -28,7 +28,8 @@ import { bn } from 'date-fns/locale';
 import { printElement } from '@/lib/printUtils';
 import { toBengaliDigits } from '@/lib/bengaliUtils';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
-import { DataImportModal } from '@/components/DataImportModal';
+import { DeveloperBranding } from '@/components/DeveloperBranding';
+import { DEVELOPER_LOGO_BASE64 } from '@/lib/developerLogo';
 
 const formatBnDate = (dateVal: Date | string | undefined | null, pattern: string = 'dd MMMM - yyyy') => {
   if (!dateVal) return '—';
@@ -252,6 +253,7 @@ function MasterReportsContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [engineers, setEngineers] = useState<{ id: string; name: string; businessName: string; totalDue: number }[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [banks, setBanks] = useState<Bank[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -282,7 +284,6 @@ function MasterReportsContent() {
 
 
 
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [journalModalOpen, setJournalModalOpen] = useState(false);
   const [journalCommission, setJournalCommission] = useState<Commission | null>(null);
   const [journalAccountType, setJournalAccountType] = useState<'cash' | 'bank' | 'adjustment'>('cash');
@@ -442,22 +443,46 @@ function MasterReportsContent() {
       const partyList = await api.parties.list();
       const safePartyList = Array.isArray(partyList) ? partyList : [];
       setCustomers(safePartyList.filter(p => p.party_type === 'customer' || p.party_type === 'both').map(p => {
-        const adv = Number(p.advance_balance || 0);
+        const rawDue = Number(p.total_due || 0);
+        const rawAdv = Number(p.advance_balance || 0);
         const opBal = Number(p.opening_balance || 0);
+        const effectiveDue = rawDue > 0 ? rawDue : (opBal > 0 && rawDue === 0 ? opBal : 0);
+        const effectiveAdv = rawAdv > 0 
+          ? rawAdv 
+          : (rawDue < 0 ? Math.abs(rawDue) : (opBal < 0 ? Math.abs(opBal) : 0));
         return {
           id: String(p.id),
           name: p.name,
           businessName: p.business_name || '',
-          totalDue: Number(p.total_due || 0),
-          advanceBalance: adv > 0 ? adv : (opBal < 0 ? Math.abs(opBal) : 0)
+          totalDue: effectiveDue,
+          advanceBalance: effectiveAdv
         };
       }));
-      setSuppliers(safePartyList.filter(p => p.party_type === 'supplier' || p.party_type === 'both').map(p => ({
-        id: String(p.id),
-        name: p.name,
-        businessName: p.business_name || '',
-        totalDue: Number(p.total_due || 0)
-      })));
+      setSuppliers(safePartyList.filter(p => p.party_type === 'supplier' || p.party_type === 'both').map(p => {
+        const rawDue = Number(p.total_due || 0);
+        const rawAdv = Number(p.advance_balance || 0);
+        const opBal = Number(p.opening_balance || 0);
+        const effectiveDue = rawDue > 0 ? rawDue : (opBal > 0 && rawDue === 0 ? opBal : 0);
+        const effectiveAdv = rawAdv > 0 
+          ? rawAdv 
+          : (rawDue < 0 ? Math.abs(rawDue) : (opBal < 0 ? Math.abs(opBal) : 0));
+        return {
+          id: String(p.id),
+          name: p.name,
+          businessName: p.business_name || '',
+          totalDue: effectiveDue,
+          advanceBalance: effectiveAdv
+        };
+      }));
+      setEngineers(safePartyList.filter(p => p.party_type === 'engineer').map(p => {
+        const rawDue = Number(p.total_due || 0);
+        return {
+          id: String(p.id),
+          name: p.name,
+          businessName: p.business_name || '',
+          totalDue: rawDue > 0 ? rawDue : 0
+        };
+      }));
 
       const prodList = await api.inventory.list();
       const safeProdList = Array.isArray(prodList) ? prodList : [];
@@ -767,12 +792,6 @@ function MasterReportsContent() {
 
               {/* TOP RIGHT ACTION BUTTONS */}
               <div className="flex items-center gap-2.5">
-                <Button
-                  onClick={() => setIsImportModalOpen(true)}
-                  className="h-10 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-md"
-                >
-                  <FileSpreadsheet className="w-4 h-4 mr-1.5" /> আগের হিসাব ও ডাটা ইমপোর্ট
-                </Button>
                 <Button variant="outline" className="h-10 px-4 rounded-xl border-slate-200 bg-white text-slate-700 font-bold text-xs hover:bg-slate-50 shadow-xs">
                   <Settings2 className="w-4 h-4 mr-1.5 text-slate-600" /> রিপোর্ট কাস্টমাইজ
                 </Button>
@@ -1091,34 +1110,6 @@ function MasterReportsContent() {
                 </div>
               </Card>
 
-              {/* CARD 9: আগের হিসাব ও এক্সেল ইমপোর্ট */}
-              <Card className="border-orange-200/90 rounded-3xl bg-linear-to-br from-orange-50/70 to-amber-50/30 p-6 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between group">
-                <div className="space-y-4">
-                  <div className="w-12 h-12 rounded-2xl bg-orange-500 text-white flex items-center justify-center font-bold shadow-md shadow-orange-500/20">
-                    <FileSpreadsheet className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <div className="inline-flex items-center px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 text-[10px] font-black mb-1.5">
-                      মাইগ্রেশন টুল
-                    </div>
-                    <h3 className="font-black text-slate-900 text-lg group-hover:text-orange-600 transition-colors">
-                      ৯. পূর্বের হিসাব ও ডাটা ইমপোর্ট
-                    </h3>
-                    <p className="text-xs text-slate-600 font-semibold mt-1 line-clamp-2">
-                      আগের খাতা বা এক্সেল থেকে গ্রাহক, বাকি, পণ্য, স্টক ও খরচের হিসাব এক ক্লিকে ইমপোর্ট করুন
-                    </p>
-                  </div>
-                </div>
-
-                <div className="pt-6 mt-4 border-t border-orange-100 flex items-center justify-between">
-                  <Button
-                    onClick={() => setIsImportModalOpen(true)}
-                    className="h-9 px-4 rounded-xl text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white shadow-xs"
-                  >
-                    ইমপোর্ট শুরু করুন <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                  </Button>
-                </div>
-              </Card>
 
             </div>
 
@@ -1205,7 +1196,11 @@ function MasterReportsContent() {
                           onChange={e => setSearchQuery(e.target.value)} 
                           className="h-10 text-xs font-bold rounded-xl bg-slate-50/50 border-slate-200 w-full sm:w-64" 
                         />
-                        <Button variant="outline" onClick={() => window.print()} className="h-10 px-4 rounded-xl text-xs font-bold border-slate-200 bg-slate-100 shrink-0">
+                        <Button 
+                          variant="outline" 
+                          onClick={() => printElement('customer-dues-printable-sheet')} 
+                          className="h-10 px-4 rounded-xl text-xs font-bold border-slate-200 bg-slate-100 shrink-0 cursor-pointer"
+                        >
                           <Printer className="w-4 h-4 mr-1.5" /> প্রিন্ট
                         </Button>
                       </div>
@@ -1263,6 +1258,153 @@ function MasterReportsContent() {
                       </TableBody>
                     </Table>
                   </Card>
+
+                  {/* 🖨️ A4 PRINTABLE DUE & ADVANCE SHEET (EXACT MATCH FOR printElement) */}
+                  <div 
+                    id="customer-dues-printable-sheet" 
+                    className="hidden print:block font-bengali text-black text-[12px] leading-tight p-0 m-0"
+                    style={{ color: '#000000', backgroundColor: '#ffffff', width: '100%' }}
+                  >
+                    {/* SECTION 1: বাকী তালিকা */}
+                    <div className="space-y-0">
+                      <div style={{ border: '1px solid #000000', padding: '5px 8px', textAlign: 'center', backgroundColor: '#ffffff' }}>
+                        <h1 style={{ fontSize: '15px', fontWeight: 900, margin: 0, padding: 0 }}>
+                          মেসার্স দেলোয়ার এন্ড ব্রাদার্স গোপালগঞ্জ শাখা
+                        </h1>
+                        <p style={{ fontSize: '12px', fontWeight: 700, margin: '2px 0 0 0' }}>
+                          বাকী তালিকা {formatBnDate(new Date(), 'dd MMMM - yyyy')}
+                        </p>
+                      </div>
+
+                      <table 
+                        style={{ 
+                          width: '100%', 
+                          borderCollapse: 'collapse', 
+                          border: '1px solid #000000',
+                          marginTop: '-1px',
+                          fontSize: '11.5px'
+                        }}
+                      >
+                        <thead>
+                          <tr style={{ backgroundColor: '#ffffff' }}>
+                            <th style={{ width: '6%', border: '1px solid #000000', padding: '4px 3px', textAlign: 'center', fontWeight: 800 }}>ক্র:</th>
+                            <th style={{ width: '34%', border: '1px solid #000000', padding: '4px 6px', textAlign: 'left', fontWeight: 800 }}>নাম</th>
+                            <th style={{ width: '24%', border: '1px solid #000000', padding: '4px 6px', textAlign: 'center', fontWeight: 800 }}>ঠিকানা</th>
+                            <th style={{ width: '18%', border: '1px solid #000000', padding: '4px 4px', textAlign: 'center', fontWeight: 800 }}>মোবাইল</th>
+                            <th style={{ width: '18%', border: '1px solid #000000', padding: '4px 6px', textAlign: 'right', fontWeight: 800 }}>টাকা</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dueCustomers.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} style={{ border: '1px solid #000000', padding: '12px', textAlign: 'center', fontWeight: 700 }}>
+                                বর্তমানে কোনো বকেয়া গ্রাহক নেই
+                              </td>
+                            </tr>
+                          ) : (
+                            dueCustomers.map((c, i) => (
+                              <tr key={c.id} style={{ pageBreakInside: 'avoid' }}>
+                                <td style={{ border: '1px solid #000000', padding: '3px 3px', textAlign: 'center', fontWeight: 700 }}>{toBengaliDigits(i + 1)}</td>
+                                <td style={{ border: '1px solid #000000', padding: '3px 6px', textAlign: 'left', fontWeight: 700 }}>{c.name}</td>
+                                <td style={{ border: '1px solid #000000', padding: '3px 6px', textAlign: 'center', fontWeight: 600 }}>{(c as any).address || '—'}</td>
+                                <td style={{ border: '1px solid #000000', padding: '3px 4px', textAlign: 'center', fontWeight: 600, fontFamily: 'monospace' }}>{toBengaliDigits((c as any).phone || '00000000000')}</td>
+                                <td style={{ border: '1px solid #000000', padding: '3px 6px', textAlign: 'right', fontWeight: 700 }}>{formatBnCurrency(c.totalDue || 0)}</td>
+                              </tr>
+                            ))
+                          )}
+                          <tr style={{ fontWeight: 900 }}>
+                            <td colSpan={4} style={{ border: '1px solid #000000', padding: '4px 6px', textAlign: 'center', fontWeight: 800, fontSize: '12px' }}>
+                              মোট বাকি:
+                            </td>
+                            <td style={{ border: '1px solid #000000', padding: '4px 6px', textAlign: 'right', fontWeight: 900, fontSize: '12px' }}>
+                              {formatBnCurrency(totalCustDue)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* SECTION 2: অগ্রীম জমা আছে */}
+                    {advanceCustomers.length > 0 && (
+                      <div className="space-y-0" style={{ marginTop: '-1px' }}>
+                        <div style={{ border: '1px solid #000000', marginTop: '-1px', padding: '4px 8px', textAlign: 'center', backgroundColor: '#ffffff' }}>
+                          <h2 style={{ fontSize: '14px', fontWeight: 900, margin: 0, padding: 0 }}>
+                            মেসার্স দেলোয়ার এন্ড ব্রাদার্স গোপালগঞ্জ শাখা
+                          </h2>
+                          <p style={{ fontSize: '12px', fontWeight: 700, margin: '2px 0 0 0' }}>
+                            অগ্রীম জমা আছে
+                          </p>
+                        </div>
+
+                        <table 
+                          style={{ 
+                            width: '100%', 
+                            borderCollapse: 'collapse', 
+                            border: '1px solid #000000',
+                            marginTop: '-1px',
+                            fontSize: '11.5px'
+                          }}
+                        >
+                          <thead>
+                            <tr style={{ backgroundColor: '#ffffff' }}>
+                              <th style={{ width: '6%', border: '1px solid #000000', padding: '4px 3px', textAlign: 'center', fontWeight: 800 }}>ক্র:</th>
+                              <th style={{ width: '34%', border: '1px solid #000000', padding: '4px 6px', textAlign: 'left', fontWeight: 800 }}>নাম</th>
+                              <th style={{ width: '24%', border: '1px solid #000000', padding: '4px 6px', textAlign: 'center', fontWeight: 800 }}>ঠিকানা</th>
+                              <th style={{ width: '18%', border: '1px solid #000000', padding: '4px 4px', textAlign: 'center', fontWeight: 800 }}>মোবাইল</th>
+                              <th style={{ width: '18%', border: '1px solid #000000', padding: '4px 6px', textAlign: 'right', fontWeight: 800 }}>টাকা</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {advanceCustomers.map((c, i) => (
+                              <tr key={c.id} style={{ pageBreakInside: 'avoid' }}>
+                                <td style={{ border: '1px solid #000000', padding: '3px 3px', textAlign: 'center', fontWeight: 700 }}>{toBengaliDigits(i + 1)}</td>
+                                <td style={{ border: '1px solid #000000', padding: '3px 6px', textAlign: 'left', fontWeight: 700 }}>{c.name}</td>
+                                <td style={{ border: '1px solid #000000', padding: '3px 6px', textAlign: 'center', fontWeight: 600 }}>{(c as any).address || '—'}</td>
+                                <td style={{ border: '1px solid #000000', padding: '3px 4px', textAlign: 'center', fontWeight: 600, fontFamily: 'monospace' }}>{toBengaliDigits((c as any).phone || '00000000000')}</td>
+                                <td style={{ border: '1px solid #000000', padding: '3px 6px', textAlign: 'right', fontWeight: 700 }}>{formatBnCurrency(c.advanceBalance || 0)}</td>
+                              </tr>
+                            ))}
+                            <tr style={{ fontWeight: 900 }}>
+                              <td colSpan={4} style={{ border: '1px solid #000000', padding: '4px 6px', textAlign: 'center', fontWeight: 800, fontSize: '12px' }}>
+                                মোট অগ্রীম জমা আছে
+                              </td>
+                              <td style={{ border: '1px solid #000000', padding: '4px 6px', textAlign: 'right', fontWeight: 900, fontSize: '12px' }}>
+                                {formatBnCurrency(totalCustAdvance)}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* DEVELOPER BRANDING & MARKETING FOOTER (PRINT) */}
+                    <div 
+                      data-has-dev-footer="true" 
+                      style={{ 
+                        marginTop: '10px', 
+                        paddingTop: '6px', 
+                        borderTop: '1px dashed #64748b', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between', 
+                        fontSize: '10.5px', 
+                        fontWeight: 700, 
+                        color: '#334155',
+                        pageBreakInside: 'avoid'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={DEVELOPER_LOGO_BASE64} alt="Dev Logo" style={{ height: '20px', width: '20px', objectFit: 'contain', borderRadius: '4px' }} />
+                        <span style={{ backgroundColor: '#0f172a', color: '#ffffff', fontSize: '8.5px', fontWeight: 900, padding: '1px 4px', borderRadius: '3px', textTransform: 'uppercase' }}>DEV</span>
+                        <span>সফটওয়্যার পরিচালনায়: <strong style={{ color: '#000000', fontWeight: 900 }}>Hasanah Tech Solution</strong></span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span>🌐 <strong>www.hasanahtech.vercel.app</strong></span>
+                        <span>📞 হটলাইন: <strong style={{ color: '#000000', fontWeight: 900 }}>০১৩৪৯৩৪৫৩৫৩</strong></span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               );
             })()}
@@ -1695,14 +1837,17 @@ function MasterReportsContent() {
                 }
               }
 
-              // Cheque collections on selected date (both sales and payment_in)
+              // Cheque collections on selected date (only inbound: sales and payment_in)
               let dayChequeAmount = 0;
               transactions.forEach(t => {
                 const d = safeParseDate(t.createdAt);
                 if (!d || format(d, 'yyyy-MM-dd') !== selectedDateStr) return;
+                const tType = (t.type || '').toLowerCase();
+                if (tType !== 'sale' && tType !== 'payment_in' && tType !== 'income') return;
                 const pMethod = ((t.paymentMethod || '') as string).toLowerCase();
                 const pAmt = Number(t.paidAmount || t.amount || 0);
-                if (pMethod.includes('cheque') || pMethod.includes('check') || pMethod.includes('চেক') || t.chequeNo) {
+                const hasCheque = pMethod.includes('cheque') || pMethod.includes('check') || pMethod.includes('চেক') || (t.chequeNo && String(t.chequeNo).trim() !== '');
+                if (hasCheque) {
                   dayChequeAmount += pAmt;
                 }
               });
@@ -3575,17 +3720,24 @@ ${cementBlockLines.join('\n')}
               const ringStockVal = products.filter(p => p.category === 'রিং').reduce((sum, p) => sum + (p.stock * p.buyPrice), 0);
               const otherStockVal = products.filter(p => !['রড', 'সিমেন্ট', 'রিং'].includes(p.category)).reduce((sum, p) => sum + (p.stock * p.buyPrice), 0);
 
-              const totalBankBal = banks.reduce((sum, b) => sum + (b.balance || 0), 0);
+              const totalBankBal = banks.filter(b => (b.balance || 0) > 0).reduce((sum, b) => sum + (b.balance || 0), 0);
               const totalCustDue = customers.reduce((sum, c) => sum + (c.totalDue || 0), 0);
               const customersWithDue = customers.filter(c => (c.totalDue || 0) > 0);
               const customersWithAdvance = customers.filter(c => (c.advanceBalance || 0) > 0);
-              const totalCustAdvance = customers.reduce((sum, c) => sum + (c.advanceBalance || 0), 0);
+              const totalCustAdvance = customersWithAdvance.reduce((sum, c) => sum + (c.advanceBalance || 0), 0);
 
               const totalAssets = rodStockVal + cementStockVal + ringStockVal + otherStockVal + totalCash + totalBankBal + totalCustDue;
 
               const suppliersWithDue = suppliers.filter(s => (s.totalDue || 0) > 0);
-              const totalSuppDue = suppliers.reduce((sum, s) => sum + (s.totalDue || 0), 0);
-              const totalLiabilities = totalSuppDue + totalCustAdvance;
+              const totalSuppDue = suppliersWithDue.reduce((sum, s) => sum + (s.totalDue || 0), 0);
+
+              const engineersWithDue = engineers.filter(e => (e.totalDue || 0) > 0);
+              const totalEngDue = engineersWithDue.reduce((sum, e) => sum + (e.totalDue || 0), 0);
+
+              const banksWithLoan = banks.filter(b => (b.balance || 0) < 0);
+              const totalBankLoan = banksWithLoan.reduce((sum, b) => sum + Math.abs(b.balance || 0), 0);
+
+              const totalLiabilities = totalSuppDue + totalCustAdvance + totalEngDue + totalBankLoan;
 
               const currentCapital = totalAssets - totalLiabilities; // বর্তমান চালান (সম্পদ)
               const initialInvestedCapital = initialCapital; // চালান প্রদান করা হয়েছিলো
@@ -3864,10 +4016,10 @@ ${cementBlockLines.join('\n')}
                           ))}
 
                           {/* 7. গ্রাহক / পার্টিদের আলাদা তালিকা (যদি থাকে) */}
-                          {customersWithDue.slice(0, 5).map((c) => (
+                          {customersWithDue.map((c) => (
                             <tr key={c.id} style={{ pageBreakInside: 'avoid' }}>
                               <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
-                                {c.name} {c.businessName ? `(${c.businessName}) ` : ''}-
+                                {c.name} {c.businessName && c.businessName !== c.name ? `(${c.businessName}) ` : ''}-
                               </td>
                               <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
                                 {formatBnNumber(c.totalDue)}
@@ -3944,38 +4096,66 @@ ${cementBlockLines.join('\n')}
                             </td>
                           </tr>
 
-                          {/* ঋণ ও সাপ্লায়ার তালিকা */}
-                          {suppliersWithDue.length === 0 ? (
+                          {/* ঋণ ও দায় তালিকা */}
+                          {suppliersWithDue.length === 0 && customersWithAdvance.length === 0 && engineersWithDue.length === 0 && banksWithLoan.length === 0 ? (
                             <tr style={{ pageBreakInside: 'avoid' }}>
                               <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 600, fontSize: '13px', color: '#666' }}>
-                                বর্তমানে কোনো পাওনাদার বা সাপ্লায়ার ঋণ নেই
+                                বর্তমানে কোনো পাওনাদার বা ঋণ নেই
                               </td>
                               <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
                                 -
                               </td>
                             </tr>
                           ) : (
-                            suppliersWithDue.map((s) => (
-                              <tr key={s.id} style={{ pageBreakInside: 'avoid' }}>
-                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
-                                  {s.name} {s.businessName ? `(${s.businessName})` : ''}
-                                </td>
-                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
-                                  {formatBnNumber(s.totalDue)}
-                                </td>
-                              </tr>
-                            ))
-                          )}
+                            <>
+                              {/* ১. সরবরাহকারী পাওনাদারদের তালিকা */}
+                              {suppliersWithDue.map((s) => (
+                                <tr key={`supp-${s.id}`} style={{ pageBreakInside: 'avoid' }}>
+                                  <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                    {s.name} {s.businessName && s.businessName !== s.name ? `(${s.businessName}) ` : ''}-
+                                  </td>
+                                  <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                    {formatBnNumber(s.totalDue)}
+                                  </td>
+                                </tr>
+                              ))}
 
-                          {totalCustAdvance > 0 && (
-                            <tr style={{ pageBreakInside: 'avoid' }}>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px', color: '#b45309' }}>
-                                কাস্টমারদের অগ্রিম জমা (Advance Deposit) -
-                              </td>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px', color: '#b45309' }}>
-                                {formatBnNumber(totalCustAdvance)}
-                              </td>
-                            </tr>
+                              {/* ২. কাস্টমারদের অগ্রিম জমা */}
+                              {customersWithAdvance.map((c) => (
+                                <tr key={`cust-adv-${c.id}`} style={{ pageBreakInside: 'avoid' }}>
+                                  <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                    {c.name} {c.businessName && c.businessName !== c.name ? `(${c.businessName}) ` : ''}(অগ্রিম জমা) -
+                                  </td>
+                                  <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                    {formatBnNumber(c.advanceBalance)}
+                                  </td>
+                                </tr>
+                              ))}
+
+                              {/* ৩. ইঞ্জিনিয়ারদের কমিশন পাওনা (যদি থাকে) */}
+                              {engineersWithDue.map((e) => (
+                                <tr key={`eng-${e.id}`} style={{ pageBreakInside: 'avoid' }}>
+                                  <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                    {e.name} {e.businessName && e.businessName !== e.name ? `(${e.businessName}) ` : ''}(ইঞ্জিনিয়ার কমিশন) -
+                                  </td>
+                                  <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                    {formatBnNumber(e.totalDue)}
+                                  </td>
+                                </tr>
+                              ))}
+
+                              {/* ৪. ব্যাংক ঋণ / ওভারড্রাফট (যদি ব্যালেন্স নেগেটিভ থাকে) */}
+                              {banksWithLoan.map((b) => (
+                                <tr key={`bank-loan-${b.id}`} style={{ pageBreakInside: 'avoid' }}>
+                                  <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                    {b.name} (ব্যাংক ঋণ) -
+                                  </td>
+                                  <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                    {formatBnNumber(Math.abs(b.balance))}
+                                  </td>
+                                </tr>
+                              ))}
+                            </>
                           )}
 
                           {/* মোট ঋণ সাবটোটাল */}
@@ -4225,10 +4405,10 @@ ${cementBlockLines.join('\n')}
                         ))}
 
                         {/* 7. গ্রাহক / পার্টিদের আলাদা তালিকা (যদি থাকে) */}
-                        {customersWithDue.slice(0, 5).map((c) => (
+                        {customersWithDue.map((c) => (
                           <tr key={c.id} style={{ pageBreakInside: 'avoid' }}>
                             <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
-                              {c.name} {c.businessName ? `(${c.businessName}) ` : ''}-
+                              {c.name} {c.businessName && c.businessName !== c.name ? `(${c.businessName}) ` : ''}-
                             </td>
                             <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
                               {formatBnNumber(c.totalDue)}
@@ -4305,36 +4485,75 @@ ${cementBlockLines.join('\n')}
                           </td>
                         </tr>
 
-                        {/* ঋণ ও সাপ্লায়ার তালিকা */}
-                        {suppliersWithDue.length === 0 ? (
+                        {/* ঋণ ও দায় তালিকা */}
+                        {suppliersWithDue.length === 0 && customersWithAdvance.length === 0 && engineersWithDue.length === 0 && banksWithLoan.length === 0 ? (
                           <tr style={{ pageBreakInside: 'avoid' }}>
                             <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 600, fontSize: '13px', color: '#666' }}>
-                              বর্তমানে কোনো পাওনাদার বা সাপ্লায়ার ঋণ নেই
+                              বর্তমানে কোনো পাওনাদার বা ঋণ নেই
                             </td>
                             <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
                               -
                             </td>
                           </tr>
                         ) : (
-                          suppliersWithDue.map((s) => (
-                            <tr key={s.id} style={{ pageBreakInside: 'avoid' }}>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
-                                {s.name} {s.businessName ? `(${s.businessName})` : ''}
-                              </td>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
-                                {formatBnNumber(s.totalDue)}
-                              </td>
-                            </tr>
-                          ))
+                          <>
+                            {/* ১. সরবরাহকারী পাওনাদারদের তালিকা */}
+                            {suppliersWithDue.map((s) => (
+                              <tr key={`supp-p-${s.id}`} style={{ pageBreakInside: 'avoid' }}>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                  {s.name} {s.businessName && s.businessName !== s.name ? `(${s.businessName}) ` : ''}-
+                                </td>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                  {formatBnNumber(s.totalDue)}
+                                </td>
+                              </tr>
+                            ))}
+
+                            {/* ২. কাস্টমারদের অগ্রিম জমা */}
+                            {customersWithAdvance.map((c) => (
+                              <tr key={`cust-adv-p-${c.id}`} style={{ pageBreakInside: 'avoid' }}>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px', color: '#000000' }}>
+                                  {c.name} {c.businessName && c.businessName !== c.name ? `(${c.businessName}) ` : ''}(অগ্রিম জমা) -
+                                </td>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                  {formatBnNumber(c.advanceBalance)}
+                                </td>
+                              </tr>
+                            ))}
+
+                            {/* ৩. ইঞ্জিনিয়ারদের কমিশন পাওনা (যদি থাকে) */}
+                            {engineersWithDue.map((e) => (
+                              <tr key={`eng-p-${e.id}`} style={{ pageBreakInside: 'avoid' }}>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                  {e.name} {e.businessName && e.businessName !== e.name ? `(${e.businessName}) ` : ''}(ইঞ্জিনিয়ার কমিশন) -
+                                </td>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                  {formatBnNumber(e.totalDue)}
+                                </td>
+                              </tr>
+                            ))}
+
+                            {/* ৪. ব্যাংক ঋণ / ওভারড্রাফট (যদি ব্যালেন্স নেগেটিভ থাকে) */}
+                            {banksWithLoan.map((b) => (
+                              <tr key={`bank-loan-p-${b.id}`} style={{ pageBreakInside: 'avoid' }}>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                  {b.name} (ব্যাংক ঋণ) -
+                                </td>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                  {formatBnNumber(Math.abs(b.balance))}
+                                </td>
+                              </tr>
+                            ))}
+                          </>
                         )}
 
-                        {/* মোট ঋণ সাবটোটাল */}
+                        {/* মোট ঋণ ও দায় সাবটোটাল */}
                         <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
                           <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
-                            মোট ঋণ
+                            মোট ঋণ ও দায়
                           </td>
                           <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
-                            {formatBnNumber(totalSuppDue)}
+                            {formatBnNumber(totalLiabilities)}
                           </td>
                         </tr>
 
@@ -4882,12 +5101,8 @@ ${cementBlockLines.join('\n')}
           </DialogContent>
         </Dialog>
 
-        {/* Bulk Data & Previous Reports Import Modal */}
-        <DataImportModal
-          open={isImportModalOpen}
-          onOpenChange={setIsImportModalOpen}
-          onSuccess={loadReportsData}
-        />
+        {/* DEVELOPER BRANDING CARD (FOR WEB VIEW IN REPORTS) */}
+        <DeveloperBranding variant="card" className="mt-8" />
 
       </div>
     </Shell>

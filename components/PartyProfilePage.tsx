@@ -323,7 +323,18 @@ export function generateLedgerEntries(
         const invPrefix = isCustomer ? 'INV-2026-' : 'PUR-2026-';
         const invNo = tx.invoiceNo || `${invPrefix}${tx.id.slice(0, 5).toUpperCase()}`;
 
-        const itemDesc = tx.items && tx.items.length > 0
+        let meta: any = {};
+        if (tx.notes && typeof tx.notes === 'string' && tx.notes.trim().startsWith('{')) {
+          try {
+            meta = JSON.parse(tx.notes.split('\n')[0]);
+          } catch {}
+        }
+
+        const invDiscount = Number(tx.discount) > 0 
+          ? Number(tx.discount) 
+          : Number(meta.discountFlat || meta.discount || meta.discountAmount || meta.cartTotalDiscount || meta.commission || meta.commissionAmount || 0);
+
+        let itemDesc = tx.items && tx.items.length > 0
           ? tx.items.map((it: any) => {
               const name = cleanLegacyBengaliText(it.product_name || it.name || 'পণ্য');
               const qty = toBnDigits(it.quantity || 1);
@@ -333,11 +344,8 @@ export function generateLedgerEntries(
             }).join(', ')
           : (isCustomer ? 'পণ্য বিক্রয় (চালান)' : 'পণ্য ক্রয় (চালান)');
 
-        let meta: any = {};
-        if (tx.notes && typeof tx.notes === 'string' && tx.notes.trim().startsWith('{')) {
-          try {
-            meta = JSON.parse(tx.notes.split('\n')[0]);
-          } catch {}
+        if (invDiscount > 0) {
+          itemDesc += ` [ছাড়: ৳${toBnDigits(invDiscount.toLocaleString('en-IN'))}]`;
         }
 
         const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || (tx as any).transportCost || 0);
@@ -469,7 +477,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
         address: p.address || '',
         country: (p as any).country || 'বাংলাদেশ',
         division: (p as any).division || 'ঢাকা',
-        district: (p as any).district || 'ঢাকা',
+        district: (p as any).district || 'গোপালগঞ্জ',
         thana: (p as any).thana || '',
         postcode: (p as any).postcode || '',
         businessName: p.business_name || p.name,
@@ -509,11 +517,15 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           if (s.notes && typeof s.notes === 'string' && s.notes.trim().startsWith('{')) {
             try { meta = JSON.parse(s.notes.split('\n')[0]); } catch {}
           }
-          const engId = meta.selectedEngineerId || (s as any).engineer_id || (s as any).engineerId;
+          const engId = meta.engineerId || meta.selectedEngineerId || (s as any).engineer_id || (s as any).engineerId;
+          const matchId = engId && (String(engId) === String(id));
+          const matchName = Boolean(meta.engineerName && p.name && meta.engineerName.trim().toLowerCase() === p.name.trim().toLowerCase());
           const engComm = Number(meta.engineerTotalCommission || (s as any).engineerTotalCommission || 0);
           const rodKg = Number(meta.engineerRodKg || 0);
           const cemBags = Number(meta.engineerCementBags || 0);
-          return (String(engId) === String(id)) && (engComm > 0 || rodKg > 0 || cemBags > 0);
+          const rodRate = Number(meta.engineerRodRate || 0);
+          const cemRate = Number(meta.engineerCementRate || 0);
+          return (matchId || matchName) && (engComm > 0 || (rodKg > 0 && rodRate > 0) || (cemBags > 0 && cemRate > 0));
         });
 
         rawTxList = [...engineerSales, ...directList];
@@ -565,7 +577,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           status: t.status || 'completed',
           transactionType: t.transaction_type || defaultTxType,
           subtotal: Number(t.subtotal || t.total_amount || 0),
-          discount: Number(t.discount || 0),
+          discount: Number(t.discount) > 0 ? Number(t.discount) : Number(meta.discountFlat || meta.discount || meta.discountAmount || meta.cartTotalDiscount || meta.commission || meta.commissionAmount || 0),
           shippingCost: Number(meta.shippingCost || (t as any).shipping_cost || 0),
           laborCost: Number(meta.laborCost || (t as any).labor_cost || 0),
           siteName: t.site_name || meta.siteName || meta.site_name || '',
@@ -946,7 +958,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                       )}
                       <span className="flex items-center gap-1">
                         <MapPin className="w-3 h-3 text-slate-400" />
-                        {party.address || `${party.thana ? party.thana + ', ' : ''}${party.district || 'ঢাকা'}`}
+                        {party.address || `${party.thana ? party.thana + ', ' : ''}${party.district || 'গোপালগঞ্জ'}`}
                       </span>
                     </div>
                   </div>
@@ -1196,7 +1208,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
 
                     <div>
                       <span className="text-slate-500 font-medium block">জেলা</span>
-                      <span className="font-bold text-slate-900 block mt-0.5">{party.district || 'ঢাকা'}</span>
+                      <span className="font-bold text-slate-900 block mt-0.5">{party.district || 'গোপালগঞ্জ'}</span>
                     </div>
 
                     <div>

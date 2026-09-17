@@ -10,11 +10,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { useState, useEffect, useCallback } from 'react';
-import { Building2, Phone, MapPin, Settings as SettingsIcon, Users, UserPlus, Shield, ShieldCheck, ShieldAlert, KeyRound, Edit2, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Building2, Phone, MapPin, Settings as SettingsIcon, Users, UserPlus, Shield, ShieldCheck, ShieldAlert, KeyRound, Edit2, Trash2, CheckCircle2, AlertCircle, Stamp, Globe, Printer, Sparkles, RotateCcw } from 'lucide-react';
 import { api, ShopSettingsData, UserData } from '@/lib/api';
 import { useAuth } from '@/lib/authContext';
 import { toBengaliDigits } from '@/lib/bengaliUtils';
 import { cn } from '@/lib/utils';
+import { DEVELOPER_LOGO_BASE64 } from '@/lib/developerLogo';
 
 export default function SettingsPage() {
   const { user: currentUser, token, isAdmin, canModifyData } = useAuth();
@@ -30,6 +31,26 @@ export default function SettingsPage() {
   });
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  // Software Promo & Watermark State
+  const [softwarePromo, setSoftwarePromo] = useState(() => {
+    const defaults = {
+      softwareCompany: 'Hasanah Tech Solution',
+      softwarePhone: '01349345353',
+      softwareWebsite: 'www.hasanahtech.vercel.app',
+      watermarkText: 'Hasanah Tech Solution • 01349345353',
+      showWatermark: true,
+      showFooter: true
+    };
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('softwarePromoInfo');
+        if (saved) return { ...defaults, ...JSON.parse(saved) };
+      } catch (e) {}
+    }
+    return defaults;
+  });
+  const [isSavingPromo, setIsSavingPromo] = useState(false);
 
   // User Management State
   const [usersList, setUsersList] = useState<UserData[]>([]);
@@ -106,6 +127,40 @@ export default function SettingsPage() {
     } finally {
       setIsSavingSettings(false);
     }
+  };
+
+  const handleSavePromo = () => {
+    if (!canModifyData) {
+      toast.error('ভিউয়ার একাউন্ট থেকে সেটিংস পরিবর্তন করার অনুমতি নেই');
+      return;
+    }
+    try {
+      setIsSavingPromo(true);
+      localStorage.setItem('softwarePromoInfo', JSON.stringify(softwarePromo));
+      toast.success('সফটওয়্যার ব্র্যান্ডিং ও ওয়াটারমার্ক সেটিংস সংরক্ষিত হয়েছে');
+    } catch (err) {
+      toast.error('সেটিংস সংরক্ষণ করা সম্ভব হয়নি');
+    } finally {
+      setIsSavingPromo(false);
+    }
+  };
+
+  const handleResetPromo = () => {
+    if (!canModifyData) {
+      toast.error('ভিউয়ার একাউন্ট থেকে সেটিংস পরিবর্তন করার অনুমতি নেই');
+      return;
+    }
+    const defaults = {
+      softwareCompany: 'Hasanah Tech Solution',
+      softwarePhone: '01349345353',
+      softwareWebsite: 'www.hasanahtech.vercel.app',
+      watermarkText: 'Hasanah Tech Solution • 01349345353',
+      showWatermark: true,
+      showFooter: true
+    };
+    setSoftwarePromo(defaults);
+    localStorage.setItem('softwarePromoInfo', JSON.stringify(defaults));
+    toast.success('ডিফল্ট সেটিংসে ফিরিয়ে আনা হয়েছে');
   };
 
   const handleOpenAddUser = () => {
@@ -320,6 +375,229 @@ export default function SettingsPage() {
                   className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-6 h-10 rounded-xl shadow-xs"
                 >
                   {isSavingSettings ? 'সংরক্ষণ হচ্ছে...' : 'সেটিংস সেভ করুন'}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 2. SOFTWARE BRANDING & WATERMARK CARD */}
+        <Card className="border-slate-200 shadow-sm rounded-2xl overflow-hidden bg-white">
+          <CardHeader className="bg-slate-50/50 border-b border-slate-100 py-4 px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base font-black text-slate-800">
+                <Stamp className="w-5 h-5 text-indigo-600" />
+                সফটওয়্যার ব্র্যান্ডিং ও ওয়াটারমার্ক সেটিংস
+              </CardTitle>
+              <CardDescription className="text-xs text-slate-500 font-semibold mt-0.5">
+                সকল প্রকার প্রিন্ট মেমো, লেজার, ভাউচার ও প্রতিবেদনে ডেভেলপার ওয়াটারমার্ক ও পরিচিতি নিয়ন্ত্রণ
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-1.5 self-start sm:self-auto bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs px-2.5 py-1 rounded-lg font-bold">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+              <span>মার্কেটিং ও ব্র্যান্ডিং টুল</span>
+            </div>
+          </CardHeader>
+          <CardContent className="p-6 space-y-6">
+            {/* Developer Logo Badge Banner */}
+            <div className="flex items-center gap-3.5 p-3.5 bg-indigo-50/70 border border-indigo-100 rounded-2xl">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img 
+                src={DEVELOPER_LOGO_BASE64} 
+                alt="Developer Logo" 
+                className="w-12 h-12 object-contain rounded-xl bg-white p-1 border border-indigo-200/80 shadow-xs shrink-0" 
+              />
+              <div className="text-xs">
+                <div className="font-black text-slate-900 flex items-center gap-2">
+                  <span>অফিসিয়াল ডেভেলপার ব্র্যান্ডিং ও লোগো</span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">সক্রিয়</span>
+                </div>
+                <div className="text-slate-600 text-[11px] font-medium mt-0.5">
+                  সকল প্রিন্ট মেমো, ভাউচার, লেজার, স্টক শিট ও রিপোর্টের ওয়াটারমার্ক এবং ফুটারে এই লোগো ও মার্কেটিং তথ্য প্রদর্শিত হবে।
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="font-bold text-xs text-slate-700 flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                  <span>ডেভেলপার / কোম্পানি নাম</span>
+                </Label>
+                <Input
+                  value={softwarePromo.softwareCompany}
+                  onChange={(e) => setSoftwarePromo({ ...softwarePromo, softwareCompany: e.target.value })}
+                  placeholder="Hasanah Tech Solution"
+                  disabled={!canModifyData}
+                  className="font-bold rounded-xl"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="font-bold text-xs text-slate-700 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-slate-500" />
+                  <span>হটলাইন / মোবাইল নম্বর</span>
+                </Label>
+                <Input
+                  value={softwarePromo.softwarePhone}
+                  onChange={(e) => setSoftwarePromo({ ...softwarePromo, softwarePhone: e.target.value })}
+                  placeholder="01349345353"
+                  disabled={!canModifyData}
+                  className="font-bold rounded-xl font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="font-bold text-xs text-slate-700 flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-slate-500" />
+                  <span>ওয়েবসাইট ইউআরএল (ঐচ্ছিক)</span>
+                </Label>
+                <Input
+                  value={softwarePromo.softwareWebsite}
+                  onChange={(e) => setSoftwarePromo({ ...softwarePromo, softwareWebsite: e.target.value })}
+                  placeholder="www.hasanahtech.vercel.app"
+                  disabled={!canModifyData}
+                  className="font-bold rounded-xl font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="font-bold text-xs text-slate-700 flex items-center gap-1.5">
+                  <Stamp className="w-3.5 h-3.5 text-slate-500" />
+                  <span>ওয়াটারমার্ক টেক্সট</span>
+                </Label>
+                <Input
+                  value={softwarePromo.watermarkText}
+                  onChange={(e) => setSoftwarePromo({ ...softwarePromo, watermarkText: e.target.value })}
+                  placeholder="Hasanah Tech Solution • 01349345353"
+                  disabled={!canModifyData}
+                  className="font-bold rounded-xl"
+                />
+              </div>
+            </div>
+
+            {/* Toggle switches / checkboxes */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <label className="flex items-center gap-3 p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-colors">
+                <input
+                  type="checkbox"
+                  checked={softwarePromo.showWatermark}
+                  onChange={(e) => setSoftwarePromo({ ...softwarePromo, showWatermark: e.target.checked })}
+                  disabled={!canModifyData}
+                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                />
+                <div>
+                  <span className="font-bold text-xs text-slate-900 block">কাগজে কোনাকুনি ওয়াটারমার্ক ছাপ দেখান</span>
+                  <span className="text-[11px] text-slate-500 font-medium">ইনভয়েস, লেজার ও রিপোর্টের মাঝখানে হালকা ছাপ থাকবে</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-colors">
+                <input
+                  type="checkbox"
+                  checked={softwarePromo.showFooter}
+                  onChange={(e) => setSoftwarePromo({ ...softwarePromo, showFooter: e.target.checked })}
+                  disabled={!canModifyData}
+                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                />
+                <div>
+                  <span className="font-bold text-xs text-slate-900 block">পৃষ্ঠার নিচে ফুটার ব্র্যান্ডিং দেখান</span>
+                  <span className="text-[11px] text-slate-500 font-medium">প্রিন্টের নিচে সফটওয়্যার ও হটলাইন তথ্যযুক্ত ফুটার থাকবে</span>
+                </div>
+              </label>
+            </div>
+
+            {/* Live Watermark Preview Box */}
+            <div className="space-y-2">
+              <Label className="font-bold text-xs text-slate-700 flex items-center gap-1.5">
+                <Printer className="w-3.5 h-3.5 text-slate-500" />
+                <span>প্রিন্ট লাইভ প্রিভিউ (A4 কাগজের সিমুলেশন)</span>
+              </Label>
+              <div className="relative border-2 border-dashed border-slate-300 rounded-xl p-6 bg-white overflow-hidden select-none min-h-[170px] flex flex-col justify-between shadow-2xs">
+                
+                {/* Diagonal Watermark simulation */}
+                {softwarePromo.showWatermark && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+                    <div className="transform -rotate-12 text-center opacity-10 select-none flex flex-col items-center justify-center">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={DEVELOPER_LOGO_BASE64}
+                        alt="Watermark Logo"
+                        className="w-14 h-14 object-contain mb-1 filter grayscale"
+                      />
+                      <p className="text-2xl sm:text-3xl font-black tracking-widest text-slate-900 uppercase">
+                        {softwarePromo.softwareCompany || 'Hasanah Tech Solution'}
+                      </p>
+                      <p className="text-sm font-bold tracking-wider text-slate-900 mt-1 font-mono">
+                        📞 {toBengaliDigits(softwarePromo.softwarePhone || '01349345353')} / {softwarePromo.softwarePhone || '01349345353'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Dummy document skeleton */}
+                <div className="space-y-2 opacity-35 relative z-0">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                    <div className="h-3 w-32 bg-slate-300 rounded"></div>
+                    <div className="h-3 w-20 bg-slate-300 rounded"></div>
+                  </div>
+                  <div className="h-2.5 w-48 bg-slate-200 rounded"></div>
+                  <div className="h-2.5 w-3/4 bg-slate-200 rounded"></div>
+                  <div className="grid grid-cols-4 gap-2 pt-2">
+                    <div className="h-6 bg-slate-100 rounded border border-slate-200"></div>
+                    <div className="h-6 bg-slate-100 rounded border border-slate-200"></div>
+                    <div className="h-6 bg-slate-100 rounded border border-slate-200"></div>
+                    <div className="h-6 bg-slate-100 rounded border border-slate-200"></div>
+                  </div>
+                </div>
+
+                {/* Footer preview */}
+                {softwarePromo.showFooter ? (
+                  <div className="mt-4 pt-2 border-t border-dashed border-slate-300 flex flex-wrap items-center justify-between text-[10px] font-bold text-slate-600 relative z-10 bg-white/80 backdrop-blur-xs gap-2">
+                    <div className="flex items-center gap-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={DEVELOPER_LOGO_BASE64}
+                        alt="Logo"
+                        className="w-5 h-5 object-contain rounded"
+                      />
+                      <span className="bg-slate-900 text-white text-[8px] px-1 py-0.5 rounded font-mono font-black uppercase">DEV</span>
+                      <span>সফটওয়্যার পরিচালনায়: <strong className="text-slate-900">{softwarePromo.softwareCompany || 'Hasanah Tech Solution'}</strong></span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {softwarePromo.softwareWebsite && (
+                        <span>🌐 <strong className="text-slate-900 font-mono">{softwarePromo.softwareWebsite}</strong></span>
+                      )}
+                      <span>হটলাইন: <strong className="text-slate-900 font-mono">{toBengaliDigits(softwarePromo.softwarePhone || '01349345353')}</strong></span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 text-[10px] text-slate-400 italic text-center">
+                    (ফুটার ব্র্যান্ডিং বন্ধ আছে)
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {canModifyData && (
+              <div className="pt-2 flex items-center justify-between gap-3 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleResetPromo}
+                  className="rounded-xl text-xs font-bold text-slate-600 border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>ডিফল্টে রিসেট</span>
+                </Button>
+
+                <Button 
+                  onClick={handleSavePromo} 
+                  disabled={isSavingPromo}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 h-10 rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{isSavingPromo ? 'সংরক্ষণ হচ্ছে...' : 'ব্র্যান্ডিং সেভ করুন'}</span>
                 </Button>
               </div>
             )}

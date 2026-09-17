@@ -1197,14 +1197,7 @@ function TransactionsContent() {
   const bouncedCheckAmount = incomeTransactions.filter(t => t.paymentMethod === 'Check' && t.status === 'Bounced').reduce((a, t) => a + (t.amount || 0), 0);
 
   // Form Calculations
-  const availableInvoices = paymentType === 'income' 
-    ? orders.filter(o => !selectedPartyId || o.customerName === selectedParty?.name || String(o.customerId) === String(selectedPartyId))
-    : expensePartyType === 'supplier'
-      ? purchases.filter(p => !selectedPartyId || p.supplierName === selectedParty?.name || String(p.supplierId) === String(selectedPartyId))
-      : orders.filter(o => !selectedPartyId || o.engineerName === selectedParty?.name || String(o.engineerId) === String(selectedPartyId));
-
-  const totalInvoiceAmount = (selectedInvoice ? (selectedInvoice.totalAmount || 0) : (selectedParty?.totalDue || 0)) || 0;
-  const previousPaidAmount = (selectedInvoice ? (selectedInvoice.paidAmount || 0) : 0) || 0;
+  // Form Calculations
   const currentPaymentAmount = paidAmount || 0;
   const safeDiscount = discountAmount || 0;
 
@@ -1213,15 +1206,23 @@ function TransactionsContent() {
   let newCalculatedDue = 0;
   let newCalculatedAdvance = 0;
 
-  if (selectedInvoice) {
-    const invTotal = Number(selectedInvoice.totalAmount || 0);
-    const invPaid = Number(selectedInvoice.paidAmount || 0);
-    const invRemaining = Math.max(0, invTotal - (invPaid + currentPaymentAmount + safeDiscount));
-    newCalculatedDue = invRemaining;
-    newCalculatedAdvance = (currentPaymentAmount + safeDiscount > (invTotal - invPaid)) 
-      ? (currentPaymentAmount + safeDiscount) - (invTotal - invPaid) 
-      : 0;
-  } else if (paymentType === 'income' && selectedParty) {
+  if (paymentType === 'income' && selectedParty) {
+    if (partyExistingAdvance > 0) {
+      newCalculatedDue = 0;
+      newCalculatedAdvance = partyExistingAdvance + currentPaymentAmount;
+    } else if (partyDue > 0) {
+      if (currentPaymentAmount + safeDiscount > partyDue) {
+        newCalculatedDue = 0;
+        newCalculatedAdvance = (currentPaymentAmount + safeDiscount) - partyDue;
+      } else {
+        newCalculatedDue = partyDue - (currentPaymentAmount + safeDiscount);
+        newCalculatedAdvance = 0;
+      }
+    } else {
+      newCalculatedDue = 0;
+      newCalculatedAdvance = currentPaymentAmount;
+    }
+  } else if (paymentType === 'expense' && selectedParty) {
     if (partyExistingAdvance > 0) {
       newCalculatedDue = 0;
       newCalculatedAdvance = partyExistingAdvance + currentPaymentAmount;
@@ -1238,7 +1239,7 @@ function TransactionsContent() {
       newCalculatedAdvance = currentPaymentAmount;
     }
   } else {
-    newCalculatedDue = Math.max(0, totalInvoiceAmount - (previousPaidAmount + currentPaymentAmount + safeDiscount));
+    newCalculatedDue = Math.max(0, partyDue - (currentPaymentAmount + safeDiscount));
     newCalculatedAdvance = 0;
   }
   const remainingDue = newCalculatedDue;
@@ -2093,36 +2094,9 @@ function TransactionsContent() {
                             </p>
                           </div>
 
-                          {/* Sales / Purchase Invoice Select (Optional) */}
-                          <div className={cn("space-y-1.5 pt-2 border-t border-slate-100", paymentType === 'income' ? "sm:col-span-6" : "sm:col-span-12")}>
-                            <Label className="text-xs font-bold text-slate-600">
-                              {paymentType === 'income' 
-                                ? 'বিক্রয় ইনভয়েস (ঐচ্ছিক)' 
-                                : expensePartyType === 'engineer'
-                                  ? 'রেফারেল / বিক্রয় ইনভয়েস (ঐচ্ছিক)'
-                                  : 'ক্রয় ইনভয়েস (ঐচ্ছিক)'}
-                            </Label>
-                            <Select value={selectedInvoiceId} onValueChange={(val: string | null) => { if (val) handleSelectInvoice(val); }}>
-                              <SelectTrigger className="rounded-md h-10 bg-slate-50/50 border-slate-200 font-bold text-xs">
-                                <SelectValue placeholder="ইনভয়েস নির্বাচন করুন..." />
-                              </SelectTrigger>
-                              <SelectContent className="font-bengali text-xs font-bold max-h-60 z-[99999]">
-                                {availableInvoices.map(inv => (
-                                  <SelectItem key={inv.id} value={inv.id}>
-                                    {toBengaliDigits(inv.invoiceNo || `INV-2026-${inv.id.slice(-6)}`)} — 
-                                    {expensePartyType === 'engineer'
-                                      ? ` কমিশন: ৳ ${toBengaliDigits(((inv as any).engineerCommission || inv.totalAmount || 0).toLocaleString('bn-BD'))} (চালান মোট: ৳${toBengaliDigits((inv.totalAmount || 0).toLocaleString('bn-BD'))})`
-                                      : ` ৳ ${toBengaliDigits((inv.totalAmount || 0).toLocaleString('bn-BD'))} (বকেয়া: ৳${toBengaliDigits((inv.dueAmount || 0).toLocaleString('bn-BD'))})`
-                                    }
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
                           {/* Site Select / Entry for Customer Payments */}
                           {paymentType === 'income' && (
-                            <div className="sm:col-span-6 space-y-1.5 pt-2 border-t border-slate-100">
+                            <div className="sm:col-span-12 space-y-1.5 pt-2 border-t border-slate-100">
                               <Label className="text-xs font-bold text-slate-600 flex items-center justify-between">
                                 <span className="flex items-center gap-1.5">
                                   <MapPin className="w-3.5 h-3.5 text-blue-600" />
@@ -2572,14 +2546,20 @@ function TransactionsContent() {
                         <div className="space-y-3 text-xs">
                           
                           <div className="flex justify-between py-1 border-b border-slate-100">
-                            <span className="text-slate-500 font-semibold">ইনভয়েস মোট</span>
-                            <span className="font-bold text-slate-800">৳ {toBengaliDigits((totalInvoiceAmount || 0).toLocaleString('bn-BD'))}</span>
+                            <span className="text-slate-500 font-semibold">
+                              {expensePartyType === 'engineer' ? 'পূর্বের পাওনা কমিশন' : (partyExistingAdvance > 0 ? 'পূর্বের অগ্রিম জমা' : 'পূর্বের মোট বকেয়া')}
+                            </span>
+                            <span className={cn("font-bold", partyExistingAdvance > 0 ? "text-emerald-700" : "text-slate-800")}>
+                              ৳ {toBengaliDigits((partyExistingAdvance > 0 ? partyExistingAdvance : partyDue).toLocaleString('bn-BD'))}
+                            </span>
                           </div>
 
-                          <div className="flex justify-between py-1 border-b border-slate-100">
-                            <span className="text-slate-500 font-semibold">পূর্ববর্তী পরিশোধ</span>
-                            <span className="font-bold text-slate-800">৳ {toBengaliDigits((previousPaidAmount || 0).toLocaleString('bn-BD'))}</span>
-                          </div>
+                          {safeDiscount > 0 && (
+                            <div className="flex justify-between py-1 border-b border-slate-100 text-rose-600">
+                              <span className="font-semibold">ছাড় / ডিসকাউন্ট</span>
+                              <span className="font-bold">৳ {toBengaliDigits(safeDiscount.toLocaleString('bn-BD'))}</span>
+                            </div>
+                          )}
 
                           <div className="flex justify-between py-1.5 border-b border-slate-100 bg-emerald-50/50 p-2 rounded-md">
                             <span className="font-bold text-emerald-800">বর্তমান পেমেন্ট</span>

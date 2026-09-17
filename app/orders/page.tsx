@@ -549,7 +549,8 @@ export default function OrdersPage() {
           name: newCustomerData.name.trim(),
           phone: toEnglishDigits(newCustomerData.phone).trim(),
           address: newCustomerData.address.trim(),
-          business_name: newCustomerData.businessName.trim()
+          business_name: newCustomerData.businessName.trim(),
+          district: 'গোপালগঞ্জ'
         });
         finalCustId = String(createdParty.id);
       }
@@ -585,7 +586,12 @@ export default function OrdersPage() {
         siteName: siteName.trim(),
         siteAddress: siteAddress.trim(),
         siteContact: siteContact.trim(),
-        userNote: orderNote || ''
+        userNote: orderNote || '',
+        subtotal: cartSubtotal,
+        discount: cartTotalDiscount,
+        cartTotalDiscount,
+        transportCost,
+        laborCost
       };
       const finalNotesPayload = JSON.stringify(orderMetadata) + (orderNote ? `\n${orderNote}` : '');
 
@@ -599,6 +605,8 @@ export default function OrdersPage() {
       if (editingOrderId) {
         await api.transactions.update(editingOrderId, {
           party: finalCustId ? Number(finalCustId) : null,
+          subtotal: cartSubtotal,
+          discount: cartTotalDiscount,
           total_amount: cartGrandTotal,
           paid_amount: advancePaid,
           due_amount: cartDueAmount,
@@ -623,6 +631,8 @@ export default function OrdersPage() {
           party: finalCustId ? Number(finalCustId) : null,
           transaction_type: 'sale',
           status: 'pending',
+          subtotal: cartSubtotal,
+          discount: cartTotalDiscount,
           total_amount: cartGrandTotal,
           paid_amount: advancePaid,
           due_amount: cartDueAmount,

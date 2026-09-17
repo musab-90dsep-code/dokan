@@ -20,6 +20,8 @@ import { format } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { DeveloperBranding } from '@/components/DeveloperBranding';
+import { DEVELOPER_LOGO_BASE64 } from '@/lib/developerLogo';
 
 interface Product {
   id: string;
@@ -576,6 +578,9 @@ export default function StockSheetReportPage() {
           </div>
         </div>
 
+        {/* DEVELOPER BRANDING CARD (FOR WEB VIEW) */}
+        <DeveloperBranding variant="card" className="mt-8" />
+
       </div>
 
       {/* Hidden container for printElement targeting */}
@@ -812,6 +817,34 @@ export default function StockSheetReportPage() {
             </tr>
           </tbody>
         </table>
+
+        {/* DEVELOPER BRANDING & MARKETING FOOTER (PRINT) */}
+        <div 
+          data-has-dev-footer="true" 
+          style={{ 
+            marginTop: '10px', 
+            paddingTop: '6px', 
+            borderTop: '1px dashed #64748b', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between', 
+            fontSize: '10.5px', 
+            fontWeight: 700, 
+            color: '#334155',
+            pageBreakInside: 'avoid'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={DEVELOPER_LOGO_BASE64} alt="Dev Logo" style={{ height: '20px', width: '20px', objectFit: 'contain', borderRadius: '4px' }} />
+            <span style={{ backgroundColor: '#0f172a', color: '#ffffff', fontSize: '8.5px', fontWeight: 900, padding: '1px 4px', borderRadius: '3px', textTransform: 'uppercase' }}>DEV</span>
+            <span>সফটওয়্যার পরিচালনায়: <strong style={{ color: '#000000', fontWeight: 900 }}>Hasanah Tech Solution</strong></span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span>🌐 <strong>www.hasanahtech.vercel.app</strong></span>
+            <span>📞 হটলাইন: <strong style={{ color: '#000000', fontWeight: 900 }}>০১৩৪৯৩৪৫৩৫৩</strong></span>
+          </div>
+        </div>
       </div>
     </Shell>
   );

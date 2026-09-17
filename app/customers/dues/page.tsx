@@ -23,6 +23,8 @@ import { bn } from 'date-fns/locale';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { generateLedgerEntries } from '@/components/PartyProfilePage';
+import { DeveloperBranding } from '@/components/DeveloperBranding';
+import { DEVELOPER_LOGO_BASE64 } from '@/lib/developerLogo';
 
 interface CustomerDueItem {
   id: string;
@@ -563,15 +565,18 @@ export default function CustomerDuesPage() {
           </CardContent>
         </Card>
 
+        {/* DEVELOPER BRANDING CARD (FOR WEB VIEW) */}
+        <DeveloperBranding variant="card" className="mt-8" />
+
       </div>
 
       {/* ========================================================================= */}
-      {/* 🖨️ A4 PRINTABLE DUE LIST TEMPLATE (EXACT 1-TO-1 MATCH WITH USER PDF) */}
+      {/* 🖨️ A4 PRINTABLE DUE & ADVANCE SHEET (EXACT 1-TO-1 MATCH WITH USER PHOTO) */}
       {/* ========================================================================= */}
       <div 
         id="customer-dues-printable-sheet" 
-        className="hidden print:block font-bengali text-black text-[13px] leading-tight p-2 space-y-6"
-        style={{ color: '#000000', backgroundColor: '#ffffff' }}
+        className="hidden print:block font-bengali text-black text-[12px] leading-tight p-0 m-0"
+        style={{ color: '#000000', backgroundColor: '#ffffff', width: '100%' }}
       >
         
         {/* ========================================================= */}
@@ -580,40 +585,40 @@ export default function CustomerDuesPage() {
         <div className="space-y-0">
           
           {/* HEADER BOX: মেসার্স দেলোয়ার এন্ড ব্রাদার্স গোপালগঞ্জ শাখা */}
-          <div className="border border-black p-2.5 text-center bg-white space-y-1">
-            <h1 className="text-lg font-black tracking-tight" style={{ fontSize: '18px', fontWeight: 900 }}>
+          <div style={{ border: '1px solid #000000', padding: '5px 8px', textAlign: 'center', backgroundColor: '#ffffff' }}>
+            <h1 style={{ fontSize: '15px', fontWeight: 900, margin: 0, padding: 0 }}>
               মেসার্স দেলোয়ার এন্ড ব্রাদার্স গোপালগঞ্জ শাখা
             </h1>
-            <p className="text-xs font-bold" style={{ fontSize: '13px', fontWeight: 700 }}>
+            <p style={{ fontSize: '12px', fontWeight: 700, margin: '2px 0 0 0' }}>
               বাকী তালিকা {formatBnDate(new Date(), 'dd MMMM - yyyy')}
             </p>
           </div>
 
           {/* TABLE: BAKI LIST */}
           <table 
-            className="w-full border-collapse text-xs" 
             style={{ 
               width: '100%', 
               borderCollapse: 'collapse', 
               border: '1px solid #000000',
-              marginTop: '-1px'
+              marginTop: '-1px',
+              fontSize: '11.5px'
             }}
           >
             <thead>
-              <tr style={{ borderBottom: '1px solid #000000', backgroundColor: '#ffffff' }}>
-                <th style={{ width: '6%', border: '1px solid #000000', padding: '6px 4px', textAlign: 'center', fontWeight: 800 }}>
+              <tr style={{ backgroundColor: '#ffffff' }}>
+                <th style={{ width: '6%', border: '1px solid #000000', padding: '4px 3px', textAlign: 'center', fontWeight: 800 }}>
                   ক্র:
                 </th>
-                <th style={{ width: '34%', border: '1px solid #000000', padding: '6px 8px', textAlign: 'left', fontWeight: 800 }}>
+                <th style={{ width: '34%', border: '1px solid #000000', padding: '4px 6px', textAlign: 'left', fontWeight: 800 }}>
                   নাম
                 </th>
-                <th style={{ width: '24%', border: '1px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 800 }}>
+                <th style={{ width: '24%', border: '1px solid #000000', padding: '4px 6px', textAlign: 'center', fontWeight: 800 }}>
                   ঠিকানা
                 </th>
-                <th style={{ width: '18%', border: '1px solid #000000', padding: '6px 4px', textAlign: 'center', fontWeight: 800 }}>
+                <th style={{ width: '18%', border: '1px solid #000000', padding: '4px 4px', textAlign: 'center', fontWeight: 800 }}>
                   মোবাইল
                 </th>
-                <th style={{ width: '18%', border: '1px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 800 }}>
+                <th style={{ width: '18%', border: '1px solid #000000', padding: '4px 6px', textAlign: 'right', fontWeight: 800 }}>
                   টাকা
                 </th>
               </tr>
@@ -622,26 +627,26 @@ export default function CustomerDuesPage() {
             <tbody>
               {dueCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ border: '1px solid #000000', padding: '16px', textAlign: 'center', fontWeight: 700 }}>
+                  <td colSpan={5} style={{ border: '1px solid #000000', padding: '12px', textAlign: 'center', fontWeight: 700 }}>
                     বর্তমানে কোনো বকেয়া গ্রাহক নেই
                   </td>
                 </tr>
               ) : (
                 dueCustomers.map((c, i) => (
-                  <tr key={c.id} style={{ borderBottom: '1px solid #000000', pageBreakInside: 'avoid' }}>
-                    <td style={{ border: '1px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700 }}>
+                  <tr key={c.id} style={{ pageBreakInside: 'avoid' }}>
+                    <td style={{ border: '1px solid #000000', padding: '3px 3px', textAlign: 'center', fontWeight: 700 }}>
                       {toBengaliDigits(i + 1)}
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700 }}>
+                    <td style={{ border: '1px solid #000000', padding: '3px 6px', textAlign: 'left', fontWeight: 700 }}>
                       {c.name}
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '5px 8px', textAlign: 'center', fontWeight: 600 }}>
+                    <td style={{ border: '1px solid #000000', padding: '3px 6px', textAlign: 'center', fontWeight: 600 }}>
                       {c.address || '—'}
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 600, fontFamily: 'monospace' }}>
+                    <td style={{ border: '1px solid #000000', padding: '3px 4px', textAlign: 'center', fontWeight: 600, fontFamily: 'monospace' }}>
                       {toBengaliDigits(c.phone || '00000000000')}
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700 }}>
+                    <td style={{ border: '1px solid #000000', padding: '3px 6px', textAlign: 'right', fontWeight: 700 }}>
                       {formatBnCurrency(c.dueAmount)}
                     </td>
                   </tr>
@@ -649,15 +654,15 @@ export default function CustomerDuesPage() {
               )}
 
               {/* TOTAL DUE FOOTER ROW */}
-              <tr style={{ borderTop: '1px solid #000000', fontWeight: 900 }}>
+              <tr style={{ fontWeight: 900 }}>
                 <td 
                   colSpan={4} 
                   style={{ 
                     border: '1px solid #000000', 
-                    padding: '6px 8px', 
+                    padding: '4px 6px', 
                     textAlign: 'center', 
                     fontWeight: 800,
-                    fontSize: '13px'
+                    fontSize: '12px'
                   }}
                 >
                   মোট বাকি:
@@ -665,10 +670,10 @@ export default function CustomerDuesPage() {
                 <td 
                   style={{ 
                     border: '1px solid #000000', 
-                    padding: '6px 8px', 
+                    padding: '4px 6px', 
                     textAlign: 'right', 
                     fontWeight: 900,
-                    fontSize: '13px'
+                    fontSize: '12px'
                   }}
                 >
                   {formatBnCurrency(totalDueSum)}
@@ -682,43 +687,43 @@ export default function CustomerDuesPage() {
         {/* SECTION 2: অগ্রীম জমা আছে (ADVANCE DEPOSIT LIST) */}
         {/* ========================================================= */}
         {advanceCustomers.length > 0 && (
-          <div className="space-y-0 pt-4" style={{ pageBreakBefore: dueCustomers.length > 25 ? 'always' : 'auto' }}>
+          <div className="space-y-0" style={{ marginTop: '-1px' }}>
             
             {/* HEADER BOX: অগ্রীম জমা আছে */}
-            <div className="border border-black p-2.5 text-center bg-white space-y-1">
-              <h2 className="text-base font-black tracking-tight" style={{ fontSize: '16px', fontWeight: 900 }}>
+            <div style={{ border: '1px solid #000000', marginTop: '-1px', padding: '4px 8px', textAlign: 'center', backgroundColor: '#ffffff' }}>
+              <h2 style={{ fontSize: '14px', fontWeight: 900, margin: 0, padding: 0 }}>
                 মেসার্স দেলোয়ার এন্ড ব্রাদার্স গোপালগঞ্জ শাখা
               </h2>
-              <p className="text-xs font-bold" style={{ fontSize: '13px', fontWeight: 700 }}>
+              <p style={{ fontSize: '12px', fontWeight: 700, margin: '2px 0 0 0' }}>
                 অগ্রীম জমা আছে
               </p>
             </div>
 
             {/* TABLE: ADVANCE LIST */}
             <table 
-              className="w-full border-collapse text-xs" 
               style={{ 
                 width: '100%', 
                 borderCollapse: 'collapse', 
                 border: '1px solid #000000',
-                marginTop: '-1px'
+                marginTop: '-1px',
+                fontSize: '11.5px'
               }}
             >
               <thead>
-                <tr style={{ borderBottom: '1px solid #000000', backgroundColor: '#ffffff' }}>
-                  <th style={{ width: '6%', border: '1px solid #000000', padding: '6px 4px', textAlign: 'center', fontWeight: 800 }}>
+                <tr style={{ backgroundColor: '#ffffff' }}>
+                  <th style={{ width: '6%', border: '1px solid #000000', padding: '4px 3px', textAlign: 'center', fontWeight: 800 }}>
                     ক্র:
                   </th>
-                  <th style={{ width: '34%', border: '1px solid #000000', padding: '6px 8px', textAlign: 'left', fontWeight: 800 }}>
+                  <th style={{ width: '34%', border: '1px solid #000000', padding: '4px 6px', textAlign: 'left', fontWeight: 800 }}>
                     নাম
                   </th>
-                  <th style={{ width: '24%', border: '1px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 800 }}>
+                  <th style={{ width: '24%', border: '1px solid #000000', padding: '4px 6px', textAlign: 'center', fontWeight: 800 }}>
                     ঠিকানা
                   </th>
-                  <th style={{ width: '18%', border: '1px solid #000000', padding: '6px 4px', textAlign: 'center', fontWeight: 800 }}>
+                  <th style={{ width: '18%', border: '1px solid #000000', padding: '4px 4px', textAlign: 'center', fontWeight: 800 }}>
                     মোবাইল
                   </th>
-                  <th style={{ width: '18%', border: '1px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 800 }}>
+                  <th style={{ width: '18%', border: '1px solid #000000', padding: '4px 6px', textAlign: 'right', fontWeight: 800 }}>
                     টাকা
                   </th>
                 </tr>
@@ -726,35 +731,35 @@ export default function CustomerDuesPage() {
 
               <tbody>
                 {advanceCustomers.map((c, i) => (
-                  <tr key={c.id} style={{ borderBottom: '1px solid #000000', pageBreakInside: 'avoid' }}>
-                    <td style={{ border: '1px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700 }}>
+                  <tr key={c.id} style={{ pageBreakInside: 'avoid' }}>
+                    <td style={{ border: '1px solid #000000', padding: '3px 3px', textAlign: 'center', fontWeight: 700 }}>
                       {toBengaliDigits(i + 1)}
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700 }}>
+                    <td style={{ border: '1px solid #000000', padding: '3px 6px', textAlign: 'left', fontWeight: 700 }}>
                       {c.name}
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '5px 8px', textAlign: 'center', fontWeight: 600 }}>
+                    <td style={{ border: '1px solid #000000', padding: '3px 6px', textAlign: 'center', fontWeight: 600 }}>
                       {c.address || '—'}
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 600, fontFamily: 'monospace' }}>
+                    <td style={{ border: '1px solid #000000', padding: '3px 4px', textAlign: 'center', fontWeight: 600, fontFamily: 'monospace' }}>
                       {toBengaliDigits(c.phone || '00000000000')}
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700 }}>
+                    <td style={{ border: '1px solid #000000', padding: '3px 6px', textAlign: 'right', fontWeight: 700 }}>
                       {formatBnCurrency(c.advanceAmount)}
                     </td>
                   </tr>
                 ))}
 
                 {/* TOTAL ADVANCE FOOTER ROW */}
-                <tr style={{ borderTop: '1px solid #000000', fontWeight: 900 }}>
+                <tr style={{ fontWeight: 900 }}>
                   <td 
                     colSpan={4} 
                     style={{ 
                       border: '1px solid #000000', 
-                      padding: '6px 8px', 
+                      padding: '4px 6px', 
                       textAlign: 'center', 
                       fontWeight: 800,
-                      fontSize: '13px'
+                      fontSize: '12px'
                     }}
                   >
                     মোট অগ্রীম জমা আছে
@@ -762,10 +767,10 @@ export default function CustomerDuesPage() {
                   <td 
                     style={{ 
                       border: '1px solid #000000', 
-                      padding: '6px 8px', 
+                      padding: '4px 6px', 
                       textAlign: 'right', 
                       fontWeight: 900,
-                      fontSize: '13px'
+                      fontSize: '12px'
                     }}
                   >
                     {formatBnCurrency(totalAdvanceSum)}
@@ -775,6 +780,34 @@ export default function CustomerDuesPage() {
             </table>
           </div>
         )}
+
+        {/* DEVELOPER BRANDING & MARKETING FOOTER (PRINT) */}
+        <div 
+          data-has-dev-footer="true" 
+          style={{ 
+            marginTop: '10px', 
+            paddingTop: '6px', 
+            borderTop: '1px dashed #64748b', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between', 
+            fontSize: '10.5px', 
+            fontWeight: 700, 
+            color: '#334155',
+            pageBreakInside: 'avoid'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={DEVELOPER_LOGO_BASE64} alt="Dev Logo" style={{ height: '20px', width: '20px', objectFit: 'contain', borderRadius: '4px' }} />
+            <span style={{ backgroundColor: '#0f172a', color: '#ffffff', fontSize: '8.5px', fontWeight: 900, padding: '1px 4px', borderRadius: '3px', textTransform: 'uppercase' }}>DEV</span>
+            <span>সফটওয়্যার পরিচালনায়: <strong style={{ color: '#000000', fontWeight: 900 }}>Hasanah Tech Solution</strong></span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span>🌐 <strong>www.hasanahtech.vercel.app</strong></span>
+            <span>📞 হটলাইন: <strong style={{ color: '#000000', fontWeight: 900 }}>০১৩৪৯৩৪৫৩৫৩</strong></span>
+          </div>
+        </div>
 
       </div>
     </Shell>

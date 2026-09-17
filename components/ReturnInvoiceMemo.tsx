@@ -395,7 +395,7 @@ export const ReturnInvoiceMemo: React.FC<ReturnInvoiceMemoProps> = ({
           </div>
 
           {/* Software Company Branding & Promotion Footer */}
-          <div className="pt-2 border-t border-dashed border-slate-300 flex items-center justify-between text-[10px] font-bold text-slate-500">
+          <div data-has-dev-footer="true" className="pt-2 border-t border-dashed border-slate-300 flex items-center justify-between text-[10px] font-bold text-slate-500">
             <div className="flex items-center gap-1.5">
               <span className="bg-slate-900 text-white text-[9px] px-1.5 py-0.5 rounded font-mono font-black uppercase tracking-wider">DEV</span>
               <span>Software Developed By: <strong className="text-black font-black">{shop.softwareCompany || shop.software || 'Hasanah Tech Solution'}</strong></span>

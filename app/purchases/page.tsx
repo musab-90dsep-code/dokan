@@ -620,7 +620,8 @@ export default function PurchasesPage() {
           name: suppName,
           business_name: suppName,
           phone: toEnglishDigits(newSupplierData.phone).trim(),
-          address: newSupplierData.address.trim()
+          address: newSupplierData.address.trim(),
+          district: 'গোপালগঞ্জ'
         });
         finalSuppId = String(createdParty.id);
       }
@@ -772,10 +773,14 @@ export default function PurchasesPage() {
         };
       });
 
+      const compDisc = commissionAdjustment === 'deduct' ? round2(computedCommission || 0) : 0;
+
       if (editingPurchaseId) {
         await api.transactions.update(editingPurchaseId, {
           party: finalSuppId ? Number(finalSuppId) : null,
           transaction_type: 'purchase',
+          subtotal: round2(cartSubtotal),
+          discount: compDisc,
           total_amount: round2(cartTotalAmount),
           paid_amount: round2(paidAmount),
           due_amount: round2(supplierDueAmount),
@@ -789,6 +794,8 @@ export default function PurchasesPage() {
           party: finalSuppId ? Number(finalSuppId) : null,
           transaction_type: 'purchase',
           status: 'pending',
+          subtotal: round2(cartSubtotal),
+          discount: compDisc,
           total_amount: round2(cartTotalAmount),
           paid_amount: round2(paidAmount),
           due_amount: round2(supplierDueAmount),
@@ -1701,67 +1708,14 @@ export default function PurchasesPage() {
                   </CardContent>
                 </Card>
 
-                {/* STEP 3: Transport & Delivery Site */}
-                <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
-                  <CardContent className="p-5 space-y-4">
-                    <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">3</span>
-                      Transport & Unloading Point (পরিবহন ও গুদামের তথ্য)
-                    </Label>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
-                      <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">Vehicle / Truck No (গাড়ি নং)</Label>
-                        <Input
-                          value={vehicleNo}
-                          onChange={e => setVehicleNo(e.target.value)}
-                          placeholder="ঢাকা মেট্রো-ট ১১-৫৪৩২"
-                          className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">Driver Name (ড্রাইভারের নাম)</Label>
-                        <Input
-                          value={driverName}
-                          onChange={e => setDriverName(e.target.value)}
-                          placeholder="মোঃ রফিক"
-                          className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">Driver Phone (মোবাইল)</Label>
-                        <Input
-                          value={driverPhone}
-                          maxLength={11}
-                          onChange={e => setDriverPhone(toEnglishDigits(e.target.value).replace(/[^0-9]/g, '').slice(0, 11))}
-                          placeholder="০১৭XXXXXXXX"
-                          className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold font-mono"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-slate-600">Unloading Site / Warehouse</Label>
-                        <Input
-                          value={deliveryAddress}
-                          onChange={e => setDeliveryAddress(e.target.value)}
-                          placeholder="প্রধান গুদাম / স্টক পয়েন্ট"
-                          className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
-                        />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* STEP 4 & STEP 5 ROW */}
+                {/* STEP 3 & STEP 4 ROW */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   
-                  {/* STEP 4: Totals, Commission & Labor */}
+                  {/* STEP 3: Totals, Commission & Labor */}
                   <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
                     <CardContent className="p-5 space-y-4">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">4</span>
+                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">3</span>
                         Commission & Charges (কমিশন ও খরচ)
                       </Label>
 
@@ -1869,35 +1823,21 @@ export default function PurchasesPage() {
                         </div>
                       </div>
 
-                      {/* Category-Isolated Default Charges Saving Banner */}
-                      <div className="p-2.5 bg-indigo-50/70 border border-indigo-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-bengali">
-                        <div className="flex items-center gap-1.5 text-indigo-950 font-bold">
-                          <Lightbulb className="w-4 h-4 text-indigo-600 shrink-0" />
-                          <span>ক্রয় ডিফল্ট চার্জ ({purchaseType === 'rod' ? 'রড ও রিং' : 'সিমেন্ট'}):</span>
-                        </div>
+                      {/* Compact 1-line: Default Save Button & Auto Landed Cost Switch */}
+                      <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3 font-bengali">
                         <button
                           type="button"
                           onClick={handleSaveDefaultCharges}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[11px] px-3 py-1.5 rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer shrink-0 border border-indigo-500"
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shrink-0"
                           title="এই গাড়ি ভাড়া ও লেবার খরচ ভবিষ্যৎ ক্রয়ের জন্য ডিফল্ট সেভ রাখুন"
                         >
-                          📌 {purchaseType === 'rod' ? 'রড ও রিং' : 'সিমেন্ট'} ক্রয়ের ডিফল্ট সেভ করুন
+                          📌 {purchaseType === 'rod' ? 'রড ও রিং' : 'সিমেন্ট'} ডিফল্ট সেভ করুন
                         </button>
-                      </div>
 
-                      {/* Auto Landed Cost Calculator Toggle Switch Banner */}
-                      <div className="p-3.5 rounded-xl border border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50/50 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-lg bg-orange-500 text-white flex items-center justify-center font-bold shadow-xs">
-                              <Calculator className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <p className="text-xs font-black text-slate-800">Auto Landed Cost Calculator</p>
-                              <p className="text-[10px] text-slate-500 font-semibold">গাড়ি ভাড়া ও লেবার খরচ কেনা দামে বন্টন করুন</p>
-                            </div>
-                          </div>
-
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs font-bold text-slate-700">
+                            Auto Landed Cost
+                          </span>
                           <button
                             type="button"
                             onClick={() => setIsLandedCostAuto(!isLandedCostAuto)}
@@ -1905,6 +1845,7 @@ export default function PurchasesPage() {
                               "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden",
                               isLandedCostAuto ? "bg-orange-600" : "bg-slate-300"
                             )}
+                            title={isLandedCostAuto ? "Auto Landed Cost চালু (গাড়ি ভাড়া ও লেবার কেনা দামে যুক্ত হবে)" : "Auto Landed Cost বন্ধ"}
                           >
                             <span
                               className={cn(
@@ -1914,32 +1855,15 @@ export default function PurchasesPage() {
                             />
                           </button>
                         </div>
-
-                        {isLandedCostAuto ? (
-                          <div className="text-[11px] text-orange-900 font-bold bg-white/90 p-2 rounded-lg border border-orange-200/80 flex items-center justify-between">
-                            <span className="flex items-center gap-1.5">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              ক্যালকুলেটর চালু: গাড়ি ভাড়া (৳{(shippingCost || 0).toLocaleString()}) + লেবার (৳{(laborCost || 0).toLocaleString()}) কেনা দামে যোগ হবে।
-                            </span>
-                            <span className="text-[10px] font-black text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">চালু (ON)</span>
-                          </div>
-                        ) : (
-                          <div className="text-[11px] text-slate-600 font-semibold bg-white/90 p-2 rounded-lg border border-slate-200 flex items-center justify-between">
-                            <span>
-                              ক্যালকুলেটর বন্ধ: গাড়ি ভাড়া ও লেবার খরচ কেনা দামে যুক্ত হবে না (কোম্পানি কেনা দাম অটুট থাকবে)।
-                            </span>
-                            <span className="text-[10px] font-black text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">বন্ধ (OFF)</span>
-                          </div>
-                        )}
                       </div>
                     </CardContent>
                   </Card>
 
-                  {/* STEP 5: Register Payment */}
+                  {/* STEP 4: Register Payment */}
                   <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
                     <CardContent className="p-5 space-y-4">
                       <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">5</span>
+                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">4</span>
                         Register Payment (পেমেন্ট তথ্য)
                       </Label>
 
@@ -2167,82 +2091,23 @@ export default function PurchasesPage() {
 
                 </div>
 
-                {/* STEP 6 & STEP 7 ROW */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  
-                  {/* STEP 6: Signatures & Handled By */}
-                  <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
-                    <CardContent className="p-5 space-y-3">
-                      <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">6</span>
-                        Signatures & Warehouse (কর্মকর্তা ও গুদাম)
-                      </Label>
+                {/* STEP 5: Notes (Optional) */}
+                <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
+                  <CardContent className="p-5 space-y-3">
+                    <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">5</span>
+                      Notes (Optional) (বিশেষ নির্দেশনার নোট)
+                    </Label>
 
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Prepared By</Label>
-                          <Input 
-                            value={preparedBy}
-                            onChange={e => setPreparedBy(e.target.value)}
-                            placeholder="Buyer Name"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Authorized By</Label>
-                          <Input 
-                            value={authorizedBy}
-                            onChange={e => setAuthorizedBy(e.target.value)}
-                            placeholder="Manager Name"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Received By</Label>
-                          <Input 
-                            value={receivedBy}
-                            onChange={e => setReceivedBy(e.target.value)}
-                            placeholder="Store Keeper"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Target Warehouse</Label>
-                          <Select value={warehouse} onValueChange={(val: string | null) => setWarehouse(val || 'Main')}>
-                            <SelectTrigger className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="font-bengali text-xs font-bold">
-                              <SelectItem value="Main">Main (প্রধান গুদাম)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* STEP 7: Notes (Optional) */}
-                  <Card className="bg-white border-slate-200/80 rounded-2xl shadow-xs">
-                    <CardContent className="p-5 space-y-3">
-                      <Label className="text-xs uppercase tracking-wider font-black text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center">7</span>
-                        Notes (Optional) (বিশেষ নির্দেশনার নোট)
-                      </Label>
-
-                      <textarea
-                        rows={3}
-                        value={purchaseNote}
-                        onChange={e => setPurchaseNote(e.target.value)}
-                        placeholder="Add any note or special instructions..."
-                        className="w-full rounded-xl p-3 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-orange-500"
-                      />
-                    </CardContent>
-                  </Card>
-
-                </div>
+                    <textarea
+                      rows={3}
+                      value={purchaseNote}
+                      onChange={e => setPurchaseNote(e.target.value)}
+                      placeholder="Add any note or special instructions..."
+                      className="w-full rounded-xl p-3 bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-orange-500"
+                    />
+                  </CardContent>
+                </Card>
 
               </div>
 

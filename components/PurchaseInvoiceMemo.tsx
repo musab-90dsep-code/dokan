@@ -731,7 +731,7 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
         </div>
 
         {/* --- 6. FOOTER (QR CODE, SOFTWARE BRANDING & BARCODE) --- */}
-        <div className="border-t border-slate-300 pt-3 flex items-center justify-between text-[11px] font-bold text-slate-700 keep-together">
+        <div data-has-dev-footer="true" className="border-t border-slate-300 pt-3 flex items-center justify-between text-[11px] font-bold text-slate-700 keep-together">
           
           {/* Left QR Code & Thank You */}
           <div className="flex items-center gap-2">

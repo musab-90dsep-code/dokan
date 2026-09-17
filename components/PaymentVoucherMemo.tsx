@@ -507,7 +507,7 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
         </div>
 
         {/* --- 6. FOOTER (SOFTWARE BRANDING & QR/BARCODE) --- */}
-        <div className="border-t border-slate-300 pt-3 flex items-center justify-between text-[11px] font-bold text-slate-700 keep-together">
+        <div data-has-dev-footer="true" className="border-t border-slate-300 pt-3 flex items-center justify-between text-[11px] font-bold text-slate-700 keep-together">
           
           {/* Left QR Code */}
           <div className="flex items-center gap-2">

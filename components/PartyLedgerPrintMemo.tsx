@@ -3,6 +3,7 @@
 import React from 'react';
 import { toBnDigits, PartyProfile } from '@/components/PartyProfilePage';
 import { numberToBengaliWords, cleanLegacyBengaliText } from '@/lib/bengaliUtils';
+import { DEVELOPER_LOGO_BASE64 } from '@/lib/developerLogo';
 import { format } from 'date-fns';
 import { bn } from 'date-fns/locale';
 
@@ -93,12 +94,13 @@ export function buildLedgerPrintRows(
       let bill = Number(tx.totalAmount || 0);
       const paid = Number(tx.paidAmount || 0);
 
+      let meta: any = {};
+      if (tx.notes && typeof tx.notes === 'string' && tx.notes.trim().startsWith('{')) {
+        try { meta = JSON.parse(tx.notes.split('\n')[0]); } catch {}
+      }
+
       // Exclude labor & shipping charges for suppliers and purchase transactions
       if (txType === 'purchase' || !isCustomer || isSupplier) {
-        let meta: any = {};
-        if (tx.notes && typeof tx.notes === 'string' && tx.notes.trim().startsWith('{')) {
-          try { meta = JSON.parse(tx.notes.split('\n')[0]); } catch {}
-        }
         const labCost = Number(meta.laborCost || (tx as any).laborCost || (tx as any).labor_cost || 0);
         const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || (tx as any).transportCost || 0);
         bill = Math.max(0, bill - (labCost + shipCost));
@@ -108,6 +110,14 @@ export function buildLedgerPrintRows(
         priorBalance -= (paid || bill);
       } else if (txType === 'sale_return' || txType === 'purchase_return') {
         priorBalance -= bill;
+      } else if (isEngineer) {
+        const comm = Number(meta.engineerTotalCommission || (tx as any).engineerTotalCommission || 0);
+        const rodKg = Number(meta.engineerRodKg || (tx as any).engineerRodKg || 0);
+        const rodRate = Number(meta.engineerRodRate || (tx as any).engineerRodRate || 0);
+        const cemBags = Number(meta.engineerCementBags || (tx as any).engineerCementBags || 0);
+        const cemRate = Number(meta.engineerCementRate || (tx as any).engineerCementRate || 0);
+        const effectiveComm = comm > 0 ? comm : (rodKg * rodRate + cemBags * cemRate);
+        priorBalance += effectiveComm;
       } else {
         priorBalance += bill;
         if (paid > 0) priorBalance -= paid;
@@ -130,7 +140,7 @@ export function buildLedgerPrintRows(
       totalAmount += priorBalance;
       rows.push({
         date: opDateStr,
-        description: 'পূর্বের প্রারম্ভিক বকেয়া',
+        description: isEngineer ? 'পূর্বের কমিশন পাওনা' : 'পূর্বের প্রারম্ভিক বকেয়া',
         quantity: '-',
         rate: '-',
         deposit: '-',
@@ -143,7 +153,7 @@ export function buildLedgerPrintRows(
       totalDeposit += absBal;
       rows.push({
         date: opDateStr,
-        description: 'পূর্বের প্রারম্ভিক জমা',
+        description: isEngineer ? 'পূর্বের অগ্রিম কমিশন' : 'পূর্বের প্রারম্ভিক জমা',
         quantity: '-',
         rate: '-',
         deposit: formatLedgerNum(absBal),
@@ -170,7 +180,7 @@ export function buildLedgerPrintRows(
         totalDeposit += paid;
         rows.push({
           date: txDateStr,
-          description: 'জমা',
+          description: isEngineer ? 'কমিশন পরিশোধ' : 'জমা',
           quantity: '-',
           rate: '-',
           deposit: formatLedgerNum(paid),
@@ -209,9 +219,71 @@ export function buildLedgerPrintRows(
           rawAmount: 0,
         });
       }
+    } else if (isEngineer) {
+      if (txType === 'sale' || !txType) {
+        const comm = Number(meta.engineerTotalCommission || (tx as any).engineerTotalCommission || 0);
+        const rodKg = Number(meta.engineerRodKg || (tx as any).engineerRodKg || 0);
+        const rodRate = Number(meta.engineerRodRate || (tx as any).engineerRodRate || 0);
+        const cemBags = Number(meta.engineerCementBags || (tx as any).engineerCementBags || 0);
+        const cemRate = Number(meta.engineerCementRate || (tx as any).engineerCementRate || 0);
+        const effectiveComm = comm > 0 ? comm : (rodKg * rodRate + cemBags * cemRate);
+
+        if (effectiveComm > 0) {
+          totalAmount += effectiveComm;
+          const invNo = tx.invoiceNo || tx.orderId || `INV-${String(tx.id || '').slice(0, 5).toUpperCase()}`;
+          const custName = tx.customerName || (tx.party_name ? tx.party_name : 'খুচরা গ্রাহক');
+          let desc = `বিক্রয় চালান কমিশন (চালান: #${invNo}`;
+          if (custName) desc += ` | খরিদ্দার: ${custName}`;
+          if (rodKg > 0) desc += ` | রড: ${toBnDigits(rodKg)} কেজি @ ৳${toBnDigits(rodRate)}`;
+          if (cemBags > 0) desc += ` | সিমেন্ট: ${toBnDigits(cemBags)} বস্তা @ ৳${toBnDigits(cemRate)}`;
+          desc += `)`;
+
+          rows.push({
+            date: txDateStr,
+            description: desc,
+            quantity: '-',
+            rate: '-',
+            deposit: '-',
+            amount: formatLedgerNum(effectiveComm),
+            rawDeposit: 0,
+            rawAmount: effectiveComm,
+          });
+        }
+      }
     } else {
       // Normal sale / purchase invoice: Expand every line item
       const items = tx.items || [];
+      const labCost = Number(meta.laborCost || (tx as any).laborCost || (tx as any).labor_cost || 0);
+      const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || (tx as any).transportCost || 0);
+
+      // Special discount from invoice or purchase
+      const discountPercent = Number(meta.discountPercent || 0);
+      let invDiscount = Number(tx.discount) > 0 
+        ? Number(tx.discount) 
+        : Number(meta.discountFlat || meta.discount || meta.discountAmount || meta.cartTotalDiscount || meta.commission || meta.commissionAmount || 0);
+
+      if (invDiscount <= 0 && discountPercent > 0 && items.length > 0) {
+        const sub = items.reduce((sum: number, it: any) => sum + (Number(it.total) || (Number(it.quantity || 1) * Number(it.price || 0))), 0);
+        invDiscount = Math.round(((sub * discountPercent) / 100) * 100) / 100;
+      }
+
+      // Check item-level discounts
+      if (invDiscount <= 0 && items.length > 0) {
+        const itemDiscounts = items.reduce((sum: number, it: any) => sum + ((Number(it.discount) || 0) * (Number(it.quantity) || 1)), 0);
+        if (itemDiscounts > 0) {
+          invDiscount = itemDiscounts;
+        }
+      }
+
+      // Fallback: check difference between subtotal and totalAmount
+      if (invDiscount <= 0 && tx.subtotal && tx.totalAmount) {
+        const expectedTotal = Number(tx.subtotal) + (isCustomer ? (labCost + shipCost) : 0);
+        const actualTotal = Number(tx.totalAmount);
+        if (expectedTotal - actualTotal > 0.5) {
+          invDiscount = Math.round((expectedTotal - actualTotal) * 100) / 100;
+        }
+      }
+
       if (items.length > 0) {
         items.forEach((it: any) => {
           let name = cleanLegacyBengaliText(it.product_name || it.name || 'পণ্য');
@@ -232,10 +304,11 @@ export function buildLedgerPrintRows(
           });
         });
       } else {
-        let bill = Number(tx.totalAmount || 0);
+        let bill = Number(tx.subtotal || tx.totalAmount || 0);
+        if (!tx.subtotal && invDiscount > 0) {
+          bill += invDiscount;
+        }
         if (txType === 'purchase' || !isCustomer || isSupplier) {
-          const labCost = Number(meta.laborCost || (tx as any).laborCost || (tx as any).labor_cost || 0);
-          const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || (tx as any).transportCost || 0);
           bill = Math.max(0, bill - (labCost + shipCost));
         }
         totalAmount += bill;
@@ -252,7 +325,6 @@ export function buildLedgerPrintRows(
       }
 
       // Labor charge: Only for customer sales invoices, NEVER added to supplier ledger
-      const labCost = Number(meta.laborCost || (tx as any).laborCost || (tx as any).labor_cost || 0);
       if (labCost > 0 && isCustomer && !isSupplier && txType !== 'purchase') {
         totalAmount += labCost;
         rows.push({
@@ -268,7 +340,6 @@ export function buildLedgerPrintRows(
       }
 
       // Transport / shipping charge: Only for customer sales invoices, NEVER added to supplier ledger
-      const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || (tx as any).transportCost || 0);
       if (shipCost > 0 && isCustomer && !isSupplier && txType !== 'purchase') {
         totalAmount += shipCost;
         rows.push({
@@ -283,28 +354,18 @@ export function buildLedgerPrintRows(
         });
       }
 
-      // Special discount from invoice: deduct so ledger matches the actual invoice bill
-      if (items.length > 0) {
-        const discountPercent = Number(meta.discountPercent || 0);
-        let invDiscount = Number(tx.discount !== undefined && tx.discount !== null ? tx.discount : (meta.discountFlat || meta.discount || meta.discountAmount || 0));
-        if (invDiscount <= 0 && discountPercent > 0) {
-          const sub = items.reduce((sum: number, it: any) => sum + (Number(it.total) || (Number(it.quantity || 1) * Number(it.price || 0))), 0);
-          invDiscount = (sub * discountPercent) / 100;
-        }
-
-        if (invDiscount > 0) {
-          totalAmount -= invDiscount;
-          rows.push({
-            date: txDateStr,
-            description: 'বিশেষ ছাড়',
-            quantity: '-',
-            rate: '-',
-            deposit: '-',
-            amount: `-${formatLedgerNum(invDiscount)}`,
-            rawDeposit: 0,
-            rawAmount: -invDiscount,
-          });
-        }
+      if (invDiscount > 0) {
+        totalAmount -= invDiscount;
+        rows.push({
+          date: txDateStr,
+          description: isSupplier ? 'বিশেষ ছাড় / কমিশন' : 'বিশেষ ছাড় (ডিসকাউন্ট)',
+          quantity: '-',
+          rate: '-',
+          deposit: '-',
+          amount: `-${formatLedgerNum(invDiscount)}`,
+          rawDeposit: 0,
+          rawAmount: -invDiscount,
+        });
       }
 
       // Immediate cash payment on invoice
@@ -350,6 +411,21 @@ export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
   endDate,
   selectedSite
 }) => {
+  const [promo] = React.useState(() => {
+    const defaults = {
+      softwareCompany: 'Hasanah Tech Solution',
+      softwarePhone: '01349345353',
+      softwareWebsite: 'www.hasanahtech.vercel.app',
+    };
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('softwarePromoInfo');
+        if (saved) return { ...defaults, ...JSON.parse(saved) };
+      } catch {}
+    }
+    return defaults;
+  });
+
   const { rows, totalAmount, totalDeposit, netBalance } = buildLedgerPrintRows(
     party,
     transactions,
@@ -478,10 +554,9 @@ export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
               </tr>
             ))
           )}
-        </tbody>
-        <tfoot>
-          {/* Summary Box (Matches Page 4 of User's PDF) */}
-          <tr className="border-t border-black font-bold break-inside-avoid">
+
+          {/* Summary Box (Rendered once at the end of the ledger on the final page) */}
+          <tr className="border-t-2 border-black font-bold break-inside-avoid">
             <td colSpan={4} rowSpan={3} className="border border-black p-2.5 align-middle text-left bg-white">
               <div className="flex items-start gap-2">
                 <span className="font-black whitespace-nowrap">কথায় ঃ</span>
@@ -499,8 +574,51 @@ export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
             <td className="border border-black py-1 px-2 text-center font-black">বাকী</td>
             <td className="border border-black py-1 px-2 text-right font-black">{formatLedgerNum(netBalance, toBnDigits('০.০'))}</td>
           </tr>
-        </tfoot>
+        </tbody>
       </table>
+
+      {/* 4. SIGNATURES */}
+      <div className="grid grid-cols-4 gap-2 text-center text-xs font-bold pt-8 pb-2 text-black break-inside-avoid">
+        <div>
+          <div className="w-28 mx-auto border-t border-dashed border-black pt-1 font-bold">
+            প্রস্তুতকারী
+          </div>
+        </div>
+        <div>
+          <div className="w-28 mx-auto border-t border-dashed border-black pt-1 font-bold">
+            হিসাব রক্ষক
+          </div>
+        </div>
+        <div>
+          <div className="w-28 mx-auto border-t border-dashed border-black pt-1 font-bold">
+            ব্যবস্থাপক
+          </div>
+        </div>
+        <div>
+          <div className="w-28 mx-auto border-t border-dashed border-black pt-1 font-bold">
+            গ্রহীতা / খরিদ্দার
+          </div>
+        </div>
+      </div>
+
+      {/* 5. DEVELOPER BRANDING & MARKETING FOOTER */}
+      <div 
+        data-has-dev-footer="true" 
+        className="mt-4 pt-2 border-t border-dashed border-slate-400 flex items-center justify-between text-[10px] font-bold text-slate-600 break-inside-avoid"
+      >
+        <div className="flex items-center gap-1.5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={DEVELOPER_LOGO_BASE64} alt="Dev Logo" className="w-4 h-4 object-contain rounded" style={{ width: '16px', height: '16px' }} />
+          <span className="bg-slate-900 text-white text-[8px] px-1.5 py-0.5 rounded font-mono font-black uppercase tracking-wider">DEV</span>
+          <span>সফটওয়্যার পরিচালনায়: <strong className="text-black font-black">{promo.softwareCompany || 'Hasanah Tech Solution'}</strong></span>
+        </div>
+        <div className="flex items-center gap-3">
+          {promo.softwareWebsite && (
+            <span>🌐 <strong className="text-slate-800 font-mono font-bold">{promo.softwareWebsite}</strong></span>
+          )}
+          <span>📞 হটলাইন: <strong className="text-black font-mono font-black">{toBnDigits(promo.softwarePhone || '01349345353')}</strong></span>
+        </div>
+      </div>
     </div>
   );
 };

@@ -49,7 +49,9 @@ import {
   FileText,
   Percent,
   Layers,
-  Layers2
+  Layers2,
+  Copy,
+  Check
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -68,6 +70,10 @@ import {
   Cell 
 } from 'recharts';
 import { api, DashboardStats } from '@/lib/api';
+import { format } from 'date-fns';
+import { bn } from 'date-fns/locale';
+import { toast } from 'sonner';
+import { toBengaliDigits, isCementProduct, isRodProduct } from '@/lib/bengaliUtils';
 
 interface OrderItem {
   name: string;
@@ -83,7 +89,10 @@ interface Order {
   totalAmount: number;
   paidAmount: number;
   dueAmount: number;
+  paymentMethod?: string;
+  chequeNo?: string;
   items?: OrderItem[];
+  notes?: string;
   createdAt: any;
 }
 
@@ -94,12 +103,17 @@ interface Purchase {
   totalAmount?: number;
   paidAmount?: number;
   dueAmount?: number;
+  paymentMethod?: string;
+  items?: any[];
+  notes?: string;
   createdAt: any;
 }
 
 interface Product {
   id: string;
   name: string;
+  category?: string;
+  brand?: string;
   stock: number;
   minStock?: number;
   unit?: string;
@@ -207,11 +221,11 @@ const allShortcuts: ShortcutAction[] = [
     accentText: 'group-hover:text-rose-700',
   },
   { 
-    label: 'পণ্য স্টক', 
-    sub: 'মজুদ মালামালের খতিয়ান', 
-    tag: 'ইনভেন্টরি',
-    href: '/inventory', 
-    icon: Package, 
+    label: 'বাকি কাস্টমার', 
+    sub: 'বকেয়া খরিদ্দারের তালিকা', 
+    tag: 'বাকি তালিকা',
+    href: '/customers/dues', 
+    icon: Users, 
     gradient: 'from-purple-500 to-violet-600',
     iconShadow: 'shadow-purple-500/25',
     accentBg: 'from-purple-50/70 via-white to-white',
@@ -234,33 +248,69 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [allTransactions, setAllTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [copiedReport, setCopiedReport] = useState(false);
+  const [showTextPreview, setShowTextPreview] = useState(false);
+
   const fetchDashboardData = useCallback(() => {
     Promise.all([
       api.dashboard.getStats(),
       api.inventory.list(),
-      api.transactions.list({ transaction_type: 'sale' })
-    ]).then(([statsData, prodList, txList]) => {
+      api.transactions.list({ transaction_type: 'sale' }),
+      api.transactions.list({ transaction_type: 'purchase' }),
+      api.transactions.list()
+    ]).then(([statsData, prodList, saleList, purchaseList, txList]) => {
       setStats(statsData);
       const safeProdList = Array.isArray(prodList) ? prodList : [];
       setProducts(safeProdList.map(p => ({
         id: String(p.id),
         name: p.name,
+        category: p.category_name || (p as any).category || '',
+        brand: p.brand || '',
         stock: Number(p.stock || 0),
         minStock: Number(p.min_stock || 10),
         unit: p.unit || 'পিস',
         sellPrice: Number(p.sell_price || 0)
       })));
-      const safeTxList = Array.isArray(txList) ? txList : [];
-      setOrders(safeTxList.filter(t => t.status !== 'pending' && t.status !== 'draft' && t.status !== 'cancelled' && t.status !== 'rejected').map(t => ({
+      const safeSaleList = Array.isArray(saleList) ? saleList : [];
+      setOrders(safeSaleList.filter(t => t.status !== 'pending' && t.status !== 'draft' && t.status !== 'cancelled' && t.status !== 'rejected').map(t => ({
         id: String(t.id),
         orderId: t.invoice_no,
         customerName: t.party_name || 'গ্রাহক',
         totalAmount: t.total_amount,
         paidAmount: t.paid_amount,
         dueAmount: t.due_amount,
+        paymentMethod: t.payment_method,
+        chequeNo: (t as any).cheque_no,
+        items: (t.items || []).map((i: any) => ({
+          name: i.product_name || i.name || '',
+          quantity: Number(i.quantity || 0),
+          price: Number(i.price || 0),
+          unit: i.unit || 'পিস'
+        })),
+        notes: t.notes,
         createdAt: t.created_at
       })));
+      const safePurchaseList = Array.isArray(purchaseList) ? purchaseList : [];
+      setPurchases(safePurchaseList.filter(t => t.status !== 'pending' && t.status !== 'draft' && t.status !== 'cancelled' && t.status !== 'rejected').map(t => ({
+        id: String(t.id),
+        supplierName: t.party_name || 'সরবরাহকারী',
+        totalAmount: t.total_amount,
+        paidAmount: t.paid_amount,
+        dueAmount: t.due_amount,
+        paymentMethod: t.payment_method,
+        items: (t.items || []).map((i: any) => ({
+          name: i.product_name || i.name || '',
+          quantity: Number(i.quantity || 0),
+          price: Number(i.price || 0),
+          unit: i.unit || 'পিস'
+        })),
+        notes: t.notes,
+        createdAt: t.created_at
+      })));
+      setAllTransactions(Array.isArray(txList) ? txList : []);
       setLoading(false);
     }).catch(err => {
       console.error('Error fetching dashboard data:', err);
@@ -283,6 +333,191 @@ export default function Dashboard() {
   const totalMonthlyPurchasesVal = stats?.monthlyPurchases ?? 0;
   const lowStockCount = stats?.lowStockCount ?? 0;
   const recentTransactions = stats?.recentTransactions || [];
+
+  // ==================== DAILY REPORT CALCULATION ====================
+  const dailyReportData = useMemo(() => {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const dateFormattedBn = format(new Date(), 'dd/MM/yyyy', { locale: bn }).replace(/[0-9]/g, d => '০১২৩৪৫৬৭৮৯'[parseInt(d, 10)]) + ' ইং';
+
+    const safeParseDate = (dVal: any) => {
+      if (!dVal) return null;
+      try {
+        const d = new Date(dVal);
+        return isNaN(d.getTime()) ? null : d;
+      } catch {
+        return null;
+      }
+    };
+
+    // Filter today's sales and purchases
+    const dayOrders = orders.filter(o => {
+      const d = safeParseDate(o.createdAt);
+      return d && format(d, 'yyyy-MM-dd') === todayStr;
+    });
+
+    const dayPurchases = purchases.filter(p => {
+      const d = safeParseDate(p.createdAt);
+      return d && format(d, 'yyyy-MM-dd') === todayStr;
+    });
+
+    // Cheques received today
+    let dayChequeAmount = 0;
+    dayOrders.forEach(o => {
+      const pMethod = ((o.paymentMethod || '') as string).toLowerCase();
+      const hasCheque = pMethod.includes('cheque') || pMethod.includes('check') || pMethod.includes('চেক') || (o.chequeNo && String(o.chequeNo).trim() !== '');
+      if (hasCheque) {
+        dayChequeAmount += Number(o.paidAmount || 0);
+      }
+    });
+
+    allTransactions.forEach(t => {
+      const d = safeParseDate(t.created_at || t.createdAt);
+      if (!d || format(d, 'yyyy-MM-dd') !== todayStr) return;
+      const pMethod = ((t.payment_method || t.paymentMethod || '') as string).toLowerCase();
+      const pAmt = Number(t.paid_amount || t.amount || 0);
+      const hasCheque = pMethod.includes('cheque') || pMethod.includes('check') || pMethod.includes('চেক') || (t.cheque_no && String(t.cheque_no).trim() !== '');
+      if (hasCheque) {
+        dayChequeAmount += pAmt;
+      }
+    });
+
+    // Cement metrics
+    let cementSoldBags = 0;
+    let cementDirectBags = 0;
+    dayOrders.forEach(o => {
+      (o.items || []).forEach(i => {
+        if (isCementProduct(i)) {
+          const qty = Number(i.quantity) || 0;
+          cementSoldBags += qty;
+          const n = (i.name || '').toLowerCase();
+          if (n.includes('সরাসরি') || (o.notes || '').toLowerCase().includes('সরাসরি') || (o.notes || '').toLowerCase().includes('direct')) {
+            cementDirectBags += qty;
+          }
+        }
+      });
+    });
+
+    let cementBoughtBags = 0;
+    dayPurchases.forEach(p => {
+      (p.items || []).forEach(i => {
+        if (isCementProduct(i)) {
+          cementBoughtBags += Number(i.quantity) || 0;
+        }
+      });
+    });
+
+    const cementProducts = products.filter(p => isCementProduct(p));
+    const totalCementStockBags = cementProducts.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
+
+    const realCementList: { name: string; stock: number }[] = [];
+    cementProducts.forEach(p => {
+      const brand = (p.brand || '').trim();
+      const name = (p.name || '').trim();
+      const displayName = (brand && !name.toLowerCase().includes(brand.toLowerCase()))
+        ? `${brand} ${name}`
+        : name;
+      const stock = Number(p.stock) || 0;
+      const existing = realCementList.find(b => b.name.toLowerCase() === displayName.toLowerCase());
+      if (existing) {
+        existing.stock += stock;
+      } else {
+        realCementList.push({ name: displayName, stock });
+      }
+    });
+
+    // Rod metrics
+    let rodSoldKg = 0;
+    let rodDirectKg = 0;
+    dayOrders.forEach(o => {
+      (o.items || []).forEach(i => {
+        if (isRodProduct(i)) {
+          const u = (i.unit || '').toLowerCase();
+          const qtyKg = u.includes('টন') ? (Number(i.quantity) || 0) * 1000 : (Number(i.quantity) || 0);
+          rodSoldKg += qtyKg;
+          const n = (i.name || '').toLowerCase();
+          if (n.includes('সরাসরি') || (o.notes || '').toLowerCase().includes('সরাসরি') || (o.notes || '').toLowerCase().includes('direct')) {
+            rodDirectKg += qtyKg;
+          }
+        }
+      });
+    });
+
+    let rodBoughtKg = 0;
+    dayPurchases.forEach(p => {
+      (p.items || []).forEach(i => {
+        if (isRodProduct(i)) {
+          const u = (i.unit || '').toLowerCase();
+          rodBoughtKg += u.includes('টন') ? (Number(i.quantity) || 0) * 1000 : (Number(i.quantity) || 0);
+        }
+      });
+    });
+
+    const rodProducts = products.filter(p => isRodProduct(p));
+    const totalRodStockKg = rodProducts.reduce((sum, p) => {
+      const u = (p.unit || '').toLowerCase();
+      return sum + (u.includes('টন') ? (Number(p.stock) || 0) * 1000 : (Number(p.stock) || 0));
+    }, 0);
+
+    const formatQtyOrZero = (qty: number) => (qty > 0 ? toBengaliDigits(qty) : '০০');
+    const formatRodVal = (val: number, space: boolean = false) => {
+      if (!val || val === 0) return space ? '০০ কেজি' : '০০কেজি';
+      const formatted = val % 1 === 0 ? val.toLocaleString('en-IN') : val.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+      return `${toBengaliDigits(formatted)}${space ? ' কেজি' : 'কেজি'}`;
+    };
+
+    const cementBrandLines = realCementList.map(b => `${b.name}= ${formatQtyOrZero(b.stock)} ব্যাগ`);
+    const cementBlockLines = [
+      `সিমেন্ট বিক্রয় = ${formatQtyOrZero(cementSoldBags)} ব্যাগ`,
+      `সিমেন্ট প্রাপ্তি = ${formatQtyOrZero(cementBoughtBags)} ব্যাগ`,
+      `সিমেন্ট সরাসরি= ${formatQtyOrZero(cementDirectBags)} ব্যাগ`,
+      `সিমেন্ট স্টক= ${formatQtyOrZero(totalCementStockBags)} ব্যাগ`,
+      ...cementBrandLines
+    ];
+
+    const fullDailyReportText = `===দেলোয়ার এন্ড ব্রাদার্স ===
+         গোপালগঞ্জ শাখা
+==== ডেইলি রিপোর্ট ====
+তারিখ - ${dateFormattedBn}
+
+১/ ক্যাশ = ${totalCashBalance !== 0 ? toBengaliDigits(Math.round(totalCashBalance).toLocaleString('en-IN')) : '০০'} ৳
+২/ চেক = ${dayChequeAmount > 0 ? `${toBengaliDigits(dayChequeAmount.toLocaleString('en-IN'))} ৳/` : '০/'}
+    =====সিমেন্ট =====
+${cementBlockLines.join('\n')}
+
+       ===== রড=====
+
+রড বিক্রয় = ${formatRodVal(rodSoldKg)}
+রড প্রাপ্তি = ${formatRodVal(rodBoughtKg, true)}
+রড সরাসরি= ${formatRodVal(rodDirectKg, true)}
+রড স্টক = ${formatRodVal(totalRodStockKg, true)}`;
+
+    return {
+      dateFormattedBn,
+      totalCashBalance,
+      dayChequeAmount,
+      cementSoldBags,
+      cementBoughtBags,
+      cementDirectBags,
+      totalCementStockBags,
+      realCementList,
+      rodSoldKg,
+      rodBoughtKg,
+      rodDirectKg,
+      totalRodStockKg,
+      fullDailyReportText,
+      formatQtyOrZero,
+      formatRodVal
+    };
+  }, [orders, purchases, allTransactions, products, totalCashBalance]);
+
+  const handleCopyDailyReport = () => {
+    if (dailyReportData?.fullDailyReportText) {
+      navigator.clipboard.writeText(dailyReportData.fullDailyReportText);
+      setCopiedReport(true);
+      toast.success('মেসার্স দেলোয়ার এন্ড ব্রাদার্স ডেইলি রিপোর্ট কপি করা হয়েছে!');
+      setTimeout(() => setCopiedReport(false), 2500);
+    }
+  };
 
   const netProfitVal = Math.max(0, totalMonthlySalesVal - totalMonthlyPurchasesVal);
   const profitMarginPercent = totalMonthlySalesVal > 0 ? Math.min(100, Math.round((netProfitVal / totalMonthlySalesVal) * 100)) : 0;
@@ -546,11 +781,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ==================== MAIN ANALYSIS ROW ==================== */}
-        <div className="grid grid-cols-12 gap-6">
-          
+        {/* ==================== TOP ANALYSIS ROW: WEEKLY CHART + TALL DAILY REPORT ==================== */}
+        <div className="grid grid-cols-12 gap-6 items-stretch">
           {/* Main Area Chart: Weekly Trends */}
-          <div className="col-span-12 lg:col-span-8 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200/80 font-bengali">
+          <div className="col-span-12 lg:col-span-7 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200/80 font-bengali flex flex-col justify-between">
             <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h3 className="font-black text-slate-800 text-base">সাপ্তাহিক লেনদেন বিশ্লেষণ</h3>
@@ -568,7 +802,7 @@ export default function Dashboard() {
                 <span className="px-3 py-1 bg-orange-50 text-orange-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-orange-200">এই সপ্তাহ</span>
               </div>
             </div>
-            <div className="p-6 h-[300px] w-full min-w-0">
+            <div className="p-6 flex-1 min-h-[320px] w-full min-w-0">
               {isMounted && (
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <AreaChart data={weeklyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -594,8 +828,238 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Daily Report: Tall Card Beside Weekly Chart */}
+          <div className="col-span-12 lg:col-span-5 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200/80 flex flex-col justify-between font-bengali">
+            {/* Header Banner (Light & Premium) */}
+            <div className="bg-gradient-to-r from-slate-50 via-white to-amber-50/40 p-4 sm:p-4.5 flex items-center justify-between gap-2 border-b border-slate-200/80">
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="bg-amber-500 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-xs">
+                    দেলোয়ার এন্ড ব্রাদার্স
+                  </span>
+                  <span className="bg-sky-50 text-sky-700 text-[10px] font-bold border border-sky-200 px-2 py-0.5 rounded-full">
+                    গোপালগঞ্জ শাখা
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 pt-0.5">
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5">
+                    <div className="w-6 h-6 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shadow-2xs">
+                      <FileText className="w-3.5 h-3.5" />
+                    </div>
+                    <span>ডেইলি রিপোর্ট</span>
+                  </h3>
+                  <span className="text-[10px] sm:text-[10.5px] text-amber-900 font-bold bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-md">
+                    {dailyReportData.dateFormattedBn}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={handleCopyDailyReport}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer flex items-center gap-1"
+                  title="হোয়াটসঅ্যাপ / এসএমএস ফরম্যাটে রিপোর্ট কপি করুন"
+                >
+                  {copiedReport ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedReport ? 'কপি হয়েছে' : 'কপি'}</span>
+                </button>
+
+                <button
+                  onClick={() => setShowTextPreview(!showTextPreview)}
+                  className="bg-white hover:bg-slate-100 text-slate-700 font-bold text-[10px] px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs transition-all cursor-pointer"
+                  title="টেক্সট মেসেজ ফরম্যাট প্রিভিউ অন/অফ"
+                >
+                  {showTextPreview ? 'লুকান' : 'প্রিভিউ'}
+                </button>
+
+                <Link
+                  href="/reports?tab=daily_sales"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] px-2.5 py-1.5 rounded-xl shadow-xs transition-all flex items-center gap-1"
+                  title="সম্পূর্ণ রিপোর্ট দেখুন"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            </div>
+
+            {/* Collapsible Raw Text Preview (Light & Clean) */}
+            {showTextPreview && (
+              <div className="bg-slate-50 text-slate-800 p-3 border-b border-slate-200 font-mono text-[10.5px] whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
+                <div className="flex justify-between items-center text-slate-500 border-b border-slate-200 pb-1.5 mb-1.5 font-bengali text-[10px]">
+                  <span className="font-bold text-slate-700">হোয়াটসঅ্যাপ মেসেজ ফরম্যাট:</span>
+                  <button
+                    onClick={handleCopyDailyReport}
+                    className="text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Copy className="w-3 h-3" /> কপি
+                  </button>
+                </div>
+                {dailyReportData.fullDailyReportText}
+              </div>
+            )}
+
+            {/* Tall Vertical Body: Cement on Top, Rod Below */}
+            <div className="p-3.5 sm:p-4 flex-1 flex flex-col justify-between gap-3">
+              {/* 1. Cement Closing */}
+              <div className="bg-gradient-to-br from-blue-50/60 via-white to-sky-50/40 border border-blue-200/80 rounded-2xl p-3 space-y-2">
+                <div className="flex items-center justify-between border-b border-blue-200/60 pb-1.5">
+                  <span className="font-black text-blue-950 text-xs flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-blue-600" />
+                    সিমেন্ট ক্লোজিং
+                  </span>
+                  <span className="text-[9px] font-black bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md">
+                    ব্যাগ হিসাব
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1.5 text-center">
+                  <div className="bg-white border border-blue-100 rounded-xl p-1.5 shadow-2xs">
+                    <p className="text-[8.5px] font-bold text-slate-500 leading-none">বিক্রয়</p>
+                    <p className="text-xs sm:text-sm font-black text-blue-700 mt-1">
+                      {dailyReportData.formatQtyOrZero(dailyReportData.cementSoldBags)}
+                    </p>
+                  </div>
+                  <div className="bg-white border border-emerald-100 rounded-xl p-1.5 shadow-2xs">
+                    <p className="text-[8.5px] font-bold text-slate-500 leading-none">প্রাপ্তি</p>
+                    <p className="text-xs sm:text-sm font-black text-emerald-700 mt-1">
+                      {dailyReportData.formatQtyOrZero(dailyReportData.cementBoughtBags)}
+                    </p>
+                  </div>
+                  <div className="bg-white border border-amber-100 rounded-xl p-1.5 shadow-2xs">
+                    <p className="text-[8.5px] font-bold text-slate-500 leading-none">সরাসরি</p>
+                    <p className="text-xs sm:text-sm font-black text-amber-700 mt-1">
+                      {dailyReportData.formatQtyOrZero(dailyReportData.cementDirectBags)}
+                    </p>
+                  </div>
+                  <div className="bg-indigo-50/80 border border-indigo-200 rounded-xl p-1.5 shadow-2xs">
+                    <p className="text-[8.5px] font-bold text-indigo-900 leading-none">স্টক</p>
+                    <p className="text-xs sm:text-sm font-black text-indigo-700 mt-1">
+                      {dailyReportData.formatQtyOrZero(dailyReportData.totalCementStockBags)}
+                    </p>
+                  </div>
+                </div>
+
+                {dailyReportData.realCementList.length > 0 && (
+                  <div className="bg-white/80 border border-blue-100 rounded-xl p-2 space-y-1 shadow-2xs">
+                    <p className="text-[8.5px] font-bold text-slate-500">ব্র্যান্ড অনুযায়ী মজুদ:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {dailyReportData.realCementList.map((b, idx) => (
+                        <span key={idx} className="inline-flex items-center gap-1 text-[9px] font-bold bg-blue-50 text-blue-900 border border-blue-200/80 px-1.5 py-0.5 rounded-md">
+                          <span>{b.name}:</span>
+                          <span className="font-black text-blue-700">{dailyReportData.formatQtyOrZero(b.stock)} ব্যাগ</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Rod Closing */}
+              <div className="bg-gradient-to-br from-orange-50/60 via-white to-amber-50/40 border border-orange-200/80 rounded-2xl p-3 space-y-2">
+                <div className="flex items-center justify-between border-b border-orange-200/60 pb-1.5">
+                  <span className="font-black text-orange-950 text-xs flex items-center gap-1.5">
+                    <Scale className="w-3.5 h-3.5 text-orange-600" />
+                    রড ও রিং ক্লোজিং
+                  </span>
+                  <span className="text-[9px] font-black bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md">
+                    কেজি হিসাব
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1.5 text-center">
+                  <div className="bg-white border border-orange-100 rounded-xl p-1.5 shadow-2xs">
+                    <p className="text-[8.5px] font-bold text-slate-500 leading-none">বিক্রয়</p>
+                    <p className="text-xs sm:text-sm font-black text-orange-700 mt-1">
+                      {dailyReportData.formatRodVal(dailyReportData.rodSoldKg)}
+                    </p>
+                  </div>
+                  <div className="bg-white border border-emerald-100 rounded-xl p-1.5 shadow-2xs">
+                    <p className="text-[8.5px] font-bold text-slate-500 leading-none">প্রাপ্তি</p>
+                    <p className="text-xs sm:text-sm font-black text-emerald-700 mt-1">
+                      {dailyReportData.formatRodVal(dailyReportData.rodBoughtKg, true)}
+                    </p>
+                  </div>
+                  <div className="bg-white border border-amber-100 rounded-xl p-1.5 shadow-2xs">
+                    <p className="text-[8.5px] font-bold text-slate-500 leading-none">সরাসরি</p>
+                    <p className="text-xs sm:text-sm font-black text-amber-700 mt-1">
+                      {dailyReportData.formatRodVal(dailyReportData.rodDirectKg, true)}
+                    </p>
+                  </div>
+                  <div className="bg-amber-50/80 border border-amber-300 rounded-xl p-1.5 shadow-2xs">
+                    <p className="text-[8.5px] font-bold text-amber-900 leading-none">স্টক</p>
+                    <p className="text-xs sm:text-sm font-black text-amber-800 mt-1">
+                      {dailyReportData.formatRodVal(dailyReportData.totalRodStockKg, true)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-white/80 border border-orange-100 rounded-xl p-2 flex items-center justify-between text-xs shadow-2xs">
+                  <span className="text-[9.5px] font-bold text-slate-600">মোট রড ও রিং মজুদ:</span>
+                  <span className="font-black text-orange-700 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-md text-[10px]">
+                    {dailyReportData.formatRodVal(dailyReportData.totalRodStockKg, true)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ==================== MIDDLE ROW: RECENT SALES + CURRENT STOCK ==================== */}
+        <div className="grid grid-cols-12 gap-6 items-stretch">
+          {/* Recent Sales Table */}
+          <div className="col-span-12 lg:col-span-7 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200/80 font-bengali flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between p-6 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-orange-500 flex items-center justify-center shadow-md shadow-orange-500/20">
+                    <History className="w-4 h-4 text-white" />
+                  </div>
+                  <h3 className="font-black text-slate-800 text-base">সাম্প্রতিক বিক্রয়</h3>
+                </div>
+                <Link href="/orders" className="flex items-center gap-1 text-xs text-orange-600 font-black uppercase tracking-widest hover:text-orange-700 transition-colors font-bengali">
+                  সব দেখুন <ChevronRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {recentSalesList.length > 0 ? (
+                  recentSalesList.map((sale, i) => (
+                    <div key={i} className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50/80 transition-colors group font-bengali">
+                      <div className={cn(
+                        "w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 text-white shadow-md transition-transform group-hover:scale-105",
+                        i === 0 ? 'bg-orange-500 shadow-orange-200' :
+                        i === 1 ? 'bg-indigo-600 shadow-indigo-200' :
+                        i === 2 ? 'bg-rose-500 shadow-rose-200' :
+                        i === 3 ? 'bg-emerald-500 shadow-emerald-200' :
+                        'bg-blue-600 shadow-blue-200'
+                      )}>
+                        <User className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-800 truncate">{sale.customer}</p>
+                        <p className="text-[11px] text-slate-500 font-semibold truncate mt-0.5">{sale.item} · {sale.time}</p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-base font-black text-slate-800">{sale.amount}</p>
+                        <span className={cn(
+                          "inline-flex text-[10px] font-black px-2.5 py-0.5 rounded-full mt-1",
+                          sale.status === 'পরিশোধিত' ? 'bg-emerald-100 text-emerald-700' :
+                          sale.status === 'আংশিক' ? 'bg-amber-100 text-amber-700' :
+                          'bg-rose-100 text-rose-700'
+                        )}>{sale.status}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="py-12 text-center text-xs text-slate-400 font-medium">
+                    কোন সাম্প্রতিক বিক্রয় ট্রানজ্যাকশন নেই।
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Current Stock Inventory Breakdown */}
-          <div className="col-span-12 lg:col-span-4 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200/80 flex flex-col font-bengali">
+          <div className="col-span-12 lg:col-span-5 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200/80 flex flex-col font-bengali">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center shadow-md shadow-emerald-600/20">
@@ -610,7 +1074,7 @@ export default function Dashboard() {
                 ইনভেন্টরি ➔
               </Link>
             </div>
-            <div className="p-5 flex-1 space-y-3.5 overflow-y-auto max-h-[320px]">
+            <div className="p-5 flex-1 space-y-3.5 overflow-y-auto max-h-[380px]">
               {stockBreakdown.length > 0 ? (
                 stockBreakdown.map((item, i) => (
                   <div key={i} className="space-y-1.5">
@@ -637,169 +1101,116 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ==================== RECENT SALES + SUMMARY ==================== */}
-        <div className="grid gap-6 lg:grid-cols-12">
-          {/* Recent Sales Table */}
-          <div className="col-span-12 lg:col-span-8 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200/80">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+        {/* ==================== LOWER ROW: FINANCIAL SUMMARY + STOCK ALERTS ==================== */}
+        <div className="grid grid-cols-12 gap-6">
+          {/* Monthly Financial Donut Chart Widget (Gol Chart) */}
+          <div className="col-span-12 lg:col-span-6 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-200/80 p-6 flex flex-col justify-between font-bengali">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-2">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-orange-500 flex items-center justify-center shadow-md shadow-orange-500/20">
-                  <History className="w-4 h-4 text-white" />
+                <div className="w-8 h-8 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-md shadow-orange-500/20">
+                  <TrendingUp className="w-4 h-4" />
                 </div>
-                <h3 className="font-black text-slate-800 text-base">সাম্প্রতিক বিক্রয়</h3>
+                <div>
+                  <h3 className="font-black text-slate-800 text-sm">মাসিক সারসংক্ষেপ</h3>
+                  <p className="text-[10px] font-bold text-slate-400">আয়-ব্যয় ও নিট লাভের গোল চার্ট</p>
+                </div>
               </div>
-              <Link href="/orders" className="flex items-center gap-1 text-xs text-orange-600 font-black uppercase tracking-widest hover:text-orange-700 transition-colors font-bengali">
-                সব দেখুন <ChevronRight className="w-3.5 h-3.5" />
-              </Link>
+              <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <ArrowUpRight className="w-3 h-3" /> +{toBnNum(profitMarginPercent)}%
+              </span>
             </div>
-            <div className="divide-y divide-slate-100">
-              {recentSalesList.length > 0 ? (
-                recentSalesList.map((sale, i) => (
-                  <div key={i} className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50/80 transition-colors group font-bengali">
-                    <div className={cn(
-                      "w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 text-white shadow-md transition-transform group-hover:scale-105",
-                      i === 0 ? 'bg-orange-500 shadow-orange-200' :
-                      i === 1 ? 'bg-indigo-600 shadow-indigo-200' :
-                      i === 2 ? 'bg-rose-500 shadow-rose-200' :
-                      i === 3 ? 'bg-emerald-500 shadow-emerald-200' :
-                      'bg-blue-600 shadow-blue-200'
-                    )}>
-                      <User className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-800 truncate">{sale.customer}</p>
-                      <p className="text-[11px] text-slate-500 font-semibold truncate mt-0.5">{sale.item} · {sale.time}</p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-base font-black text-slate-800">{sale.amount}</p>
-                      <span className={cn(
-                        "inline-flex text-[10px] font-black px-2.5 py-0.5 rounded-full mt-1",
-                        sale.status === 'পরিশোধিত' ? 'bg-emerald-100 text-emerald-700' :
-                        sale.status === 'আংশিক' ? 'bg-amber-100 text-amber-700' :
-                        'bg-rose-100 text-rose-700'
-                      )}>{sale.status}</span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="py-12 text-center text-xs text-slate-400 font-medium">
-                  কোন সাম্প্রতিক বিক্রয় ট্রানজ্যাকশন নেই।
+
+            <div className="flex flex-col items-center py-2 space-y-4">
+              {/* Circular Donut Chart */}
+              <div className="relative w-44 h-44 flex items-center justify-center min-w-0">
+                {isMounted && (
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                    <PieChart>
+                      <Pie
+                        data={financialPieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={52}
+                        outerRadius={72}
+                        paddingAngle={5}
+                        dataKey="value"
+                        stroke="none"
+                      >
+                        {financialPieData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                  <span className="text-[10px] font-bold text-slate-400">নিট লাভ</span>
+                  <span className="text-sm font-black text-slate-800 mt-0.5">{formatBnCurrency(netProfitVal)}</span>
+                  <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md mt-0.5 border border-emerald-100">
+                    {toBnNum(profitMarginPercent)}% মার্জিন
+                  </span>
                 </div>
-              )}
+              </div>
+
+              {/* Donut Chart Legend & Breakdown */}
+              <div className="w-full space-y-2.5">
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-orange-50/70 border border-orange-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+                    <span className="text-xs font-bold text-slate-700">মোট বিক্রয়</span>
+                  </div>
+                  <span className="text-xs font-black text-orange-700">{formatBnCurrency(totalMonthlySalesVal)}</span>
+                </div>
+
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+                    <span className="text-xs font-bold text-slate-700">মোট ক্রয়</span>
+                  </div>
+                  <span className="text-xs font-black text-indigo-700">{formatBnCurrency(totalMonthlyPurchasesVal)}</span>
+                </div>
+
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-bold text-slate-700">নিট লাভ</span>
+                  </div>
+                  <span className="text-xs font-black text-emerald-700">{formatBnCurrency(netProfitVal)}</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Right Column */}
-          <div className="col-span-12 lg:col-span-4 flex flex-col gap-6">
-            {/* Monthly Financial Donut Chart Widget (Gol Chart) */}
-            <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-200/80 p-6 flex flex-col justify-between font-bengali">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-md shadow-orange-500/20">
-                    <TrendingUp className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-slate-800 text-sm">মাসিক সারসংক্ষেপ</h3>
-                    <p className="text-[10px] font-bold text-slate-400">আয়-ব্যয় ও নিট লাভের গোল চার্ট</p>
-                  </div>
+          {/* Stock Alert Card */}
+          <div className="col-span-12 lg:col-span-6 bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-200/80 overflow-hidden font-bengali">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-rose-500 flex items-center justify-center shadow-md shadow-rose-500/20">
+                  <TrendingDown className="w-4 h-4 text-white" />
                 </div>
-                <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <ArrowUpRight className="w-3 h-3" /> +{toBnNum(profitMarginPercent)}%
-                </span>
+                <p className="text-sm text-slate-800 font-black">স্টক সতর্কতা</p>
               </div>
-
-              <div className="flex flex-col items-center py-2 space-y-4">
-                {/* Circular Donut Chart */}
-                <div className="relative w-44 h-44 flex items-center justify-center min-w-0">
-                  {isMounted && (
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                      <PieChart>
-                        <Pie
-                          data={financialPieData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={52}
-                          outerRadius={72}
-                          paddingAngle={5}
-                          dataKey="value"
-                          stroke="none"
-                        >
-                          {financialPieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  )}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-                    <span className="text-[10px] font-bold text-slate-400">নিট লাভ</span>
-                    <span className="text-sm font-black text-slate-800 mt-0.5">{formatBnCurrency(netProfitVal)}</span>
-                    <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md mt-0.5 border border-emerald-100">
-                      {toBnNum(profitMarginPercent)}% মার্জিন
-                    </span>
-                  </div>
-                </div>
-
-                {/* Donut Chart Legend & Breakdown */}
-                <div className="w-full space-y-2.5">
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-orange-50/70 border border-orange-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-                      <span className="text-xs font-bold text-slate-700">মোট বিক্রয়</span>
-                    </div>
-                    <span className="text-xs font-black text-orange-700">{formatBnCurrency(totalMonthlySalesVal)}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
-                      <span className="text-xs font-bold text-slate-700">মোট ক্রয়</span>
-                    </div>
-                    <span className="text-xs font-black text-indigo-700">{formatBnCurrency(totalMonthlyPurchasesVal)}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                      <span className="text-xs font-bold text-slate-700">নিট লাভ</span>
-                    </div>
-                    <span className="text-xs font-black text-emerald-700">{formatBnCurrency(netProfitVal)}</span>
-                  </div>
-                </div>
-              </div>
+              <span className="text-[10px] font-black text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-full">জরুরি</span>
             </div>
-
-            {/* Stock Alert Card */}
-            <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-200/80 overflow-hidden font-bengali">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-rose-500 flex items-center justify-center shadow-md shadow-rose-500/20">
-                    <TrendingDown className="w-4 h-4 text-white" />
-                  </div>
-                  <p className="text-sm text-slate-800 font-black">স্টক সতর্কতা</p>
-                </div>
-                <span className="text-[10px] font-black text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-full">জরুরি</span>
-              </div>
-              <div className="p-4 space-y-2">
-                {lowStockAlertList.length > 0 ? (
-                  lowStockAlertList.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-rose-50/60 hover:bg-rose-50 transition-colors rounded-xl border border-rose-100">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-rose-500" />
-                        <p className="text-sm font-bold text-slate-800">{item.name}</p>
-                      </div>
-                      <span className="text-[11px] text-rose-600 font-black bg-white px-2.5 py-1 rounded-lg shadow-xs border border-rose-200">{item.stock}</span>
+            <div className="p-4 space-y-2">
+              {lowStockAlertList.length > 0 ? (
+                lowStockAlertList.map((item, i) => (
+                  <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-rose-50/60 hover:bg-rose-50 transition-colors rounded-xl border border-rose-100">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                      <p className="text-sm font-bold text-slate-800">{item.name}</p>
                     </div>
-                  ))
-                ) : (
-                  <div className="py-4 text-center text-xs text-emerald-600 font-bold bg-emerald-50/60 rounded-xl border border-emerald-100">
-                    ✓ কোনো কম স্টক পণ্য নেই! সব পর্যাপ্ত।
+                    <span className="text-[11px] text-rose-600 font-black bg-white px-2.5 py-1 rounded-lg shadow-xs border border-rose-200">{item.stock}</span>
                   </div>
-                )}
-                <Link href="/inventory" className="flex items-center justify-center gap-1 text-xs text-indigo-600 font-black hover:text-indigo-800 pt-1.5 transition-colors">
-                  সব পণ্য দেখুন <ArrowRight className="w-3 h-3" />
-                </Link>
-              </div>
+                ))
+              ) : (
+                <div className="py-4 text-center text-xs text-emerald-600 font-bold bg-emerald-50/60 rounded-xl border border-emerald-100">
+                  ✓ কোনো কম স্টক পণ্য নেই! সব পর্যাপ্ত।
+                </div>
+              )}
+              <Link href="/inventory" className="flex items-center justify-center gap-1 text-xs text-indigo-600 font-black hover:text-indigo-800 pt-1.5 transition-colors">
+                সব পণ্য দেখুন <ArrowRight className="w-3 h-3" />
+              </Link>
             </div>
           </div>
         </div>

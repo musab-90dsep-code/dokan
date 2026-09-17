@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Shell } from '@/components/Shell';
 import { api, ProductCostLogData, ProductCostLogEntry } from '@/lib/api';
-import { Search, Package, AlertCircle, AlertTriangle, Trash2, CheckCircle2, Edit3, History, ArrowUpRight, ArrowDownRight, RefreshCw, Calculator, Clock, Layers, Filter, Printer } from 'lucide-react';
+import { Search, Package, AlertCircle, AlertTriangle, CheckCircle2, Edit3, History, ArrowUpRight, ArrowDownRight, RefreshCw, Calculator, Clock, Layers, Filter, Printer } from 'lucide-react';
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from '@/components/ui/table';
@@ -589,17 +589,6 @@ export default function InventoryPage() {
                               <Edit3 className="w-4 h-4" />
                             </Button>
                           )}
-                          {canModifyData && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setDeletingProduct(product)}
-                              className="h-8 w-8 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                              title="মুছে ফেলুন"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -781,19 +770,7 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              <DialogFooter className="flex flex-row justify-between items-center gap-2 pt-2">
-                <Button 
-                  variant="outline" 
-                  onClick={() => {
-                    const prod = viewingProduct;
-                    setViewingProduct(null);
-                    setDeletingProduct(prod);
-                  }} 
-                  className="font-bengali text-rose-600 border-rose-200 hover:bg-rose-50 rounded-lg text-xs"
-                >
-                  <Trash2 className="w-3.5 h-3.5 mr-1" />
-                  মুছে ফেলুন
-                </Button>
+              <DialogFooter className="flex flex-row justify-end items-center gap-2 pt-2">
                 <Button variant="default" onClick={() => setViewingProduct(null)} className="font-bengali rounded-lg text-xs">
                   বন্ধ করুন
                 </Button>
