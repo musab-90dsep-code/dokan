@@ -597,8 +597,7 @@ export function CascadingProductSelector({
           const otherType = effectiveCementType === 'OPC' ? 'pcc' : 'opc';
           return pName.includes(bCore) && pName.includes(typeLower) && !pName.includes(otherType);
         } else {
-          // Untyped cement cannot match an OPC or PCC product
-          if (pName.includes('opc') || pName.includes('pcc')) return false;
+          // Untyped cement: match product by brand/sub-brand core
           if (pName === activeBrand.toLowerCase() || pName === `${activeBrand} সিমেন্ট`.toLowerCase()) return true;
           return pName.includes(bCore);
         }
@@ -640,7 +639,6 @@ export function CascadingProductSelector({
           const otherType = effectiveCementType === 'OPC' ? 'pcc' : 'opc';
           return activeBrand && pName.includes(bCore) && pName.includes(typeLower) && !pName.includes(otherType);
         }
-        if (pName.includes('opc') || pName.includes('pcc')) return false;
         return activeBrand && pName.includes(bCore);
       }
       if (category === 'রিং') {

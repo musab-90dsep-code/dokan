@@ -10,7 +10,7 @@ import {
   TrendingUp, RefreshCcw, Calendar, Search, Edit2,
   Wallet, Truck, PieChart, Printer, FileSpreadsheet, Scale,
   Plus, Percent, ArrowRight, Lightbulb, Settings2,
-  Download, ArrowLeft, Clock, Eye, CheckCircle2, ChevronRight,
+  Download, ArrowLeft, Clock, Eye, CheckCircle2, ChevronRight, ChevronLeft, CalendarDays,
   ShoppingBag, Layers, DollarSign, Calculator,
   Copy, Check
 } from 'lucide-react';
@@ -23,7 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { cn, fixMiliName, toBnNum, formatBnCurrency, formatDualStock } from '@/lib/utils';
-import { isToday, isSameMonth, isSameYear, format } from 'date-fns';
+import { isToday, isSameMonth, isSameYear, format, startOfMonth, endOfMonth, addMonths, subMonths, addDays, subDays } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import { printElement } from '@/lib/printUtils';
 import { toBengaliDigits } from '@/lib/bengaliUtils';
@@ -213,6 +213,7 @@ interface Expense {
   category: string;
   amount: number;
   date: string;
+  paymentMethod?: string;
   vendor?: string;
   status: string;
   createdAt: any;
@@ -488,6 +489,7 @@ function MasterReportsContent() {
         category: e.category_name || 'general',
         amount: Number(e.amount || 0),
         date: e.date || '',
+        paymentMethod: (e as any).payment_method || (e as any).paymentMethod || '',
         status: 'পরিশোধিত',
         createdAt: e.date
       })));
@@ -1303,6 +1305,17 @@ function MasterReportsContent() {
               });
               const customerPaymentInflow = dayCustomerPayments.reduce((sum, t) => sum + (t.paidAmount || t.amount || 0), 0);
 
+              // Filter payment_out (supplier payments & cash transfers) on selected date
+              const daySupplierPayments = transactions.filter(t => {
+                const tType = (t.type || '').toLowerCase();
+                const isPayOut = tType === 'payment_out' || (tType === 'expense' && t.raw?.transaction_type === 'payment_out');
+                if (!isPayOut) return false;
+                if (!t.createdAt) return false;
+                const d = new Date(t.createdAt);
+                return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === selectedDateStr;
+              });
+              const supplierPaymentOutflow = daySupplierPayments.reduce((sum, t) => sum + (t.paidAmount || t.amount || 0), 0);
+
               // Cash Inflows & Outflows
               const cashSalesInflow = dayOrders.reduce((sum, o) => sum + (o.paidAmount || 0), 0);
               const totalCashInflow = cashSalesInflow + customerPaymentInflow;
@@ -1311,7 +1324,7 @@ function MasterReportsContent() {
 
               const cashPurchaseOutflow = dayPurchases.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
               const expenseOutflow = dayExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-              const totalOutflow = cashPurchaseOutflow + expenseOutflow;
+              const totalOutflow = cashPurchaseOutflow + expenseOutflow + supplierPaymentOutflow;
               
               const netCashDifference = totalCashInflow - totalOutflow;
 
@@ -1643,16 +1656,74 @@ function MasterReportsContent() {
                 ? `${toBengaliDigits(parts[2])}/${toBengaliDigits(parts[1])}/${toBengaliDigits(parts[0])} ইং`
                 : toBengaliDigits(selectedDateStr);
 
-              // 1. Cash and Cheque collection
-              let dayCashCollected = 0;
+              // 1. Cash Balance and Cheque collection
+              const isToday = !salesStatementDate || salesStatementDate === format(new Date(), 'yyyy-MM-dd');
+              let reportCashBalance = totalCash || 0;
+
+              if (!isToday) {
+                let cumCashIn = 0;
+                let cumCashOut = 0;
+                transactions.forEach(t => {
+                  const d = safeParseDate(t.createdAt);
+                  if (!d || format(d, 'yyyy-MM-dd') > selectedDateStr) return;
+                  if (t.raw?.notes?.includes('isHistoricalLedger')) return;
+                  const tType = (t.type || '').toLowerCase();
+                  const pMethod = ((t.paymentMethod || '') as string).toLowerCase();
+                  const pAmt = Number(t.paidAmount || t.amount || 0);
+
+                  if (tType === 'sale' || tType === 'payment_in' || tType === 'income') {
+                    if (!pMethod.includes('cheque') && !pMethod.includes('bank') && !pMethod.includes('bkash')) {
+                      cumCashIn += pAmt;
+                    }
+                  } else if (tType === 'purchase' || tType === 'payment_out' || tType === 'expense') {
+                    if (!pMethod.includes('cheque') && !pMethod.includes('bank') && !pMethod.includes('bkash')) {
+                      cumCashOut += pAmt;
+                    }
+                  }
+                });
+                expenses.forEach(e => {
+                  const d = safeParseDate(e.createdAt || e.date);
+                  if (!d || format(d, 'yyyy-MM-dd') > selectedDateStr) return;
+                  const pMethod = (((e as any).paymentMethod || '') as string).toLowerCase();
+                  if (!pMethod.includes('bank') && !pMethod.includes('cheque')) {
+                    cumCashOut += Number(e.amount || 0);
+                  }
+                });
+                const calculatedBal = cumCashIn - cumCashOut;
+                if (calculatedBal !== 0) {
+                  reportCashBalance = calculatedBal;
+                }
+              }
+
+              // Cheque collections on selected date (both sales and payment_in)
               let dayChequeAmount = 0;
+              transactions.forEach(t => {
+                const d = safeParseDate(t.createdAt);
+                if (!d || format(d, 'yyyy-MM-dd') !== selectedDateStr) return;
+                const pMethod = ((t.paymentMethod || '') as string).toLowerCase();
+                const pAmt = Number(t.paidAmount || t.amount || 0);
+                if (pMethod.includes('cheque') || pMethod.includes('check') || pMethod.includes('চেক') || t.chequeNo) {
+                  dayChequeAmount += pAmt;
+                }
+              });
+
+              // Daily total cash inflow (sales cash + payment_in cash)
+              let dayTotalCashInflow = 0;
               dayAllOrders.forEach(o => {
                 const pMethod = ((o.paymentMethod || '') as string).toLowerCase();
-                const pAmt = Number(o.paidAmount) || 0;
-                if (pMethod.includes('cheque') || pMethod.includes('check') || pMethod.includes('চেক') || o.chequeNo) {
-                  dayChequeAmount += pAmt;
-                } else {
-                  dayCashCollected += pAmt;
+                if (!pMethod.includes('cheque') && !pMethod.includes('bank') && !pMethod.includes('bkash')) {
+                  dayTotalCashInflow += Number(o.paidAmount || 0);
+                }
+              });
+              transactions.forEach(t => {
+                const d = safeParseDate(t.createdAt);
+                if (!d || format(d, 'yyyy-MM-dd') !== selectedDateStr) return;
+                const tType = (t.type || '').toLowerCase();
+                if (tType === 'payment_in') {
+                  const pMethod = ((t.paymentMethod || '') as string).toLowerCase();
+                  if (!pMethod.includes('cheque') && !pMethod.includes('bank') && !pMethod.includes('bkash')) {
+                    dayTotalCashInflow += Number(t.paidAmount || t.amount || 0);
+                  }
                 }
               });
 
@@ -1800,7 +1871,7 @@ function MasterReportsContent() {
 ==== ডেইলি রিপোর্ট ====
 তারিখ - ${dateFormattedBn}
 
-১/ ক্যাশ = ${dayCashCollected > 0 ? toBengaliDigits(dayCashCollected.toLocaleString('en-IN')) : '০০'} ৳
+১/ ক্যাশ = ${reportCashBalance !== 0 ? toBengaliDigits(Math.round(reportCashBalance).toLocaleString('en-IN')) : '০০'} ৳
 ২/ চেক = ${dayChequeAmount > 0 ? `${toBengaliDigits(dayChequeAmount.toLocaleString('en-IN'))} ৳/` : '০/'}
     =====সিমেন্ট =====
 ${cementBlockLines.join('\n')}
@@ -1960,14 +2031,19 @@ ${cementBlockLines.join('\n')}
                                 ১/
                               </div>
                               <div>
-                                <p className="text-xs font-bold text-slate-500">ক্যাশ</p>
+                                <p className="text-xs font-bold text-slate-500">ক্যাশ ব্যালেন্স</p>
                                 <p className="text-lg font-black text-emerald-700">
-                                  {dayCashCollected > 0 ? toBengaliDigits(dayCashCollected.toLocaleString('en-IN')) : '০০'} ৳
+                                  {reportCashBalance !== 0 ? toBengaliDigits(Math.round(reportCashBalance).toLocaleString('en-IN')) : '০০'} ৳
                                 </p>
+                                {dayTotalCashInflow > 0 && (
+                                  <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                                    আজকের নগদ আদায়: ৳{toBengaliDigits(Math.round(dayTotalCashInflow).toLocaleString('en-IN'))}
+                                  </p>
+                                )}
                               </div>
                             </div>
                             <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-md">
-                              নগদ জমা
+                              ক্যাশ ব্যালেন্স
                             </span>
                           </div>
 
@@ -2161,7 +2237,7 @@ ${cementBlockLines.join('\n')}
                       <div className="space-y-4 text-sm font-bold leading-relaxed">
                         {/* ক্যাশ ও চেক */}
                         <div className="border border-black p-3 space-y-1">
-                          <p>১/ ক্যাশ = {dayCashCollected > 0 ? toBengaliDigits(dayCashCollected.toLocaleString('en-IN')) : '০০'} ৳</p>
+                          <p>১/ ক্যাশ = {reportCashBalance !== 0 ? toBengaliDigits(Math.round(reportCashBalance).toLocaleString('en-IN')) : '০০'} ৳</p>
                           <p>২/ চেক = {dayChequeAmount > 0 ? `${toBengaliDigits(dayChequeAmount.toLocaleString('en-IN'))} ৳/` : '০/'}</p>
                         </div>
 
@@ -2210,6 +2286,27 @@ ${cementBlockLines.join('\n')}
 
             {/* 5. ইনকাম বিবরণী (Income Statement / Profit & Loss - Standard UI & PDF Matched) */}
             {(activeTab === 'profit_loss' || activeTab === 'income_statement') && (() => {
+              // Helper to parse local date safely without UTC shift
+              const parseLocalDate = (dateStr: string) => {
+                if (!dateStr) return new Date();
+                const parts = dateStr.split('-');
+                if (parts.length >= 2) {
+                  const y = parseInt(parts[0], 10);
+                  const m = parseInt(parts[1], 10) - 1;
+                  const d = parts[2] ? parseInt(parts[2], 10) : 1;
+                  return new Date(y, m, d);
+                }
+                return new Date(dateStr);
+              };
+
+              const selectedDateObj = parseLocalDate(incomeStatementDate);
+              const monthStartObj = startOfMonth(selectedDateObj);
+              const monthEndObj = endOfMonth(selectedDateObj);
+              const selectedYear = selectedDateObj.getFullYear();
+              const selectedMonthStr = incomeStatementDate.slice(0, 7);
+              const currentMonthStr = format(new Date(), 'yyyy-MM');
+              const isCurrentMonthSelected = selectedMonthStr === currentMonthStr;
+
               // 1. Filter data based on selected period mode and date
               const filterByPeriod = (createdAt: any) => {
                 if (!createdAt) return true;
@@ -2223,6 +2320,57 @@ ${cementBlockLines.join('\n')}
                 }
                 return true; // 'all'
               };
+
+              const handlePrevPeriod = () => {
+                if (incomePeriodMode === 'month') {
+                  const prev = subMonths(selectedDateObj, 1);
+                  setIncomeStatementDate(format(prev, 'yyyy-MM-01'));
+                } else if (incomePeriodMode === 'today') {
+                  const prev = subDays(selectedDateObj, 1);
+                  setIncomeStatementDate(format(prev, 'yyyy-MM-dd'));
+                }
+              };
+
+              const handleNextPeriod = () => {
+                if (incomePeriodMode === 'month') {
+                  const next = addMonths(selectedDateObj, 1);
+                  setIncomeStatementDate(format(next, 'yyyy-MM-01'));
+                } else if (incomePeriodMode === 'today') {
+                  const next = addDays(selectedDateObj, 1);
+                  setIncomeStatementDate(format(next, 'yyyy-MM-dd'));
+                }
+              };
+
+              const handleCurrentPeriod = () => {
+                setIncomeStatementDate(format(new Date(), 'yyyy-MM-dd'));
+              };
+
+              const statementTitleBn = incomePeriodMode === 'month'
+                ? 'মাসিক ইনকাম বিবরণী'
+                : incomePeriodMode === 'today'
+                ? 'দৈনিক ইনকাম বিবরণী'
+                : 'ইনকাম বিবরণী (সকল সময়)';
+
+              const statementPeriodBn = incomePeriodMode === 'month'
+                ? `মাস: ${toBengaliDigits(format(selectedDateObj, 'MMMM - yyyy', { locale: bn }))} (${formatBnDate(monthStartObj, 'dd MMMM')} হতে ${formatBnDate(monthEndObj, 'dd MMMM yyyy')})`
+                : incomePeriodMode === 'today'
+                ? `তারিখ: ${formatBnDate(incomeStatementDate, 'dd MMMM - yyyy')}`
+                : 'সকল সময়ের সমন্বিত আর্থিক বিবরণী';
+
+              const allMonthsOfYear = [
+                { idx: 0, name: 'জানুয়ারি', short: 'জানু' },
+                { idx: 1, name: 'ফেব্রুয়ারি', short: 'ফেব' },
+                { idx: 2, name: 'মার্চ', short: 'মার্চ' },
+                { idx: 3, name: 'এপ্রিল', short: 'এপ্রিল' },
+                { idx: 4, name: 'মে', short: 'মে' },
+                { idx: 5, name: 'জুন', short: 'জুন' },
+                { idx: 6, name: 'জুলাই', short: 'জুলাই' },
+                { idx: 7, name: 'আগস্ট', short: 'আগ' },
+                { idx: 8, name: 'সেপ্টেম্বর', short: 'সেপ্টে' },
+                { idx: 9, name: 'অক্টোবর', short: 'অক্টো' },
+                { idx: 10, name: 'নভেম্বর', short: 'নভে' },
+                { idx: 11, name: 'ডিসেম্বর', short: 'ডিসে' },
+              ];
 
               const filteredOrders = orders.filter(o => filterByPeriod(o.createdAt));
               const filteredPurchases = purchases.filter(p => filterByPeriod(p.createdAt));
@@ -2278,7 +2426,10 @@ ${cementBlockLines.join('\n')}
               ).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
               const rodTotalDirectCost = rodPurchaseAmount + rodTruckFare + rodUnloadLabor;
-              const totalDirectCost = cementTotalDirectCost + rodTotalDirectCost;
+              
+              const totalOrderPurchaseAmount = filteredPurchases.reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+              const otherPurchaseAmount = Math.max(0, totalOrderPurchaseAmount - (cementPurchaseAmount + rodPurchaseAmount));
+              const totalDirectCost = cementTotalDirectCost + rodTotalDirectCost + otherPurchaseAmount;
 
               // 5. Operating Expenses (ব্যাবসা পরিচালন ব্যয়)
               const directExpIds = new Set(
@@ -2321,24 +2472,47 @@ ${cementBlockLines.join('\n')}
               return (
                 <div className="space-y-6 animate-in fade-in duration-300 font-bengali">
                   {/* Top Action Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-                    <div>
-                      <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                        <PieChart className="w-6 h-6 text-orange-600" />
-                        ইনকাম বিবরণী (Income Statement)
-                      </h1>
-                      <p className="text-xs text-slate-500 font-semibold mt-1">
-                        রড ও সিমেন্ট বিক্রয় আয়, ক্রয় ব্যয় ও ব্যবসা পরিচালন ব্যয়ের সমন্বিত লাভ-ক্ষতি বিবরণী
-                      </p>
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                          <PieChart className="w-6 h-6 text-orange-600" />
+                          ইনকাম বিবরণী (Income Statement)
+                        </h1>
+                        <p className="text-xs text-slate-500 font-semibold mt-1">
+                          রড ও সিমেন্ট বিক্রয় আয়, ক্রয় ব্যয় ও ব্যবসা পরিচালন ব্যয়ের সমন্বিত লাভ-ক্ষতি বিবরণী
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Print PDF Button */}
+                        <Button
+                          onClick={() => printElement('income-statement-printable-wrapper')}
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs gap-1.5"
+                        >
+                          <Printer className="w-4 h-4" />
+                          ইনকাম বিবরণী প্রিন্ট (PDF)
+                        </Button>
+
+                        {/* Back Button */}
+                        <button 
+                          onClick={() => setActiveTab('hub')} 
+                          className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1 transition-colors"
+                        >
+                          <ArrowLeft className="w-4 h-4 text-orange-500" /> সকল রিপোর্ট
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    {/* Filter & Navigation Bar */}
+                    <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
                       {/* Period Mode Selector */}
                       <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
                         <button
                           onClick={() => setIncomePeriodMode('today')}
                           className={cn(
-                            "px-2.5 py-1 text-xs font-bold rounded-lg transition-all",
+                            "px-3 py-1.5 text-xs font-bold rounded-lg transition-all",
                             incomePeriodMode === 'today' ? "bg-white text-orange-600 shadow-xs" : "text-slate-600 hover:text-slate-900"
                           )}
                         >
@@ -2347,16 +2521,16 @@ ${cementBlockLines.join('\n')}
                         <button
                           onClick={() => setIncomePeriodMode('month')}
                           className={cn(
-                            "px-2.5 py-1 text-xs font-bold rounded-lg transition-all",
+                            "px-3 py-1.5 text-xs font-bold rounded-lg transition-all",
                             incomePeriodMode === 'month' ? "bg-white text-orange-600 shadow-xs" : "text-slate-600 hover:text-slate-900"
                           )}
                         >
-                          এই মাস
+                          মাসিক বিবরণী
                         </button>
                         <button
                           onClick={() => setIncomePeriodMode('all')}
                           className={cn(
-                            "px-2.5 py-1 text-xs font-bold rounded-lg transition-all",
+                            "px-3 py-1.5 text-xs font-bold rounded-lg transition-all",
                             incomePeriodMode === 'all' ? "bg-white text-orange-600 shadow-xs" : "text-slate-600 hover:text-slate-900"
                           )}
                         >
@@ -2364,35 +2538,135 @@ ${cementBlockLines.join('\n')}
                         </button>
                       </div>
 
-                      {/* Date Picker Input */}
-                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
-                        <Calendar className="w-4 h-4 text-slate-400" />
-                        <input
-                          type="date"
-                          value={incomeStatementDate}
-                          onChange={(e) => setIncomeStatementDate(e.target.value)}
-                          className="bg-transparent text-xs font-bold text-slate-800 outline-hidden cursor-pointer"
-                        />
+                      {/* Date / Month Controls */}
+                      <div className="flex items-center gap-2">
+                        {incomePeriodMode === 'month' && (
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1">
+                            <button
+                              onClick={handlePrevPeriod}
+                              title="পূর্ববর্তী মাস"
+                              className="p-1.5 hover:bg-white hover:text-orange-600 rounded-lg text-slate-600 transition-colors"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            
+                            <div className="flex items-center gap-1 px-1">
+                              <Calendar className="w-4 h-4 text-orange-600" />
+                              <input
+                                type="month"
+                                value={selectedMonthStr}
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    setIncomeStatementDate(`${e.target.value}-01`);
+                                  }
+                                }}
+                                className="bg-transparent text-xs font-bold text-slate-800 outline-hidden cursor-pointer"
+                              />
+                            </div>
+
+                            <button
+                              onClick={handleNextPeriod}
+                              title="পরবর্তী মাস"
+                              className="p-1.5 hover:bg-white hover:text-orange-600 rounded-lg text-slate-600 transition-colors"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+
+                            {!isCurrentMonthSelected && (
+                              <button
+                                onClick={handleCurrentPeriod}
+                                className="ml-1 text-[11px] font-bold px-2 py-0.5 bg-orange-100 text-orange-700 hover:bg-orange-200 rounded-md transition-colors"
+                              >
+                                বর্তমান মাস
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {incomePeriodMode === 'today' && (
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1">
+                            <button
+                              onClick={handlePrevPeriod}
+                              title="আগের দিন"
+                              className="p-1.5 hover:bg-white hover:text-orange-600 rounded-lg text-slate-600 transition-colors"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </button>
+
+                            <div className="flex items-center gap-1 px-1">
+                              <Calendar className="w-4 h-4 text-slate-500" />
+                              <input
+                                type="date"
+                                value={incomeStatementDate}
+                                onChange={(e) => setIncomeStatementDate(e.target.value)}
+                                className="bg-transparent text-xs font-bold text-slate-800 outline-hidden cursor-pointer"
+                              />
+                            </div>
+
+                            <button
+                              onClick={handleNextPeriod}
+                              title="পরের দিন"
+                              className="p-1.5 hover:bg-white hover:text-orange-600 rounded-lg text-slate-600 transition-colors"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+
+                            {incomeStatementDate !== format(new Date(), 'yyyy-MM-dd') && (
+                              <button
+                                onClick={handleCurrentPeriod}
+                                className="ml-1 text-[11px] font-bold px-2 py-0.5 bg-orange-100 text-orange-700 hover:bg-orange-200 rounded-md transition-colors"
+                              >
+                                আজকে
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {incomePeriodMode === 'all' && (
+                          <div className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-orange-500" />
+                            সকল লেনদেনের সম্পূর্ণ হিসাব
+                          </div>
+                        )}
                       </div>
-
-                      {/* Print PDF Button */}
-                      <Button
-                        onClick={() => printElement('income-statement-printable-wrapper')}
-                        size="sm"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs gap-1.5"
-                      >
-                        <Printer className="w-4 h-4" />
-                        ইনকাম বিবরণী প্রিন্ট (PDF)
-                      </Button>
-
-                      {/* Back Button */}
-                      <button 
-                        onClick={() => setActiveTab('hub')} 
-                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center gap-1 transition-colors"
-                      >
-                        <ArrowLeft className="w-4 h-4 text-orange-500" /> সকল রিপোর্ট
-                      </button>
                     </div>
+
+                    {/* Quick Month Selector Pills when Month Mode is active */}
+                    {incomePeriodMode === 'month' && (
+                      <div className="pt-2 border-t border-slate-100">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[11px] font-bold text-slate-500">
+                            {toBengaliDigits(selectedYear)} সালের মাসসমূহ:
+                          </span>
+                          <span className="text-[11px] font-extrabold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
+                            নির্বাচিত: {format(selectedDateObj, 'MMMM yyyy', { locale: bn })}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-6 sm:grid-cols-12 gap-1">
+                          {allMonthsOfYear.map((m) => {
+                            const mStr = `${selectedYear}-${String(m.idx + 1).padStart(2, '0')}`;
+                            const isSelected = selectedMonthStr === mStr;
+                            return (
+                              <button
+                                key={m.idx}
+                                onClick={() => {
+                                  setIncomeStatementDate(`${mStr}-01`);
+                                  setIncomePeriodMode('month');
+                                }}
+                                className={cn(
+                                  "px-1.5 py-1 text-[11px] font-bold rounded-lg transition-all text-center",
+                                  isSelected 
+                                    ? "bg-orange-600 text-white shadow-xs font-black" 
+                                    : "bg-slate-50 hover:bg-orange-50 text-slate-700 hover:text-orange-700 border border-slate-200/70"
+                                )}
+                              >
+                                {m.short}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Top KPI Cards */}
@@ -2429,97 +2703,6 @@ ${cementBlockLines.join('\n')}
                     </Card>
                   </div>
 
-                  {/* Standard Interactive Breakdown Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Left: আয়ের খাত */}
-                    <Card className="border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
-                      <div className="p-4 bg-emerald-50/80 border-b border-emerald-100 flex items-center justify-between">
-                        <h3 className="font-black text-emerald-800 text-base flex items-center gap-1.5">
-                          <TrendingUp className="w-5 h-5 text-emerald-600" />
-                          আয়ের খাত (Revenue Breakdown)
-                        </h3>
-                        <span className="text-xs font-black bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
-                          মোট: {formatBnCurrency(totalSalesIncome)}
-                        </span>
-                      </div>
-                      <Table>
-                        <TableHeader className="bg-slate-50">
-                          <TableRow>
-                            <TableHead className="font-black text-xs">খাতের নাম</TableHead>
-                            <TableHead className="font-black text-xs text-center">পরিমাণ (ব্যাগ/কেজি)</TableHead>
-                            <TableHead className="font-black text-xs text-right px-4">টাকা (৳)</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          <TableRow className="border-b border-slate-100 text-xs">
-                            <TableCell className="font-bold text-slate-900">১. সিমেন্ট বিক্রয় বাবদ আয়</TableCell>
-                            <TableCell className="text-center font-bold text-slate-700">{formatBnQty(cementSalesQty)} ব্যাগ</TableCell>
-                            <TableCell className="text-right font-black text-slate-900 px-4">{formatBnCurrency(cementSalesAmount)}</TableCell>
-                          </TableRow>
-                          <TableRow className="border-b border-slate-100 text-xs">
-                            <TableCell className="font-bold text-slate-900">২. রড বিক্রয় বাবদ আয়</TableCell>
-                            <TableCell className="text-center font-bold text-slate-700">{formatBnQty(rodSalesQty)} কেজি</TableCell>
-                            <TableCell className="text-right font-black text-slate-900 px-4">{formatBnCurrency(rodSalesAmount)}</TableCell>
-                          </TableRow>
-                          {otherSalesAmount > 0 && (
-                            <TableRow className="border-b border-slate-100 text-xs">
-                              <TableCell className="font-bold text-slate-900">৩. অন্যান্য পণ্য বিক্রয় আয়</TableCell>
-                              <TableCell className="text-center font-bold text-slate-500">—</TableCell>
-                              <TableCell className="text-right font-black text-slate-900 px-4">{formatBnCurrency(otherSalesAmount)}</TableCell>
-                            </TableRow>
-                          )}
-                          <TableRow className="bg-emerald-50/50 font-black text-xs text-slate-900 border-t border-emerald-200">
-                            <TableCell colSpan={2} className="py-3 px-4 font-black text-emerald-900">মোট আয়</TableCell>
-                            <TableCell className="text-right text-emerald-700 text-sm px-4 font-black">{formatBnCurrency(totalSalesIncome)}</TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </Card>
-
-                    {/* Right: ব্যয়ের খাত (ক্রয় ও পরিচালনা ব্যয়) */}
-                    <Card className="border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
-                      <div className="p-4 bg-rose-50/80 border-b border-rose-100 flex items-center justify-between">
-                        <h3 className="font-black text-rose-800 text-base flex items-center gap-1.5">
-                          <Wallet className="w-5 h-5 text-rose-600" />
-                          ব্যয়ের খাত (Expenses Breakdown)
-                        </h3>
-                        <span className="text-xs font-black bg-rose-100 text-rose-800 px-2.5 py-0.5 rounded-full">
-                          সর্বমোট: {formatBnCurrency(grandTotalExpenses)}
-                        </span>
-                      </div>
-                      <Table>
-                        <TableHeader className="bg-slate-50">
-                          <TableRow>
-                            <TableHead className="font-black text-xs">খাত / বিবরণ</TableHead>
-                            <TableHead className="font-black text-xs text-center">পরিমাণ</TableHead>
-                            <TableHead className="font-black text-xs text-right px-4">টাকা (৳)</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          <TableRow className="border-b border-slate-100 text-xs bg-slate-50/50">
-                            <TableCell className="font-bold text-slate-900">সিমেন্ট ক্রয় ও আনুষঙ্গিক</TableCell>
-                            <TableCell className="text-center font-bold text-slate-700">{formatBnQty(cementPurchaseQty)} ব্যাগ</TableCell>
-                            <TableCell className="text-right font-black text-slate-900 px-4">{formatBnCurrency(cementTotalDirectCost)}</TableCell>
-                          </TableRow>
-                          <TableRow className="border-b border-slate-100 text-xs bg-slate-50/50">
-                            <TableCell className="font-bold text-slate-900">রড ক্রয় ও আনুষঙ্গিক</TableCell>
-                            <TableCell className="text-center font-bold text-slate-700">{formatBnQty(rodPurchaseQty)} কেজি</TableCell>
-                            <TableCell className="text-right font-black text-slate-900 px-4">{formatBnCurrency(rodTotalDirectCost)}</TableCell>
-                          </TableRow>
-                          <TableRow className="border-b border-slate-100 text-xs bg-amber-50/30">
-                            <TableCell className="font-bold text-amber-900">ব্যাবসা পরিচালন ব্যয় (OPEX)</TableCell>
-                            <TableCell className="text-center font-bold text-slate-500">—</TableCell>
-                            <TableCell className="text-right font-black text-amber-700 px-4">{formatBnCurrency(totalOperatingExpense)}</TableCell>
-                          </TableRow>
-                          <TableRow className="bg-rose-50/50 font-black text-xs text-slate-900 border-t border-rose-200">
-                            <TableCell colSpan={2} className="py-3 px-4 font-black text-rose-900">সর্বমোট খরচ</TableCell>
-                            <TableCell className="text-right text-rose-700 text-sm px-4 font-black">{formatBnCurrency(grandTotalExpenses)}</TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </Card>
-                  </div>
-
                   {/* Main Printable / Live Sheet Box (Exact 1-to-1 Match with User's PDF) */}
                   <div className="bg-slate-100 p-4 sm:p-8 rounded-2xl border border-slate-200 flex justify-center">
                     <div className="bg-white text-black p-6 sm:p-8 shadow-md rounded border border-black/20 w-full max-w-[650px] text-[13px] leading-tight">
@@ -2541,7 +2724,7 @@ ${cementBlockLines.join('\n')}
                                 padding: '8px 4px', 
                                 textAlign: 'center', 
                                 fontSize: '18px', 
-                                fontWeight: 900,
+                                fontWeight: 900, 
                                 color: '#000000'
                               }}
                             >
@@ -2549,7 +2732,7 @@ ${cementBlockLines.join('\n')}
                             </th>
                           </tr>
 
-                          {/* Row 2: ইনকাম বিবরণী */}
+                          {/* Row 2: ইনকাম বিবরণী শিরোনাম */}
                           <tr>
                             <th 
                               colSpan={4} 
@@ -2558,15 +2741,15 @@ ${cementBlockLines.join('\n')}
                                 padding: '5px 4px', 
                                 textAlign: 'center', 
                                 fontSize: '16px', 
-                                fontWeight: 800,
+                                fontWeight: 800, 
                                 color: '#000000'
                               }}
                             >
-                              ইনকাম বিবরণী
+                              {statementTitleBn}
                             </th>
                           </tr>
 
-                          {/* Row 3: তারিখ */}
+                          {/* Row 3: সময়কাল / তারিখ / মাস */}
                           <tr>
                             <th 
                               colSpan={4} 
@@ -2574,12 +2757,12 @@ ${cementBlockLines.join('\n')}
                                 border: '1.5px solid #000000', 
                                 padding: '5px 4px', 
                                 textAlign: 'center', 
-                                fontSize: '15px', 
-                                fontWeight: 700,
+                                fontSize: '14px', 
+                                fontWeight: 700, 
                                 color: '#000000'
                               }}
                             >
-                              {formatBnDate(incomeStatementDate, 'dd MMMM - yyyy')}
+                              {statementPeriodBn}
                             </th>
                           </tr>
 
@@ -2608,7 +2791,7 @@ ${cementBlockLines.join('\n')}
                                 padding: '6px 4px', 
                                 textAlign: 'center', 
                                 fontSize: '15px', 
-                                fontWeight: 900,
+                                fontWeight: 900, 
                                 color: '#000000'
                               }}
                             >
@@ -2633,6 +2816,16 @@ ${cementBlockLines.join('\n')}
                             <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnQty(rodSalesQty)}</td>
                             <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(rodSalesAmount)}</td>
                           </tr>
+
+                          {/* আয়ের খাত: ৩. অন্যান্য পণ্য বিক্রয় আয় (যদি থাকে) */}
+                          {otherSalesAmount > 0 && (
+                            <tr style={{ pageBreakInside: 'avoid' }}>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>৩</td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>অন্যান্য পণ্য বিক্রয় বাবদ আয়</td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center', fontWeight: 700, fontSize: '14px' }}>—</td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(otherSalesAmount)}</td>
+                            </tr>
+                          )}
 
                           {/* মোট আয় */}
                           <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
@@ -2743,6 +2936,34 @@ ${cementBlockLines.join('\n')}
                             </td>
                           </tr>
 
+                          {/* অন্যান্য পণ্য ক্রয় বাবদ ব্যয় (যদি থাকে) */}
+                          {otherPurchaseAmount > 0 && (
+                            <>
+                              <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
+                                <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
+                              </tr>
+                              <tr style={{ pageBreakInside: 'avoid' }}>
+                                <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontSize: '14px', fontWeight: 800, color: '#000000' }}>
+                                  অন্যান্য পণ্য
+                                </td>
+                              </tr>
+                              <tr style={{ pageBreakInside: 'avoid' }}>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>১</td>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>অন্যান্য পণ্য ক্রয় ব্যয়</td>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center', fontWeight: 700, fontSize: '14px' }}>—</td>
+                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(otherPurchaseAmount)}</td>
+                              </tr>
+                              <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                                <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                                  মোট অন্যান্য পণ্য বাবদ ব্যয়
+                                </td>
+                                <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                                  {formatBnNumber(otherPurchaseAmount)}
+                                </td>
+                              </tr>
+                            </>
+                          )}
+
                           {/* ফাঁকা স্পেসিং রো */}
                           <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
                             <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
@@ -2789,7 +3010,7 @@ ${cementBlockLines.join('\n')}
                           {/* মোট পরিচালন ব্যয় */}
                           <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
                             <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
-                              মোট
+                              মোট পরিচালন ব্যয়
                             </td>
                             <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
                               {formatBnNumber(totalOperatingExpense)}
@@ -2805,8 +3026,45 @@ ${cementBlockLines.join('\n')}
                               {formatBnNumber(grandTotalExpenses)}
                             </td>
                           </tr>
+
+                          {/* ফাঁকা স্পেসিং রো */}
+                          <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
+                            <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
+                          </tr>
+
+                          {/* 🎯 নিট লাভ / ক্ষতি সারাংশ */}
+                          <tr style={{ pageBreakInside: 'avoid', backgroundColor: '#f8fafc' }}>
+                            <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'left', fontWeight: 800, fontSize: '14px' }}>
+                              মোট বিক্রয় আয়
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 800, fontSize: '14px' }}>
+                              {formatBnNumber(totalSalesIncome)}
+                            </td>
+                          </tr>
+                          <tr style={{ pageBreakInside: 'avoid', backgroundColor: '#f8fafc' }}>
+                            <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'left', fontWeight: 800, fontSize: '14px' }}>
+                              সর্বমোট ব্যয় (ক্রয় + পরিচালনা)
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 800, fontSize: '14px' }}>
+                              {formatBnNumber(grandTotalExpenses)}
+                            </td>
+                          </tr>
+                          <tr style={{ pageBreakInside: 'avoid', fontWeight: 900, backgroundColor: netProfit >= 0 ? '#ecfdf5' : '#fff1f2' }}>
+                            <td colSpan={3} style={{ border: '2px solid #000000', padding: '8px 8px', textAlign: 'center', fontWeight: 900, fontSize: '16px' }}>
+                              {netProfit >= 0 ? 'নিট লাভ (Net Profit)' : 'নিট ক্ষতি (Net Loss)'}
+                            </td>
+                            <td style={{ border: '2px solid #000000', padding: '8px 8px', textAlign: 'right', fontWeight: 900, fontSize: '16px', color: netProfit >= 0 ? '#047857' : '#b91c1c' }}>
+                              {netProfit >= 0 ? formatBnNumber(netProfit) : `-${formatBnNumber(Math.abs(netProfit))}`}
+                            </td>
+                          </tr>
                         </tbody>
                       </table>
+
+                      {/* স্বাক্ষর ব্লক */}
+                      <div className="pt-12 flex justify-between text-xs font-bold px-4">
+                        <div className="border-t border-black px-6 pt-1 text-center">ক্যাশিয়ার / হিসাবরক্ষক</div>
+                        <div className="border-t border-black px-6 pt-1 text-center">ম্যানেজার / প্রোপ্রাইটর</div>
+                      </div>
                     </div>
                   </div>
 
@@ -2834,7 +3092,7 @@ ${cementBlockLines.join('\n')}
                               padding: '8px 4px', 
                               textAlign: 'center', 
                               fontSize: '18px', 
-                              fontWeight: 900,
+                              fontWeight: 900, 
                               color: '#000000'
                             }}
                           >
@@ -2842,7 +3100,7 @@ ${cementBlockLines.join('\n')}
                           </th>
                         </tr>
 
-                        {/* Row 2: ইনকাম বিবরণী */}
+                        {/* Row 2: ইনকাম বিবরণী শিরোনাম */}
                         <tr>
                           <th 
                             colSpan={4} 
@@ -2851,15 +3109,15 @@ ${cementBlockLines.join('\n')}
                               padding: '5px 4px', 
                               textAlign: 'center', 
                               fontSize: '16px', 
-                              fontWeight: 800,
+                              fontWeight: 800, 
                               color: '#000000'
                             }}
                           >
-                            ইনকাম বিবরণী
+                            {statementTitleBn}
                           </th>
                         </tr>
 
-                        {/* Row 3: তারিখ */}
+                        {/* Row 3: সময়কাল / তারিখ / মাস */}
                         <tr>
                           <th 
                             colSpan={4} 
@@ -2867,12 +3125,12 @@ ${cementBlockLines.join('\n')}
                               border: '1.5px solid #000000', 
                               padding: '5px 4px', 
                               textAlign: 'center', 
-                              fontSize: '15px', 
-                              fontWeight: 700,
+                              fontSize: '14px', 
+                              fontWeight: 700, 
                               color: '#000000'
                             }}
                           >
-                            {formatBnDate(incomeStatementDate, 'dd MMMM - yyyy')}
+                            {statementPeriodBn}
                           </th>
                         </tr>
 
@@ -2901,7 +3159,7 @@ ${cementBlockLines.join('\n')}
                               padding: '6px 4px', 
                               textAlign: 'center', 
                               fontSize: '15px', 
-                              fontWeight: 900,
+                              fontWeight: 900, 
                               color: '#000000'
                             }}
                           >
@@ -2926,6 +3184,16 @@ ${cementBlockLines.join('\n')}
                           <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnQty(rodSalesQty)}</td>
                           <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(rodSalesAmount)}</td>
                         </tr>
+
+                        {/* আয়ের খাত: ৩. অন্যান্য পণ্য বিক্রয় আয় (যদি থাকে) */}
+                        {otherSalesAmount > 0 && (
+                          <tr style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>৩</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>অন্যান্য পণ্য বিক্রয় বাবদ আয়</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center', fontWeight: 700, fontSize: '14px' }}>—</td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(otherSalesAmount)}</td>
+                          </tr>
+                        )}
 
                         {/* মোট আয় */}
                         <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
@@ -3036,6 +3304,34 @@ ${cementBlockLines.join('\n')}
                           </td>
                         </tr>
 
+                        {/* অন্যান্য পণ্য ক্রয় বাবদ ব্যয় (যদি থাকে) */}
+                        {otherPurchaseAmount > 0 && (
+                          <>
+                            <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
+                              <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
+                            </tr>
+                            <tr style={{ pageBreakInside: 'avoid' }}>
+                              <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontSize: '14px', fontWeight: 800, color: '#000000' }}>
+                                অন্যান্য পণ্য
+                              </td>
+                            </tr>
+                            <tr style={{ pageBreakInside: 'avoid' }}>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>১</td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>অন্যান্য পণ্য ক্রয় ব্যয়</td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center', fontWeight: 700, fontSize: '14px' }}>—</td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(otherPurchaseAmount)}</td>
+                            </tr>
+                            <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
+                              <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
+                                মোট অন্যান্য পণ্য বাবদ ব্যয়
+                              </td>
+                              <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
+                                {formatBnNumber(otherPurchaseAmount)}
+                              </td>
+                            </tr>
+                          </>
+                        )}
+
                         {/* ফাঁকা স্পেসিং রো */}
                         <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
                           <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
@@ -3082,7 +3378,7 @@ ${cementBlockLines.join('\n')}
                         {/* মোট পরিচালন ব্যয় */}
                         <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
                           <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
-                            মোট
+                            মোট পরিচালন ব্যয়
                           </td>
                           <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
                             {formatBnNumber(totalOperatingExpense)}
@@ -3098,9 +3394,175 @@ ${cementBlockLines.join('\n')}
                             {formatBnNumber(grandTotalExpenses)}
                           </td>
                         </tr>
+
+                        {/* ফাঁকা স্পেসিং রো */}
+                        <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
+                          <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
+                        </tr>
+
+                        {/* 🎯 নিট লাভ / ক্ষতি সারাংশ */}
+                        <tr style={{ pageBreakInside: 'avoid', backgroundColor: '#f8fafc' }}>
+                          <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'left', fontWeight: 800, fontSize: '14px' }}>
+                            মোট বিক্রয় আয়
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 800, fontSize: '14px' }}>
+                            {formatBnNumber(totalSalesIncome)}
+                          </td>
+                        </tr>
+                        <tr style={{ pageBreakInside: 'avoid', backgroundColor: '#f8fafc' }}>
+                          <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'left', fontWeight: 800, fontSize: '14px' }}>
+                            সর্বমোট ব্যয় (ক্রয় + পরিচালনা)
+                          </td>
+                          <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 800, fontSize: '14px' }}>
+                            {formatBnNumber(grandTotalExpenses)}
+                          </td>
+                        </tr>
+                        <tr style={{ pageBreakInside: 'avoid', fontWeight: 900, backgroundColor: netProfit >= 0 ? '#ecfdf5' : '#fff1f2' }}>
+                          <td colSpan={3} style={{ border: '2px solid #000000', padding: '8px 8px', textAlign: 'center', fontWeight: 900, fontSize: '16px' }}>
+                            {netProfit >= 0 ? 'নিট লাভ (Net Profit)' : 'নিট ক্ষতি (Net Loss)'}
+                          </td>
+                          <td style={{ border: '2px solid #000000', padding: '8px 8px', textAlign: 'right', fontWeight: 900, fontSize: '16px', color: netProfit >= 0 ? '#047857' : '#b91c1c' }}>
+                            {netProfit >= 0 ? formatBnNumber(netProfit) : `-${formatBnNumber(Math.abs(netProfit))}`}
+                          </td>
+                        </tr>
                       </tbody>
                     </table>
+
+                    {/* স্বাক্ষর ব্লক */}
+                    <div className="pt-12 flex justify-between text-xs font-bold px-4">
+                      <div className="border-t border-black px-6 pt-1 text-center">ক্যাশিয়ার / হিসাবরক্ষক</div>
+                      <div className="border-t border-black px-6 pt-1 text-center">ম্যানেজার / প্রোপ্রাইটর</div>
+                    </div>
                   </div>
+
+                  {/* 📅 Yearly Monthly Breakdown Summary Section */}
+                  <Card className="p-5 border-slate-200 rounded-2xl bg-white shadow-xs space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                      <div>
+                        <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                          <CalendarDays className="w-5 h-5 text-orange-600" />
+                          {toBengaliDigits(selectedYear)} সালের মাসওয়ারি ইনকাম বিবরণীর সারসংক্ষেপ
+                        </h3>
+                        <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                          যেকোনো মাসের নামের পাশের বাটনে ক্লিক করে সেই মাসের পূর্ণ বিবরণী সাদা পেজে ও প্রিন্টে দেখতে পারবেন
+                        </p>
+                      </div>
+                      <div className="text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 px-3 py-1 rounded-xl">
+                        বছর: {toBengaliDigits(selectedYear)}
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                      <Table>
+                        <TableHeader className="bg-slate-50">
+                          <TableRow>
+                            <TableHead className="font-black text-xs">মাস</TableHead>
+                            <TableHead className="font-black text-xs text-right">মোট বিক্রয় (৳)</TableHead>
+                            <TableHead className="font-black text-xs text-right">মোট ক্রয় (৳)</TableHead>
+                            <TableHead className="font-black text-xs text-right">পরিচালন ব্যয় (৳)</TableHead>
+                            <TableHead className="font-black text-xs text-right">সর্বমোট ব্যয় (৳)</TableHead>
+                            <TableHead className="font-black text-xs text-right">নিট লাভ / ক্ষতি (৳)</TableHead>
+                            <TableHead className="font-black text-xs text-center">অ্যাকশন</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {allMonthsOfYear.map(m => {
+                            const mStr = `${selectedYear}-${String(m.idx + 1).padStart(2, '0')}`;
+                            const isSelected = mStr === selectedMonthStr && incomePeriodMode === 'month';
+
+                            // Monthly calculations for this specific month in the selected year
+                            const mOrders = orders.filter(o => {
+                              if (!o.createdAt) return false;
+                              const d = typeof o.createdAt === 'string' ? new Date(o.createdAt) : o.createdAt;
+                              return !isNaN(d.getTime()) && format(d, 'yyyy-MM') === mStr;
+                            });
+                            const mPurchases = purchases.filter(p => {
+                              if (!p.createdAt) return false;
+                              const d = typeof p.createdAt === 'string' ? new Date(p.createdAt) : p.createdAt;
+                              return !isNaN(d.getTime()) && format(d, 'yyyy-MM') === mStr;
+                            });
+                            const mExpenses = expenses.filter(e => {
+                              const dt = e.createdAt || e.date;
+                              if (!dt) return false;
+                              const d = typeof dt === 'string' ? new Date(dt) : dt;
+                              return !isNaN(d.getTime()) && format(d, 'yyyy-MM') === mStr;
+                            });
+
+                            const mSales = mOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+                            const mPurchTotal = mPurchases.reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+                            const mDirectExp = mExpenses.filter(e => 
+                              ((e.title?.includes('সিমেন্ট') || e.title?.includes('রড')) && 
+                               (e.title?.includes('গাড়ি') || e.title?.includes('ভাড়া') || e.title?.includes('লেবার') || e.title?.includes('আনলোড')))
+                            ).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+                            const mCogs = mPurchTotal + mDirectExp;
+                            const mOpex = mExpenses.filter(e => 
+                              !((e.title?.includes('সিমেন্ট') || e.title?.includes('রড')) && 
+                                (e.title?.includes('গাড়ি') || e.title?.includes('ভাড়া') || e.title?.includes('লেবার') || e.title?.includes('আনলোড')))
+                            ).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+                            const mTotalExp = mCogs + mOpex;
+                            const mNet = mSales - mTotalExp;
+
+                            return (
+                              <TableRow 
+                                key={m.idx} 
+                                className={cn(
+                                  "text-xs transition-colors",
+                                  isSelected ? "bg-orange-50/80 font-black" : "hover:bg-slate-50/80"
+                                )}
+                              >
+                                <TableCell className="font-black text-slate-900">
+                                  <div className="flex items-center gap-1.5">
+                                    <span>{m.name}</span>
+                                    {isSelected && (
+                                      <span className="text-[10px] bg-orange-600 text-white px-1.5 py-0.5 rounded-full font-bold">
+                                        সাদা পেজে চলমান
+                                      </span>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right font-bold text-emerald-700">
+                                  {formatBnCurrency(mSales)}
+                                </TableCell>
+                                <TableCell className="text-right font-bold text-slate-700">
+                                  {formatBnCurrency(mCogs)}
+                                </TableCell>
+                                <TableCell className="text-right font-bold text-amber-700">
+                                  {formatBnCurrency(mOpex)}
+                                </TableCell>
+                                <TableCell className="text-right font-bold text-rose-700">
+                                  {formatBnCurrency(mTotalExp)}
+                                </TableCell>
+                                <TableCell className={cn(
+                                  "text-right font-black",
+                                  mNet >= 0 ? "text-emerald-700" : "text-rose-600"
+                                )}>
+                                  {formatBnCurrency(mNet)}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Button
+                                    size="sm"
+                                    variant={isSelected ? "default" : "outline"}
+                                    onClick={() => {
+                                      setIncomeStatementDate(`${mStr}-01`);
+                                      setIncomePeriodMode('month');
+                                    }}
+                                    className={cn(
+                                      "h-7 text-xs font-bold rounded-lg px-2.5",
+                                      isSelected
+                                        ? "bg-orange-600 hover:bg-orange-700 text-white"
+                                        : "border-slate-200 hover:bg-orange-50 hover:text-orange-600"
+                                    )}
+                                  >
+                                    সাদা পেজে দেখুন
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </Card>
                 </div>
               );
             })()}
