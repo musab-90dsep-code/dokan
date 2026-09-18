@@ -6,7 +6,7 @@ import { bn } from 'date-fns/locale';
 import { 
   ArrowLeft, Printer, Download, Mail, Edit, 
   Receipt, User, CreditCard, FileText, Trash2, 
-  ArrowUpRight, ArrowDownRight, Landmark, Wallet, CheckCircle2
+  ArrowUpRight, ArrowDownRight, Landmark, Wallet, CheckCircle2, HandCoins
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -80,22 +80,31 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
                            (voucher.partyName && voucher.partyName !== 'কাস্টমার' && voucher.partyName !== 'সরবরাহকারী' && voucher.partyName !== 'দোকান ক্যাশ / মূলধন' ? voucher.partyName : '') || 
                            'ক্যাশে জমা';
 
-  const isIncome = (rawType === 'income' || rawType === 'payment_in') && !isAddMoney;
-  const isExpense = (rawType === 'expense' || rawType === 'payment_out') && !isAddMoney;
+  const isLoanIn = meta.isLoanIn === true || 
+                   voucher.category === 'লোন গ্রহণ' || 
+                   voucher.raw?.transaction_type === 'loan_in' ||
+                   rawNoteStr.includes('[লোন গ্রহণ');
+
+  const isIncome = (rawType === 'income' || rawType === 'payment_in' || isLoanIn) && !isAddMoney;
+  const isExpense = (rawType === 'expense' || rawType === 'payment_out') && !isAddMoney && !isLoanIn;
 
   const amount = Number(voucher.amount || 0);
   const discountAmount = Number(voucher.discountAmount || 0);
   const previousBalance = Number(voucher.previousBalance || 0);
-  const remainingBalance = isIncome ? (previousBalance - amount - discountAmount) : (previousBalance - amount);
+  const remainingBalance = isLoanIn 
+    ? (previousBalance + amount) 
+    : isIncome 
+      ? (previousBalance - amount - discountAmount) 
+      : (previousBalance - amount);
 
-  const voucherNo = voucher.voucherNo || voucher.paymentId || (voucher.id ? (voucher.id.startsWith('TRX') || voucher.id.startsWith('RCV') || voucher.id.startsWith('PAY') ? voucher.id : `${isAddMoney ? 'ADD' : isIncome ? 'RCV' : 'PAY'}-${voucher.id.slice(-6).toUpperCase()}`) : 'RCV-000101');
+  const voucherNo = voucher.voucherNo || voucher.paymentId || (voucher.id ? (voucher.id.startsWith('TRX') || voucher.id.startsWith('RCV') || voucher.id.startsWith('PAY') || voucher.id.startsWith('LOAN') ? voucher.id : `${isLoanIn ? 'LOAN' : isAddMoney ? 'ADD' : isIncome ? 'RCV' : 'PAY'}-${voucher.id.slice(-6).toUpperCase()}`) : 'RCV-000101');
 
   const pm = (voucher.paymentMethod || meta.paymentMethodName || 'Cash').toLowerCase();
   const isBank = pm.includes('bank') || pm.includes('ব্যাংক');
   const isCheque = pm.includes('check') || pm.includes('cheque') || pm.includes('চেক');
   const paymentMethodLabel = isBank ? '🏦 ব্যাংক ডিপোজিট' : isCheque ? '📄 চেক' : '💵 নগদ';
 
-  const categoryName = isAddMoney ? 'টাকা যোগ' : (voucher.category || (isIncome ? 'পেমেন্ট গ্রহণ' : isExpense ? 'পেমেন্ট প্রদান' : 'লেনদেন'));
+  const categoryName = isLoanIn ? 'লোন গ্রহণ' : isAddMoney ? 'টাকা যোগ' : (voucher.category || (isIncome ? 'পেমেন্ট গ্রহণ' : isExpense ? 'পেমেন্ট প্রদান' : 'লেনদেন'));
 
   return (
     <div className="w-full bg-slate-100 min-h-screen p-4 sm:p-6 font-bengali space-y-4 text-slate-800">
@@ -121,20 +130,22 @@ export const PaymentVoucherDetailsView: React.FC<PaymentVoucherDetailsViewProps>
               <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
                 {isAddMoney ? (
                   <Wallet className="w-5 h-5 text-blue-600" />
+                ) : isLoanIn ? (
+                  <HandCoins className="w-5 h-5 text-purple-600" />
                 ) : isIncome ? (
                   <ArrowDownRight className="w-5 h-5 text-emerald-600" />
                 ) : (
                   <ArrowUpRight className="w-5 h-5 text-rose-600" />
                 )}
-                {isAddMoney ? 'টাকা যোগ বিবরণী' : isIncome ? 'পেমেন্ট গ্রহণ / জমার বিবরণী' : isExpense ? 'পেমেন্ট প্রদান বিবরণী' : 'লেনদেন বিবরণী'}
+                {isLoanIn ? 'লোন গ্রহণ বিবরণী (সরবরাহকারী ঋণ)' : isAddMoney ? 'টাকা যোগ বিবরণী' : isIncome ? 'পেমেন্ট গ্রহণ / জমার বিবরণী' : isExpense ? 'পেমেন্ট প্রদান বিবরণী' : 'লেনদেন বিবরণী'}
               </h1>
               <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
                 {toBengaliDigits(voucherNo)}
               </span>
               <span className={cn("text-xs font-black px-2.5 py-0.5 rounded-full border", 
-                isAddMoney ? "bg-blue-100 text-blue-800 border-blue-200" : isIncome ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-rose-100 text-rose-800 border-rose-200"
+                isLoanIn ? "bg-purple-100 text-purple-800 border-purple-200" : isAddMoney ? "bg-blue-100 text-blue-800 border-blue-200" : isIncome ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-rose-100 text-rose-800 border-rose-200"
               )}>
-                {isAddMoney ? 'টাকা যোগ' : isIncome ? 'প্রাপ্ত জমা' : 'প্রদত্ত অর্থ'}
+                {isLoanIn ? 'লোন গ্রহণ' : isAddMoney ? 'টাকা যোগ' : isIncome ? 'প্রাপ্ত জমা' : 'প্রদত্ত অর্থ'}
               </span>
             </div>
             <p className="text-xs text-slate-500 font-semibold mt-0.5">

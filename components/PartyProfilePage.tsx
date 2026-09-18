@@ -8,7 +8,7 @@ import {
   CreditCard, ChevronLeft, ChevronRight, Filter, Calendar, RotateCcw,
   MoreVertical, ChevronFirst, ChevronLast, Mail, FileText,
   FilePlus, Edit3, UserCheck, MessageSquare, X, Truck, Users, Trash2,
-  Plus, CheckCircle2, Clock, AlertCircle, Search
+  Plus, CheckCircle2, Clock, AlertCircle, Search, HandCoins
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -110,6 +110,8 @@ export interface TransactionDoc {
   discount?: number;
   shippingCost?: number;
   laborCost?: number;
+  shippingPayer?: 'shop' | 'supplier';
+  laborPayer?: 'shop' | 'supplier';
   previousBalance?: number;
   description?: string;
   createdAt: any;
@@ -298,6 +300,35 @@ export function generateLedgerEntries(
           orderId: tx.id,
           dueAmount: 0
         });
+      } else if (txType === 'loan_in') {
+        const loanAmount = Number(tx.totalAmount || tx.paidAmount || 0);
+        cumulativeBalance += loanAmount;
+        const loanNo = tx.invoiceNo || `LOAN-${tx.id.slice(0, 5).toUpperCase()}`;
+
+        let pMethodLabel = 'নগদ';
+        if (tx.paymentMethod === 'bank') pMethodLabel = 'ব্যাংক জমা';
+        else if (tx.paymentMethod === 'cheque' || tx.chequeNo) {
+          pMethodLabel = `চেক (${tx.bankName ? tx.bankName + ' - ' : ''}নম্বর: ${tx.chequeNo || '—'})`;
+        } else if (tx.paymentMethod === 'bkash' || tx.paymentMethod === 'mobile') {
+          pMethodLabel = 'মোবাইল ব্যাংকিং';
+        }
+
+        const loanDesc = `লোন গ্রহণ / ঋণ গ্রহণ [পদ্ধতি: ${pMethodLabel}]${userNote ? ` - ${userNote}` : ''}`;
+
+        entries.push({
+          id: `${tx.id}-loan`,
+          date: txDate,
+          refNo: loanNo,
+          type: 'PURCHASE',
+          description: loanDesc,
+          invoiceNo: loanNo,
+          debit: loanAmount,
+          credit: 0,
+          runningBalance: cumulativeBalance,
+          paymentMethod: pMethodLabel,
+          orderId: tx.id,
+          dueAmount: 0
+        });
       } else if (txType === 'sale_return' || txType === 'purchase_return') {
         const returnAmount = Number(tx.totalAmount || 0);
         cumulativeBalance -= returnAmount;
@@ -350,25 +381,89 @@ export function generateLedgerEntries(
 
         const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || (tx as any).transportCost || 0);
         const labCost = Number(meta.laborCost || (tx as any).laborCost || (tx as any).labor_cost || 0);
-        const extraCharges = (!isCustomer || tx.transactionType === 'purchase') ? (shipCost + labCost) : 0;
+        const shipPayer = meta.shippingPayer || (tx as any).shippingPayer || 'shop';
+        const laborPayer = meta.laborPayer || (tx as any).laborPayer || 'shop';
+        const isPurchaseTx = !isCustomer || tx.transactionType === 'purchase';
 
-        const debitVal = Math.max(0, Number(tx.totalAmount || 0) - extraCharges);
-        cumulativeBalance += debitVal;
+        if (isPurchaseTx) {
+          const goodsVal = Number(tx.subtotal) > 0 
+            ? Math.max(0, Number(tx.subtotal) - invDiscount)
+            : Math.max(0, Number(tx.totalAmount || 0) - (shipCost + labCost) - invDiscount);
 
-        entries.push({
-          id: `${tx.id}-bill`,
-          date: txDate,
-          refNo: invNo,
-          type: isCustomer ? 'SALE' : 'PURCHASE',
-          description: itemDesc,
-          invoiceNo: invNo,
-          debit: debitVal,
-          credit: 0,
-          runningBalance: cumulativeBalance,
-          paymentMethod: '—',
-          orderId: tx.id,
-          dueAmount: Number(tx.dueAmount || 0)
-        });
+          cumulativeBalance += goodsVal;
+
+          entries.push({
+            id: `${tx.id}-bill`,
+            date: txDate,
+            refNo: invNo,
+            type: 'PURCHASE',
+            description: itemDesc,
+            invoiceNo: invNo,
+            debit: goodsVal,
+            credit: 0,
+            runningBalance: cumulativeBalance,
+            paymentMethod: '—',
+            orderId: tx.id,
+            dueAmount: Number(tx.dueAmount || 0)
+          });
+
+          // Separate row for supplier-paid shipping charge
+          if (shipPayer === 'supplier' && shipCost > 0) {
+            cumulativeBalance += shipCost;
+            entries.push({
+              id: `${tx.id}-shipping`,
+              date: txDate,
+              refNo: invNo,
+              type: 'PURCHASE',
+              description: `গাড়ি ভাড়া / পরিবহন খরচ (সাপ্লায়ার বহন করবে) [চালান: #${invNo}]`,
+              invoiceNo: invNo,
+              debit: shipCost,
+              credit: 0,
+              runningBalance: cumulativeBalance,
+              paymentMethod: '—',
+              orderId: tx.id,
+              dueAmount: 0
+            });
+          }
+
+          // Separate row for supplier-paid labor charge
+          if (laborPayer === 'supplier' && labCost > 0) {
+            cumulativeBalance += labCost;
+            entries.push({
+              id: `${tx.id}-labor`,
+              date: txDate,
+              refNo: invNo,
+              type: 'PURCHASE',
+              description: `আনলোডিং / লেবার খরচ (সাপ্লায়ার বহন করবে) [চালান: #${invNo}]`,
+              invoiceNo: invNo,
+              debit: labCost,
+              credit: 0,
+              runningBalance: cumulativeBalance,
+              paymentMethod: '—',
+              orderId: tx.id,
+              dueAmount: 0
+            });
+          }
+        } else {
+          // Normal Customer Sale
+          const debitVal = Math.max(0, Number(tx.totalAmount || 0));
+          cumulativeBalance += debitVal;
+
+          entries.push({
+            id: `${tx.id}-bill`,
+            date: txDate,
+            refNo: invNo,
+            type: 'SALE',
+            description: itemDesc,
+            invoiceNo: invNo,
+            debit: debitVal,
+            credit: 0,
+            runningBalance: cumulativeBalance,
+            paymentMethod: '—',
+            orderId: tx.id,
+            dueAmount: Number(tx.dueAmount || 0)
+          });
+        }
 
         const creditVal = Number(tx.paidAmount || 0);
         if (creditVal > 0) {
@@ -580,6 +675,8 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           discount: Number(t.discount) > 0 ? Number(t.discount) : Number(meta.discountFlat || meta.discount || meta.discountAmount || meta.cartTotalDiscount || meta.commission || meta.commissionAmount || 0),
           shippingCost: Number(meta.shippingCost || (t as any).shipping_cost || 0),
           laborCost: Number(meta.laborCost || (t as any).labor_cost || 0),
+          shippingPayer: meta.shippingPayer || 'shop',
+          laborPayer: meta.laborPayer || 'shop',
           siteName: t.site_name || meta.siteName || meta.site_name || '',
           siteAddress: t.site_address || meta.siteAddress || meta.site_address || '',
           siteContact: t.site_contact || meta.siteContact || meta.site_contact || '',
@@ -705,8 +802,13 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
   const totalBill = isEngineer
     ? engineerTotalCommissionEarned
     : transactions.reduce((a, o) => {
+        if (o.status === 'cancelled' || o.status === 'rejected' || o.status === 'pending' || o.status === 'draft') return a;
+        const txType = o.transactionType || (isCustomer ? 'sale' : 'purchase');
+        if (isCustomer && txType !== 'sale') return a;
+        if (isSupplier && txType !== 'purchase') return a;
+
         let extraCharges = 0;
-        if ((!isCustomer || o.transactionType === 'purchase') && o.transactionType === 'purchase') {
+        if (txType === 'purchase') {
           let meta: any = {};
           if (o.notes && typeof o.notes === 'string' && o.notes.trim().startsWith('{')) {
             try {
@@ -715,7 +817,11 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           }
           const ship = Number(meta.shippingCost || o.shippingCost || (o as any).shipping_cost || (o as any).transportCost || 0);
           const lab = Number(meta.laborCost || o.laborCost || (o as any).labor_cost || 0);
-          extraCharges = ship + lab;
+          const shipPayer = meta.shippingPayer || (o as any).shippingPayer || 'shop';
+          const laborPayer = meta.laborPayer || (o as any).laborPayer || 'shop';
+          const deductShip = shipPayer !== 'supplier' ? ship : 0;
+          const deductLab = laborPayer !== 'supplier' ? lab : 0;
+          extraCharges = deductShip + deductLab;
         }
         const effAmount = Math.max(0, Number(o.totalAmount || 0) - extraCharges);
         return a + effAmount;
@@ -1684,6 +1790,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                                 setSelectedInvoiceTx(matchingTx);
                               } else {
                                 const isPayment = entry.type === 'PAYMENT';
+                                const isLoan = entry.description.includes('লোন গ্রহণ');
                                 setSelectedInvoiceTx({
                                   id: entry.orderId || entry.refNo || entry.id,
                                   orderId: entry.refNo,
@@ -1699,7 +1806,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                                   dueAmount: isPayment ? 0 : (entry.dueAmount !== undefined ? entry.dueAmount : entry.debit),
                                   items: [],
                                   paymentMethod: entry.paymentMethod || 'cash',
-                                  transactionType: isPayment ? 'payment' : (isCustomer ? 'sale' : 'purchase'),
+                                  transactionType: isLoan ? 'loan_in' : (isPayment ? 'payment' : (isCustomer ? 'sale' : 'purchase')),
                                   createdAt: entry.date,
                                   description: entry.description
                                 });
@@ -1745,7 +1852,12 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                             </TableCell>
 
                             <TableCell className="py-3.5 px-4 text-center">
-                              {isSale ? (
+                              {entry.description.includes('লোন গ্রহণ') ? (
+                                <span className="inline-flex items-center gap-1 bg-purple-100/90 text-purple-800 font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-2xs">
+                                  <HandCoins className="w-3 h-3 text-purple-600" />
+                                  <span>লোন গ্রহণ</span>
+                                </span>
+                              ) : isSale ? (
                                 <span className="inline-flex items-center gap-1 bg-emerald-100/90 text-emerald-800 font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-2xs">
                                   <FileText className="w-3 h-3 text-emerald-600" />
                                   <span>{isCustomer ? 'বিক্রি (চালান)' : 'ক্রয় (চালান)'}</span>
@@ -1939,17 +2051,17 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                     <TableRow className="text-xs text-slate-700 font-black">
                       <TableHead className="py-3 px-4 text-left font-black text-slate-900">ইনভয়েস নং</TableHead>
                       <TableHead className="py-3 px-4 text-left font-black text-slate-900">তারিখ</TableHead>
-                      <TableHead className="py-3 px-4 text-left font-black text-slate-900">{isEngineer ? 'গ্রাহকের নাম' : 'পণ্যর ধরণ'}</TableHead>
-                      <TableHead className="py-3 px-4 text-left font-black text-slate-900">{isEngineer ? 'পণ্য ও পরিমাণ' : 'মোট পরিমাণ (৳)'}</TableHead>
-                      <TableHead className="py-3 px-4 text-right font-black text-slate-900">{isEngineer ? 'চালান মূল্য (৳)' : 'প্রাপ্তি (৳)'}</TableHead>
+                      <TableHead className="py-3 px-4 text-left font-black text-slate-900">{isEngineer ? 'গ্রাহকের নাম' : isSupplier ? 'সরবরাহকৃত পণ্য' : 'পণ্যর ধরণ'}</TableHead>
+                      <TableHead className="py-3 px-4 text-left font-black text-slate-900">{isEngineer ? 'পণ্য ও পরিমাণ' : isSupplier ? 'চালান মূল্য (৳)' : 'মোট পরিমাণ (৳)'}</TableHead>
+                      <TableHead className="py-3 px-4 text-right font-black text-slate-900">{isEngineer ? 'চালান মূল্য (৳)' : isSupplier ? 'পরিশোধ (৳)' : 'প্রাপ্তি (৳)'}</TableHead>
                       <TableHead className="py-3 px-4 text-right font-black text-slate-900">{isEngineer ? 'অর্জিত কমিশন (৳)' : 'বকেয়া (৳)'}</TableHead>
                       <TableHead className="py-3 px-4 text-center font-black text-slate-900">স্ট্যাটাস</TableHead>
                       <TableHead className="py-3 px-4 text-center font-black text-slate-900">অ্যাকশন</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody className="text-xs font-bold text-slate-800 divide-y divide-slate-100">
-                    {siteTransactions.filter(t => t.transactionType === 'sale' || !t.transactionType).length > 0 ? (
-                      siteTransactions.filter(t => t.transactionType === 'sale' || !t.transactionType).map(t => {
+                    {siteTransactions.filter(t => isSupplier ? t.transactionType === 'purchase' : (t.transactionType === 'sale' || !t.transactionType)).length > 0 ? (
+                      siteTransactions.filter(t => isSupplier ? t.transactionType === 'purchase' : (t.transactionType === 'sale' || !t.transactionType)).map(t => {
                         let meta: any = {};
                         if (t.notes && typeof t.notes === 'string' && t.notes.trim().startsWith('{')) {
                           try { meta = JSON.parse(t.notes.split('\n')[0]); } catch {}
@@ -1958,7 +2070,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                         const rodKg = Number(meta.engineerRodKg || (t as any).engineerRodKg || 0);
                         const cemBags = Number(meta.engineerCementBags || (t as any).engineerCementBags || 0);
 
-                        const due = t.dueAmount || (t.totalAmount - (t.paidAmount || 0));
+                        const due = t.dueAmount !== undefined ? t.dueAmount : (t.totalAmount - (t.paidAmount || 0));
                         const isPaid = due <= 0;
                         const isPartial = !isPaid && (t.paidAmount || 0) > 0;
                         return (
@@ -1968,7 +2080,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                             onClick={() => setSelectedInvoiceTx(t)}
                           >
                             <TableCell className="py-3.5 px-4 text-left font-mono font-bold text-blue-600 hover:underline">
-                              <div>{t.invoiceNo || `INV-${t.id.slice(0, 6).toUpperCase()}`}</div>
+                              <div>{t.invoiceNo || (isSupplier ? `PUR-${t.id.slice(0, 6).toUpperCase()}` : `INV-${t.id.slice(0, 6).toUpperCase()}`)}</div>
                               {t.siteName && (
                                 <div className="inline-flex items-center gap-1 text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded font-sans font-semibold mt-0.5">
                                   <MapPin className="w-2.5 h-2.5" /> {t.siteName}
@@ -1981,7 +2093,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                             </TableCell>
 
                             <TableCell className="py-3.5 px-4 text-left text-slate-800 font-bold">
-                              {isEngineer ? (t.customerName || 'খুচরা গ্রাহক') : 'সিমেন্ট / রড'}
+                              {isEngineer ? (t.customerName || 'খুচরা গ্রাহক') : isSupplier ? (t.items && t.items.length > 0 ? t.items.map((i: any) => cleanLegacyBengaliText(i.product_name || i.name || 'পণ্য')).join(', ') : 'পণ্য সামগ্রী') : 'সিমেন্ট / রড'}
                             </TableCell>
 
                             <TableCell className="py-3.5 px-4 text-left text-slate-700">
@@ -1991,6 +2103,22 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                                   {cemBags > 0 && <span className="block text-slate-800 font-semibold">সিমেন্ট: {toBnDigits(cemBags)} বস্তা</span>}
                                   {!rodKg && !cemBags && <span>পণ্য সামগ্রী</span>}
                                 </div>
+                              ) : isSupplier ? (
+                                <div className="space-y-0.5 text-[11px]">
+                                  <span className="text-slate-900 font-bold block">
+                                    ৳ {toBnDigits((t.totalAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
+                                  </span>
+                                  {meta.laborPayer === 'supplier' && Number(meta.laborCost || 0) > 0 && (
+                                    <span className="inline-block text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded mr-1">
+                                      লেবার: +৳{toBnDigits(Number(meta.laborCost || 0).toLocaleString('en-IN'))}
+                                    </span>
+                                  )}
+                                  {meta.shippingPayer === 'supplier' && Number(meta.shippingCost || 0) > 0 && (
+                                    <span className="inline-block text-[10px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                                      গাড়ি ভাড়া: +৳{toBnDigits(Number(meta.shippingCost || 0).toLocaleString('en-IN'))}
+                                    </span>
+                                  )}
+                                </div>
                               ) : (
                                 <span className="text-emerald-600 font-bold">
                                   ৳ {t.totalAmount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
@@ -1999,7 +2127,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                             </TableCell>
 
                             <TableCell className="py-3.5 px-4 text-right font-bold text-slate-900">
-                              ৳ {t.totalAmount.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
+                              ৳ {toBnDigits((t.paidAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
                             </TableCell>
 
                             <TableCell className="py-3.5 px-4 text-right font-bold text-emerald-600">
@@ -2009,7 +2137,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                                 </span>
                               ) : (
                                 <span className="text-rose-600 font-bold">
-                                  ৳ {due.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
+                                  ৳ {toBnDigits(due.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}
                                 </span>
                               )}
                             </TableCell>
@@ -2314,7 +2442,14 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           {selectedInvoiceTx && (
             <div className="space-y-4">
               {(() => {
-                const isPaymentTx = selectedInvoiceTx.transactionType === 'payment' || 
+                const isLoanTx = selectedInvoiceTx.transactionType === 'loan_in' || 
+                  (selectedInvoiceTx as any).transaction_type === 'loan_in' ||
+                  String(selectedInvoiceTx.description || selectedInvoiceTx.note || '').includes('লোন গ্রহণ');
+
+                const isPaymentTx = isLoanTx ||
+                  selectedInvoiceTx.transactionType === 'payment' || 
+                  selectedInvoiceTx.transactionType === 'payment_in' || 
+                  selectedInvoiceTx.transactionType === 'payment_out' || 
                   selectedInvoiceTx.transactionType === 'income' || 
                   selectedInvoiceTx.transactionType === 'expense' || 
                   (!selectedInvoiceTx.items?.length && (selectedInvoiceTx.paidAmount > 0 || (selectedInvoiceTx as any).credit > 0) && selectedInvoiceTx.dueAmount === 0);
@@ -2323,7 +2458,8 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   const voucherData = {
                     id: selectedInvoiceTx.id,
                     voucherNo: selectedInvoiceTx.orderId || selectedInvoiceTx.invoiceNo || selectedInvoiceTx.id,
-                    type: (isCustomer ? 'income' : 'expense') as 'income' | 'expense',
+                    type: (isLoanTx ? 'income' : (isCustomer ? 'income' : 'expense')) as any,
+                    category: isLoanTx ? 'লোন গ্রহণ' : undefined,
                     partyName: isCustomer ? (selectedInvoiceTx.customerName || party?.name || 'গ্রাহক') : (selectedInvoiceTx.supplierName || party?.name || 'সরবরাহকারী'),
                     partyPhone: party?.phone || '',
                     partyAddress: party?.address || '',
@@ -2332,7 +2468,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                     paymentMethod: selectedInvoiceTx.paymentMethod || 'cash',
                     bankName: selectedInvoiceTx.bankName,
                     chequeNo: selectedInvoiceTx.chequeNo,
-                    description: selectedInvoiceTx.description || selectedInvoiceTx.note || 'পেমেন্ট ভাউচার',
+                    description: selectedInvoiceTx.description || selectedInvoiceTx.note || (isLoanTx ? 'লোন গ্রহণ ভাউচার' : 'পেমেন্ট ভাউচার'),
                     createdAt: selectedInvoiceTx.createdAt
                   };
 

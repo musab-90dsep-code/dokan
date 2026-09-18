@@ -10,7 +10,7 @@ import {
   Receipt, Calendar, DollarSign, AlertCircle, CheckCircle2, Printer, UploadCloud, X,
   Building2, User, Phone, ShieldCheck, FileText, Check, ArrowLeft, Eye, Edit2,
   FileSpreadsheet, FileDown, Clock, PieChart, ChevronLeft, ChevronRight, Lightbulb, PlusCircle,
-  ChevronUp, ChevronDown, RotateCcw, MoreVertical, HardHat, MapPin
+  ChevronUp, ChevronDown, RotateCcw, MoreVertical, HardHat, MapPin, HandCoins
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -85,7 +85,12 @@ interface Supplier {
   id: string;
   name: string;
   phone: string;
+  address?: string;
   businessName?: string;
+  total_due?: number;
+  totalDue?: number;
+  due?: number;
+  balance?: number;
 }
 
 interface OrderInvoice {
@@ -202,6 +207,17 @@ function TransactionsContent() {
   const [addMoneyBankId, setAddMoneyBankId] = useState<string>('');
   const [addMoneyNote, setAddMoneyNote] = useState<string>('');
   const [addMoneyDate, setAddMoneyDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+
+  // Loan Received (লোন গ্রহণ) State
+  const [isLoanModalOpen, setIsLoanModalOpen] = useState(false);
+  const [loanSupplierId, setLoanSupplierId] = useState<string>('');
+  const [loanAmount, setLoanAmount] = useState<number>(0);
+  const [loanMethod, setLoanMethod] = useState<'Cash' | 'Bank'>('Cash');
+  const [loanBankId, setLoanBankId] = useState<string>('');
+  const [loanDate, setLoanDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [loanRefNo, setLoanRefNo] = useState<string>('');
+  const [loanNote, setLoanNote] = useState<string>('');
+  const [isLoanSubmitting, setIsLoanSubmitting] = useState(false);
 
   // Balance Transfer (ব্যাংক / ক্যাশ ট্রান্সফার) State
   const [isTransferOpen, setIsTransferOpen] = useState(false);
@@ -340,6 +356,8 @@ function TransactionsContent() {
                            rawNoteStr.includes('[টাকা যোগ') ||
                            (t.transaction_type as string) === 'contra');
 
+        const isLoanIn = t.transaction_type === 'loan_in' || meta.isLoanIn === true || rawNoteStr.includes('[লোন গ্রহণ');
+
         let txnType: 'income' | 'expense' | 'contra' = 'income';
         let categoryName = 'পেমেন্ট গ্রহণ';
         
@@ -349,6 +367,9 @@ function TransactionsContent() {
         } else if (isAddMoney) {
           txnType = 'contra';
           categoryName = 'টাকা যোগ';
+        } else if (isLoanIn) {
+          txnType = 'income';
+          categoryName = 'লোন গ্রহণ';
         } else if (t.transaction_type === 'payment_out') {
           txnType = 'expense';
           categoryName = 'পেমেন্ট প্রদান';
@@ -717,6 +738,82 @@ function TransactionsContent() {
       loadAllTransactionsData();
     } catch (err: any) {
       toast.error('টাকা যোগ করতে সমস্যা হয়েছে');
+    }
+  };
+
+  const handleCreateLoanSubmit = async () => {
+    if (!loanSupplierId) {
+      toast.error('অনুগ্রহ করে সরবরাহকারী নির্বাচন করুন');
+      return;
+    }
+    if (loanAmount <= 0) {
+      toast.error('সঠিক লোনের পরিমাণ প্রদান করুন');
+      return;
+    }
+    const supplierObj = suppliers.find(s => String(s.id) === String(loanSupplierId));
+    if (!supplierObj) {
+      toast.error('নির্বাচিত সরবরাহকারী খুঁজে পাওয়া যায়নি');
+      return;
+    }
+
+    if (loanMethod === 'Bank' && !loanBankId) {
+      toast.error('অনুগ্রহ করে ব্যাংক অ্যাকাউন্ট নির্বাচন করুন');
+      return;
+    }
+
+    setIsLoanSubmitting(true);
+    try {
+      const selectedBankObj = loanMethod === 'Bank' ? banks.find(b => String(b.id) === String(loanBankId)) : null;
+
+      if (loanMethod === 'Bank' && selectedBankObj) {
+        const newBal = Number(selectedBankObj.balance || 0) + loanAmount;
+        await api.banks.update(selectedBankObj.id, { balance: newBal });
+      }
+
+      const metaJson = JSON.stringify({
+        isLoanIn: true,
+        loanType: 'supplier_loan',
+        supplierId: supplierObj.id,
+        supplierName: supplierObj.name,
+        supplierPhone: supplierObj.phone || '',
+        paymentMethodName: loanMethod === 'Bank' ? 'Bank' : 'Cash',
+        selectedShopBank: selectedBankObj ? selectedBankObj.name : '',
+        bankId: selectedBankObj ? selectedBankObj.id : undefined,
+        referenceNo: loanRefNo || '',
+        previousBalance: (supplierObj as any).total_due || (supplierObj as any).totalDue || (supplierObj as any).due || (supplierObj as any).balance || 0,
+        userNote: loanNote || ''
+      });
+
+      const payload: any = {
+        party: Number(supplierObj.id) || supplierObj.id,
+        party_name: supplierObj.name,
+        party_phone: supplierObj.phone || '',
+        party_address: supplierObj.address || (supplierObj as any).party_address || '',
+        invoice_no: loanRefNo ? loanRefNo : undefined,
+        transaction_type: 'loan_in',
+        total_amount: loanAmount,
+        paid_amount: loanAmount,
+        due_amount: 0,
+        payment_method: loanMethod === 'Bank' ? 'bank' : 'cash',
+        bank_account: selectedBankObj ? Number(selectedBankObj.id) : undefined,
+        status: 'completed',
+        created_at: loanDate ? new Date(loanDate).toISOString() : new Date().toISOString(),
+        notes: metaJson + '\n' + `[লোন গ্রহণ - ${supplierObj.name}] ${loanNote || ''}`
+      };
+
+      await api.transactions.create(payload);
+
+      toast.success(`সরবরাহকারী ${supplierObj.name} থেকে ৳ ${toBengaliDigits(loanAmount.toLocaleString('bn-BD'))} লোন সফলভাবে গ্রহণ ও লেজারে যুক্ত করা হয়েছে!`);
+      setIsLoanModalOpen(false);
+      setLoanAmount(0);
+      setLoanRefNo('');
+      setLoanNote('');
+      loadAllTransactionsData();
+    } catch (err: any) {
+      console.error(err);
+      toast.error('লোন গ্রহণ সংরক্ষণ করতে সমস্যা হয়েছে: ' + (err.message || err));
+    } finally {
+      setIsLoanSubmitting(false);
     }
   };
 
@@ -1129,7 +1226,7 @@ function TransactionsContent() {
     // 2. Active Tab / Type Filter (all, income/payment_in, expense/payment_out, contra/transfer)
     let matchesTab = true;
     if (activeTab === 'income') {
-      matchesTab = (t.type === 'income' || t.category === 'পেমেন্ট গ্রহণ') && t.type !== 'contra' && t.category !== 'টাকা যোগ' && t.category !== 'ব্যালেন্স ট্রান্সফার';
+      matchesTab = (t.type === 'income' || t.category === 'পেমেন্ট গ্রহণ' || t.category === 'লোন গ্রহণ') && t.type !== 'contra' && t.category !== 'টাকা যোগ' && t.category !== 'ব্যালেন্স ট্রান্সফার';
     } else if (activeTab === 'expense') {
       matchesTab = (t.type === 'expense' || t.category === 'পেমেন্ট প্রদান') && t.type !== 'contra' && t.category !== 'ব্যালেন্স ট্রান্সফার';
     } else if (activeTab === 'contra') {
@@ -1302,6 +1399,18 @@ function TransactionsContent() {
                     className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all text-xs cursor-pointer"
                   >
                     <PlusCircle className="w-4 h-4 mr-1.5" /> + টাকা যোগ করুন
+                  </Button>
+
+                  <Button 
+                    onClick={() => {
+                      setIsLoanModalOpen(true);
+                      if (suppliers.length > 0 && !loanSupplierId) {
+                        setLoanSupplierId(String(suppliers[0].id));
+                      }
+                    }} 
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold h-11 px-5 rounded-xl shadow-lg shadow-purple-600/20 active:scale-95 transition-all text-xs cursor-pointer"
+                  >
+                    <HandCoins className="w-4 h-4 mr-1.5" /> 🤝 লোন গ্রহণ
                   </Button>
 
                   <Button 
@@ -1592,8 +1701,9 @@ function TransactionsContent() {
                         const method = t.paymentMethod || (t.accountType === 'bank' ? 'Bank' : 'Cash');
                         const isTransfer = t.category === 'ব্যালেন্স ট্রান্সফার' || t.partyName?.includes('➔') || String(t.notes || '').includes('[ব্যালেন্স ট্রান্সফার');
                         const isAddMoney = !isTransfer && (t.type === 'contra' || t.category === 'টাকা যোগ');
+                        const isLoanIn = t.category === 'লোন গ্রহণ' || t.raw?.transaction_type === 'loan_in';
                         const isContra = isTransfer || isAddMoney || t.type === 'contra';
-                        const isIncome = (t.type === 'income' || t.category === 'পেমেন্ট গ্রহণ') && !isContra;
+                        const isIncome = (t.type === 'income' || t.category === 'পেমেন্ট গ্রহণ' || isLoanIn) && !isContra;
                         const isExpense = (t.type === 'expense' || t.category === 'পেমেন্ট প্রদান') && !isContra;
 
                         return (
@@ -1611,16 +1721,18 @@ function TransactionsContent() {
                             <TableCell>
                               <span className={cn(
                                 "inline-flex items-center gap-1 font-bold px-2.5 py-0.5 rounded-md text-[11px] border",
-                                isIncome && "bg-emerald-50 text-emerald-700 border-emerald-200",
+                                isLoanIn && "bg-purple-50 text-purple-700 border-purple-200",
+                                !isLoanIn && isIncome && "bg-emerald-50 text-emerald-700 border-emerald-200",
                                 isExpense && "bg-orange-50 text-orange-700 border-orange-200",
                                 isTransfer && "bg-indigo-50 text-indigo-700 border-indigo-200",
                                 isAddMoney && "bg-blue-50 text-blue-700 border-blue-200"
                               )}>
-                                {isIncome && <ArrowUpRight className="w-3 h-3 text-emerald-600" />}
+                                {isLoanIn && <HandCoins className="w-3 h-3 text-purple-600" />}
+                                {!isLoanIn && isIncome && <ArrowUpRight className="w-3 h-3 text-emerald-600" />}
                                 {isExpense && <ArrowDownRight className="w-3 h-3 text-orange-600" />}
                                 {isTransfer && <ArrowLeftRight className="w-3 h-3 text-indigo-600" />}
                                 {isAddMoney && <PlusCircle className="w-3 h-3 text-blue-600" />}
-                                <span>{isTransfer ? 'ব্যালেন্স ট্রান্সফার' : isAddMoney ? 'টাকা যোগ' : (t.category || (isIncome ? 'পেমেন্ট গ্রহণ' : 'পেমেন্ট প্রদান'))}</span>
+                                <span>{isTransfer ? 'ব্যালেন্স ট্রান্সফার' : isAddMoney ? 'টাকা যোগ' : isLoanIn ? 'লোন গ্রহণ' : (t.category || (isIncome ? 'পেমেন্ট গ্রহণ' : 'পেমেন্ট প্রদান'))}</span>
                               </span>
                             </TableCell>
                             <TableCell className="font-black text-slate-900">
@@ -1644,8 +1756,8 @@ function TransactionsContent() {
                               </span>
                             </TableCell>
                             <TableCell className="text-right font-black text-slate-900 text-sm">
-                              <span className={isIncome ? "text-emerald-700" : isExpense ? "text-orange-700" : "text-blue-700"}>
-                                {isIncome ? '+' : isExpense ? '-' : '+'} ৳ {toBengaliDigits((t.amount || 0).toLocaleString('bn-BD'))}
+                              <span className={isLoanIn ? "text-purple-700" : isIncome ? "text-emerald-700" : isExpense ? "text-orange-700" : "text-blue-700"}>
+                                {isLoanIn ? '+' : isIncome ? '+' : isExpense ? '-' : '+'} ৳ {toBengaliDigits((t.amount || 0).toLocaleString('bn-BD'))}
                               </span>
                             </TableCell>
                             <TableCell className="font-mono text-slate-500 max-w-[150px] truncate" title={t.referenceNo || t.description}>
@@ -2852,6 +2964,184 @@ function TransactionsContent() {
               </Button>
               <Button onClick={handleCreateAddMoneySubmit} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold h-11 px-6 shadow-md shadow-blue-600/20 text-xs">
                 <Check className="w-4 h-4 mr-1.5" /> টাকা যোগ করুন
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* SUPPLIER LOAN RECEIVED (সরবরাহকারী লোন গ্রহণ) MODAL DIALOG */}
+        <Dialog open={isLoanModalOpen} onOpenChange={setIsLoanModalOpen}>
+          <DialogContent className="max-w-lg w-full bg-white rounded-3xl p-6 shadow-2xl font-bengali">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2">
+                <HandCoins className="w-6 h-6 text-purple-600" /> সরবরাহকারী থেকে লোন গ্রহণ (Loan Received)
+              </DialogTitle>
+              <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                সরবরাহকারী থেকে ঋণ বা ধার গ্রহণ করুন। এটি ক্যাশ/ব্যাংক ব্যালেন্সে জমা হবে এবং সরবরাহকারীর লেজারে পাওনা হিসেবে যুক্ত হবে।
+              </p>
+            </DialogHeader>
+
+            <div className="space-y-4 pt-2">
+              {/* Supplier Selection */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">সরবরাহকারী নির্বাচন করুন *</Label>
+                <SupplierSearchSelect
+                  suppliers={suppliers}
+                  selectedSupplier={suppliers.find(s => String(s.id) === String(loanSupplierId)) || null}
+                  onSelectSupplier={(supp) => {
+                    setLoanSupplierId(supp ? String(supp.id) : '');
+                  }}
+                  placeholder="সরবরাহকারীর নাম বা মোবাইল নম্বর দিয়ে খুঁজুন..."
+                />
+              </div>
+
+              {/* Dynamic Supplier Balance Overview Box */}
+              {(() => {
+                const suppObj = suppliers.find(s => String(s.id) === String(loanSupplierId));
+                if (!suppObj) return null;
+                const currentDue = Number((suppObj as any).total_due || (suppObj as any).totalDue || (suppObj as any).due || (suppObj as any).balance || 0);
+                const projectedDue = currentDue + (loanAmount || 0);
+
+                return (
+                  <div className="p-3 bg-purple-50/80 border border-purple-200/90 rounded-2xl space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-600 font-bold">সরবরাহকারী:</span>
+                      <span className="font-black text-slate-900">{suppObj.name}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-600 font-bold">বর্তমান বকেয়া / পাওনা:</span>
+                      <span className="font-black text-slate-800">৳ {toBengaliDigits(currentDue.toLocaleString('bn-BD'))}</span>
+                    </div>
+                    {loanAmount > 0 && (
+                      <div className="flex items-center justify-between pt-1 border-t border-purple-200 font-black">
+                        <span className="text-purple-900">লোন গ্রহণের পর মোট পাওনা:</span>
+                        <span className="text-purple-700 text-sm font-black">৳ {toBengaliDigits(projectedDue.toLocaleString('bn-BD'))}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Loan Amount */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">লোনের পরিমাণ (৳) *</Label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">৳</span>
+                  <Input 
+                    type="number"
+                    placeholder="0.00"
+                    value={loanAmount || ''}
+                    onChange={e => setLoanAmount(parseFloat(e.target.value) || 0)}
+                    className="rounded-xl h-11 pl-9 bg-slate-50/50 border-slate-200 text-base font-black text-purple-700 text-right font-bengali"
+                  />
+                </div>
+              </div>
+
+              {/* Payment Method */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">জমা গ্রহণের মাধ্যম *</Label>
+                <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setLoanMethod('Cash')}
+                    className={cn(
+                      "h-10 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+                      loanMethod === 'Cash' 
+                        ? "bg-white text-purple-700 border-2 border-purple-500 shadow-xs font-black" 
+                        : "text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    💵 নগদ ক্যাশ বাক্স (Cash)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoanMethod('Bank');
+                      if (banks.length > 0 && !loanBankId) {
+                        setLoanBankId(banks[0].id);
+                      }
+                    }}
+                    className={cn(
+                      "h-10 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+                      loanMethod === 'Bank' 
+                        ? "bg-white text-purple-700 border-2 border-purple-500 shadow-xs font-black" 
+                        : "text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    🏦 ব্যাংক অ্যাকাউন্ট (Bank)
+                  </button>
+                </div>
+              </div>
+
+              {/* Select Bank if Bank is selected */}
+              {loanMethod === 'Bank' && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700">যে ব্যাংকে টাকা জমা হবে *</Label>
+                  <Select value={loanBankId} onValueChange={(val: string | null) => val && setLoanBankId(val)}>
+                    <SelectTrigger className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold">
+                      <SelectValue placeholder="ব্যাংক পছন্দ করুন..." />
+                    </SelectTrigger>
+                    <SelectContent className="font-bengali text-xs font-bold max-h-48">
+                      {banks.map(b => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name} ({b.accNo}) — ব্যালেন্স: ৳{toBengaliDigits((b.balance || 0).toLocaleString('bn-BD'))}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Date & Ref No */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700">তারিখ *</Label>
+                  <BengaliDatePicker
+                    value={loanDate}
+                    onChange={val => setLoanDate(val)}
+                    placeholder="তারিখ নির্বাচন করুন"
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700">ভাউচার / রেফারেন্স নং</Label>
+                  <Input 
+                    placeholder="LOAN-001 বা চেক নম্বর"
+                    value={loanRefNo}
+                    onChange={e => setLoanRefNo(e.target.value)}
+                    className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* Note */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">নোট / বিবরণ (ঐচ্ছিক)</Label>
+                <Input 
+                  placeholder="যেমন: জরুরি প্রয়োজনে লোন নেওয়া হলো..."
+                  value={loanNote}
+                  onChange={e => setLoanNote(e.target.value)}
+                  className="rounded-xl h-11 bg-slate-50/50 border-slate-200 text-xs font-bold"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="mt-6 flex items-center justify-end gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsLoanModalOpen(false)} 
+                className="rounded-xl font-bold h-11 text-xs cursor-pointer"
+              >
+                বাতিল
+              </Button>
+              <Button 
+                onClick={handleCreateLoanSubmit} 
+                disabled={isLoanSubmitting}
+                className="bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold h-11 px-6 shadow-md shadow-purple-600/20 text-xs cursor-pointer"
+              >
+                <HandCoins className="w-4 h-4 mr-1.5" />
+                {isLoanSubmitting ? 'সংরক্ষণ হচ্ছে...' : '🤝 লোন গ্রহণ নিশ্চিত করুন'}
               </Button>
             </DialogFooter>
           </DialogContent>

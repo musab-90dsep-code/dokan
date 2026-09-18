@@ -200,6 +200,8 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
   const items = (invoice.items && invoice.items.length > 0) ? invoice.items : [];
   const effectiveShippingCost = Number(invoice.transportCost || invoice.shippingCost || meta.shippingCost || meta.transportCost || 0);
   const effectiveLaborCost = Number(invoice.laborCost || meta.laborCost || 0);
+  const shippingPayer = (invoice as any).shippingPayer || meta.shippingPayer || 'shop';
+  const laborPayer = (invoice as any).laborPayer || meta.laborPayer || 'shop';
 
   const totalExtra = effectiveShippingCost + effectiveLaborCost;
   const totalQtySum = items.reduce((a, i) => a + Number(i.quantity || 0), 0);
@@ -641,14 +643,24 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
 
               {effectiveShippingCost > 0 && (
                 <div className="flex justify-between items-center p-1.5 px-2">
-                  <span className="text-slate-800 font-medium">+ পরিবহন ভাড়া / গাড়ি ভাড়া</span>
+                  <span className="text-slate-800 font-medium flex items-center gap-1.5">
+                    <span>+ পরিবহন ভাড়া / গাড়ি ভাড়া</span>
+                    <span className="text-[10px] px-1 py-0.2 rounded border text-slate-600 bg-slate-100">
+                      {shippingPayer === 'supplier' ? 'সাপ্লায়ার দিবে (লেজারে যুক্ত)' : 'দোকান দিবে'}
+                    </span>
+                  </span>
                   <span className="font-mono">+ ৳ {toBengaliDigits(effectiveShippingCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                 </div>
               )}
 
               {effectiveLaborCost > 0 && (
                 <div className="flex justify-between items-center p-1.5 px-2">
-                  <span className="text-slate-800 font-medium">+ আনলোডিং / লেবার খরচ</span>
+                  <span className="text-slate-800 font-medium flex items-center gap-1.5">
+                    <span>+ আনলোডিং / লেবার খরচ</span>
+                    <span className="text-[10px] px-1 py-0.2 rounded border text-slate-600 bg-slate-100">
+                      {laborPayer === 'supplier' ? 'সাপ্লায়ার দিবে (লেজারে যুক্ত)' : 'দোকান দিবে'}
+                    </span>
+                  </span>
                   <span className="font-mono">+ ৳ {toBengaliDigits(effectiveLaborCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
                 </div>
               )}

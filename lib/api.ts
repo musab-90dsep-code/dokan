@@ -139,7 +139,7 @@ export interface TransactionData {
   site_name?: string | null;
   site_address?: string | null;
   site_contact?: string | null;
-  transaction_type: 'sale' | 'purchase' | 'sale_return' | 'purchase_return' | 'payment_in' | 'payment_out';
+  transaction_type: 'sale' | 'purchase' | 'sale_return' | 'purchase_return' | 'payment_in' | 'payment_out' | 'loan_in';
   status?: string;
   subtotal?: number;
   discount?: number;

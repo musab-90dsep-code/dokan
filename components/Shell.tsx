@@ -403,6 +403,9 @@ export function Shell({ children }: { children: ReactNode }) {
           const shipPaidAmt = Number(meta.shippingPaidAmount !== undefined ? meta.shippingPaidAmount : (meta.shippingStatus === 'paid' ? shipCost : 0));
           const labPaidAmt = Number(meta.laborPaidAmount !== undefined ? meta.laborPaidAmount : (meta.laborStatus === 'paid' ? labCost : 0));
 
+          const shipPayer = meta.shippingPayer || 'shop';
+          const laborPayer = meta.laborPayer || 'shop';
+
           const shipDue = Math.max(0, Math.round((shipCost - shipPaidAmt) * 100) / 100);
           const shipOver = Math.max(0, Math.round((shipPaidAmt - shipCost) * 100) / 100);
           let shipStatus: 'pending' | 'paid' | 'partial' | 'overpaid' = 'pending';
@@ -414,7 +417,8 @@ export function Shell({ children }: { children: ReactNode }) {
             shipStatus = 'paid';
           }
 
-          if (shipCost > 0 || shipPaidAmt > 0) {
+          // Only add to Shipping Drawer if Dokan is paying (not supplier)
+          if (shipPayer !== 'supplier' && (shipCost > 0 || shipPaidAmt > 0)) {
             sItems.push({
               id: String(t.id),
               invoiceId: invNo,
@@ -442,7 +446,8 @@ export function Shell({ children }: { children: ReactNode }) {
             labStatus = 'paid';
           }
 
-          if (labCost > 0 || labPaidAmt > 0) {
+          // Only add to Labor Drawer if Dokan is paying (not supplier)
+          if (laborPayer !== 'supplier' && (labCost > 0 || labPaidAmt > 0)) {
             lItems.push({
               id: String(t.id),
               invoiceId: invNo,

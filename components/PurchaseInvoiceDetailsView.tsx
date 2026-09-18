@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { toBengaliDigits, parseProductDetails } from '@/lib/bengaliUtils';
 import { printElement } from '@/lib/printUtils';
 import { useAuth } from '@/lib/authContext';
+import { cn } from '@/lib/utils';
 
 export interface PurchaseInvoiceDetailsViewProps {
   invoice: any;
@@ -71,6 +72,8 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
   // Freight & Labor Charges
   const shippingCost = Number(invoice.shippingCost || invoice.transportCost || meta.transportCost || meta.shippingCost || 0);
   const laborCost = Number(invoice.laborCost || meta.laborCost || 0);
+  const shippingPayer = (invoice as any).shippingPayer || meta.shippingPayer || 'shop';
+  const laborPayer = (invoice as any).laborPayer || meta.laborPayer || 'shop';
 
   // Freight & Labor Charges Per Unit
   const totalExtra = shippingCost + laborCost;
@@ -104,7 +107,10 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
 
   const paidAmount = Number(invoice.paidAmount || 0);
   const goodsTotal = Math.max(0, subtotal - commissionDeduction);
-  const supplierGoodsDue = meta.supplierDue !== undefined ? Number(meta.supplierDue) : Math.max(0, goodsTotal - paidAmount);
+  const supplierShipCharge = shippingPayer === 'supplier' ? shippingCost : 0;
+  const supplierLabCharge = laborPayer === 'supplier' ? laborCost : 0;
+  const supplierInvoiceBill = goodsTotal + supplierShipCharge + supplierLabCharge;
+  const supplierGoodsDue = meta.supplierDue !== undefined ? Number(meta.supplierDue) : Math.max(0, supplierInvoiceBill - paidAmount);
   const dueAmount = supplierGoodsDue;
 
   const previousSupplierDue = Number(
@@ -553,7 +559,13 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
             {shippingCost > 0 && (
               <div className="flex justify-between items-center text-blue-700 bg-blue-50/60 p-1.5 rounded-md border border-blue-100">
                 <span className="text-blue-900 font-bold flex items-center gap-1">
-                  🚚 পরিবহন / গাড়ি ভাড়া <span className="text-[10px] text-blue-600 font-normal">(ট্রাক ভাড়া খাতায় যুক্ত)</span>
+                  🚚 পরিবহন / গাড়ি ভাড়া{' '}
+                  <span className={cn(
+                    "text-[10px] px-1 py-0.5 rounded",
+                    shippingPayer === 'supplier' ? "bg-orange-100 text-orange-800 font-bold" : "text-blue-600 font-normal"
+                  )}>
+                    {shippingPayer === 'supplier' ? '(সাপ্লায়ারের লেজারে যুক্ত)' : '(ট্রাক ভাড়া খাতায় যুক্ত)'}
+                  </span>
                 </span>
                 <span className="font-mono font-bold">+ ৳ {toBengaliDigits(shippingCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
               </div>
@@ -562,7 +574,13 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
             {laborCost > 0 && (
               <div className="flex justify-between items-center text-amber-700 bg-amber-50/60 p-1.5 rounded-md border border-amber-100">
                 <span className="text-amber-900 font-bold flex items-center gap-1">
-                  🏗️ আনলোডিং / লেবার চার্জ <span className="text-[10px] text-amber-600 font-normal">(লেবার খরচ খাতায় যুক্ত)</span>
+                  🏗️ আনলোডিং / লেবার চার্জ{' '}
+                  <span className={cn(
+                    "text-[10px] px-1 py-0.5 rounded",
+                    laborPayer === 'supplier' ? "bg-orange-100 text-orange-800 font-bold" : "text-amber-600 font-normal"
+                  )}>
+                    {laborPayer === 'supplier' ? '(সাপ্লায়ারের লেজারে যুক্ত)' : '(লেবার খরচ খাতায় যুক্ত)'}
+                  </span>
                 </span>
                 <span className="font-mono font-bold">+ ৳ {toBengaliDigits(laborCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
               </div>

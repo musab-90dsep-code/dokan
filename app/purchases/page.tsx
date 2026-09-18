@@ -93,6 +93,8 @@ export interface PurchaseInvoice {
   commissionStatus?: string;
   shippingCost?: number;
   laborCost?: number;
+  shippingPayer?: 'shop' | 'supplier';
+  laborPayer?: 'shop' | 'supplier';
   totalAmount: number;
   paidAmount: number;
   dueAmount: number;
@@ -197,12 +199,15 @@ export default function PurchasesPage() {
     const key = `dokan_purchase_defaults_${purchaseType}`;
     const payload = {
       laborCost: Number(laborCost || 0),
-      shippingCost: Number(shippingCost || 0)
+      shippingCost: Number(shippingCost || 0),
+      laborPayer: laborPayer || 'shop',
+      shippingPayer: shippingPayer || 'shop'
     };
     try {
       localStorage.setItem(key, JSON.stringify(payload));
       const catLabel = purchaseType === 'rod' ? 'রড ও রিং' : 'সিমেন্ট';
-      toast.success(`${catLabel} ক্রয়ের জন্য ডিফল্ট লেবার (৳${laborCost}) ও গাড়ি ভাড়া (৳${shippingCost}) সফলভাবে সেভ করা হয়েছে!`);
+      const payerDesc = `[লেবার: ${laborPayer === 'supplier' ? 'সাপ্লায়ার' : 'দোকান'}, গাড়ি: ${shippingPayer === 'supplier' ? 'সাপ্লায়ার' : 'দোকান'}]`;
+      toast.success(`${catLabel} ক্রয়ের জন্য ডিফল্ট লেবার (৳${laborCost}) ও গাড়ি ভাড়া (৳${shippingCost}) ${payerDesc} সফলভাবে সেভ করা হয়েছে!`);
     } catch {
       toast.error('ডিফল্ট চার্জ সেভ করতে সমস্যা হয়েছে');
     }
@@ -216,6 +221,8 @@ export default function PurchasesPage() {
   const [commissionNote, setCommissionNote] = useState<string>('');
   const [shippingCost, setShippingCost] = useState<number>(0);
   const [laborCost, setLaborCost] = useState<number>(0);
+  const [shippingPayer, setShippingPayer] = useState<'shop' | 'supplier'>('shop');
+  const [laborPayer, setLaborPayer] = useState<'shop' | 'supplier'>('shop');
   const [shippingPaymentStatus, setShippingPaymentStatus] = useState<'pending' | 'paid' | 'partial' | 'overpaid'>('pending');
   const [laborPaymentStatus, setLaborPaymentStatus] = useState<'pending' | 'paid' | 'partial' | 'overpaid'>('pending');
   const [previousShippingPaidAmount, setPreviousShippingPaidAmount] = useState<number>(0);
@@ -297,6 +304,8 @@ export default function PurchasesPage() {
           commissionStatus: meta.commissionStatus || 'pending',
           shippingCost: pAny.shipping_cost !== undefined ? pAny.shipping_cost : (meta.shippingCost || 0),
           laborCost: pAny.labor_cost !== undefined ? pAny.labor_cost : (meta.laborCost || 0),
+          shippingPayer: meta.shippingPayer || 'shop',
+          laborPayer: meta.laborPayer || 'shop',
           transportCost: meta.transportCost || meta.shippingCost || pAny.shipping_cost || 0,
           totalAmount: p.total_amount,
           paidAmount: p.paid_amount,
@@ -464,13 +473,19 @@ export default function PurchasesPage() {
           const parsed = JSON.parse(saved);
           setLaborCost(Number(parsed.laborCost || 0));
           setShippingCost(Number(parsed.shippingCost || 0));
+          if (parsed.laborPayer) setLaborPayer(parsed.laborPayer);
+          if (parsed.shippingPayer) setShippingPayer(parsed.shippingPayer);
         } else {
           setLaborCost(0);
           setShippingCost(0);
+          setLaborPayer('shop');
+          setShippingPayer('shop');
         }
       } catch {
         setLaborCost(0);
         setShippingCost(0);
+        setLaborPayer('shop');
+        setShippingPayer('shop');
       }
     });
   }, [purchaseType]);
@@ -497,13 +512,19 @@ export default function PurchasesPage() {
           const parsed = JSON.parse(saved);
           setLaborCost(Number(parsed.laborCost || 0));
           setShippingCost(Number(parsed.shippingCost || 0));
+          if (parsed.laborPayer) setLaborPayer(parsed.laborPayer);
+          if (parsed.shippingPayer) setShippingPayer(parsed.shippingPayer);
         } else {
           setLaborCost(0);
           setShippingCost(0);
+          setLaborPayer('shop');
+          setShippingPayer('shop');
         }
       } catch {
         setLaborCost(0);
         setShippingCost(0);
+        setLaborPayer('shop');
+        setShippingPayer('shop');
       }
     }
 
@@ -634,10 +655,15 @@ export default function PurchasesPage() {
       else if (pmLower.includes('mobile') || pmLower.includes('bkash') || pmLower.includes('nagad')) effectivePaymentMethod = 'mobile_banking';
 
       const goodsTotal = Math.max(0, cartSubtotal - (commissionAdjustment === 'deduct' ? computedCommission : 0));
-      const supplierDueAmount = paymentOption === 'now' ? Math.max(0, goodsTotal - paidAmount) : goodsTotal;
-
       const finalShipCost = Number(shippingCost || 0);
       const finalLabCost = Number(laborCost || 0);
+
+      // Charges added to supplier bill if supplier pays/bills them
+      const supplierShipCharge = shippingPayer === 'supplier' ? finalShipCost : 0;
+      const supplierLabCharge = laborPayer === 'supplier' ? finalLabCost : 0;
+      const effectiveSupplierBill = goodsTotal + supplierShipCharge + supplierLabCharge;
+
+      const supplierDueAmount = paymentOption === 'now' ? Math.max(0, effectiveSupplierBill - paidAmount) : effectiveSupplierBill;
 
       // Determine accurate shipping payment tracking on edit/create
       let finalShippingPaid = 0;
@@ -682,7 +708,7 @@ export default function PurchasesPage() {
         const stats = await api.dashboard.getStats();
         const availCash = stats.totalCash || 0;
         const isSelectedBankCheck = paymentMethod === 'BankToBank' || paymentMethod === 'Cheque';
-        const extraCashCosts = (finalShippingPaid + finalLaborPaid);
+        const extraCashCosts = (shippingPayer === 'shop' ? finalShippingPaid : 0) + (laborPayer === 'shop' ? finalLaborPaid : 0);
 
         if (paymentOption === 'now' && Number(paidAmount) > 0 && isSelectedBankCheck) {
           const targetAccName = bankName || selectedShopBank;
@@ -740,6 +766,8 @@ export default function PurchasesPage() {
         warehouse: warehouse || '',
         shippingCost: finalShipCost,
         laborCost: finalLabCost,
+        shippingPayer: shippingPayer,
+        laborPayer: laborPayer,
         shippingStatus: finalShippingStatus,
         laborStatus: finalLaborStatus,
         shippingPaidAmount: finalShippingPaid,
@@ -882,6 +910,8 @@ export default function PurchasesPage() {
     setCommissionNote(meta.commissionNote || '');
     setShippingCost(p.shippingCost || pAny.shipping_cost || 0);
     setLaborCost(p.laborCost || pAny.labor_cost || 0);
+    setShippingPayer(meta.shippingPayer || p.shippingPayer || 'shop');
+    setLaborPayer(meta.laborPayer || p.laborPayer || 'shop');
     setVehicleNo(p.vehicleNo || pAny.vehicle_no || '');
     setDriverName(p.driverName || pAny.driver_name || '');
     setDriverPhone(p.driverPhone || pAny.driver_phone || '');
@@ -1799,27 +1829,125 @@ export default function PurchasesPage() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Unloading Labor Charge (লেবার খরচ ৳)</Label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {/* Unloading Labor Charge Box */}
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 font-bengali">
+                          <div className="flex justify-between items-center">
+                            <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                              🏗️ Unloading Labor (লেবার খরচ ৳)
+                            </Label>
+                          </div>
                           <Input 
                             type="number"
                             value={laborCost || ''}
                             onChange={e => setLaborCost(parseFloat(e.target.value) || 0)}
                             placeholder="0"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold text-amber-600"
+                            className="rounded-xl h-9 bg-white border-slate-200 text-xs font-bold text-amber-600 shadow-2xs"
                           />
+                          <div className="pt-1.5 border-t border-slate-200/70">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">পরিশোধের অপশন:</span>
+                            <div className="grid grid-cols-2 gap-2 text-xs font-bold">
+                              <label className={cn(
+                                "flex items-center gap-1.5 p-1.5 px-2 rounded-lg border cursor-pointer transition-colors shadow-2xs",
+                                laborPayer === 'shop' 
+                                  ? "bg-indigo-50 border-indigo-300 text-indigo-900" 
+                                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
+                              )}>
+                                <input 
+                                  type="radio" 
+                                  name="laborPayer" 
+                                  value="shop" 
+                                  checked={laborPayer === 'shop'}
+                                  onChange={() => setLaborPayer('shop')}
+                                  className="accent-indigo-600 w-3.5 h-3.5 cursor-pointer"
+                                />
+                                <div className="leading-tight">
+                                  <span className="block text-[11px]">দোকান দিবে</span>
+                                  <span className="text-[9px] font-normal text-indigo-700">(ড্রয়ারে যুক্ত)</span>
+                                </div>
+                              </label>
+
+                              <label className={cn(
+                                "flex items-center gap-1.5 p-1.5 px-2 rounded-lg border cursor-pointer transition-colors shadow-2xs",
+                                laborPayer === 'supplier' 
+                                  ? "bg-orange-50 border-orange-300 text-orange-900" 
+                                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
+                              )}>
+                                <input 
+                                  type="radio" 
+                                  name="laborPayer" 
+                                  value="supplier" 
+                                  checked={laborPayer === 'supplier'}
+                                  onChange={() => setLaborPayer('supplier')}
+                                  className="accent-orange-600 w-3.5 h-3.5 cursor-pointer"
+                                />
+                                <div className="leading-tight">
+                                  <span className="block text-[11px]">সাপ্লায়ার দিবে</span>
+                                  <span className="text-[9px] font-normal text-orange-700">(লেজারে যুক্ত)</span>
+                                </div>
+                              </label>
+                            </div>
+                          </div>
                         </div>
 
-                        <div className="space-y-1">
-                          <Label className="text-[11px] font-bold text-slate-600">Shipping / Freight (গাড়ি ভাড়া ৳)</Label>
+                        {/* Shipping / Freight Charge Box */}
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 font-bengali">
+                          <div className="flex justify-between items-center">
+                            <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                              🚚 Shipping / Freight (গাড়ি ভাড়া ৳)
+                            </Label>
+                          </div>
                           <Input 
                             type="number"
                             value={shippingCost || ''}
                             onChange={e => setShippingCost(parseFloat(e.target.value) || 0)}
                             placeholder="0"
-                            className="rounded-xl h-10 bg-slate-50 border-slate-200 text-xs font-bold"
+                            className="rounded-xl h-9 bg-white border-slate-200 text-xs font-bold text-blue-600 shadow-2xs"
                           />
+                          <div className="pt-1.5 border-t border-slate-200/70">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">পরিশোধের অপশন:</span>
+                            <div className="grid grid-cols-2 gap-2 text-xs font-bold">
+                              <label className={cn(
+                                "flex items-center gap-1.5 p-1.5 px-2 rounded-lg border cursor-pointer transition-colors shadow-2xs",
+                                shippingPayer === 'shop' 
+                                  ? "bg-indigo-50 border-indigo-300 text-indigo-900" 
+                                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
+                              )}>
+                                <input 
+                                  type="radio" 
+                                  name="shippingPayer" 
+                                  value="shop" 
+                                  checked={shippingPayer === 'shop'}
+                                  onChange={() => setShippingPayer('shop')}
+                                  className="accent-indigo-600 w-3.5 h-3.5 cursor-pointer"
+                                />
+                                <div className="leading-tight">
+                                  <span className="block text-[11px]">দোকান দিবে</span>
+                                  <span className="text-[9px] font-normal text-indigo-700">(ড্রয়ারে যুক্ত)</span>
+                                </div>
+                              </label>
+
+                              <label className={cn(
+                                "flex items-center gap-1.5 p-1.5 px-2 rounded-lg border cursor-pointer transition-colors shadow-2xs",
+                                shippingPayer === 'supplier' 
+                                  ? "bg-orange-50 border-orange-300 text-orange-900" 
+                                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
+                              )}>
+                                <input 
+                                  type="radio" 
+                                  name="shippingPayer" 
+                                  value="supplier" 
+                                  checked={shippingPayer === 'supplier'}
+                                  onChange={() => setShippingPayer('supplier')}
+                                  className="accent-orange-600 w-3.5 h-3.5 cursor-pointer"
+                                />
+                                <div className="leading-tight">
+                                  <span className="block text-[11px]">সাপ্লায়ার দিবে</span>
+                                  <span className="text-[9px] font-normal text-orange-700">(লেজারে যুক্ত)</span>
+                                </div>
+                              </label>
+                            </div>
+                          </div>
                         </div>
                       </div>
 
@@ -2165,15 +2293,31 @@ export default function PurchasesPage() {
                         </div>
 
                         {shippingCost > 0 && (
-                          <div className="flex justify-between text-blue-600">
-                            <span>Shipping / Freight</span>
+                          <div className="flex justify-between items-center text-blue-600 font-bengali">
+                            <span className="flex items-center gap-1.5">
+                              <span>Shipping / Freight</span>
+                              <span className={cn(
+                                "text-[9px] px-1.5 py-0.5 rounded-sm font-bold",
+                                shippingPayer === 'supplier' ? "bg-orange-100 text-orange-800" : "bg-blue-100 text-blue-800"
+                              )}>
+                                {shippingPayer === 'supplier' ? 'সাপ্লায়ার দিবে (লেজারে)' : 'দোকান দিবে (ড্রয়ারে)'}
+                              </span>
+                            </span>
                             <span className="font-bold">+ ৳ {shippingCost.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
                           </div>
                         )}
 
                         {laborCost > 0 && (
-                          <div className="flex justify-between text-amber-600">
-                            <span>Unloading Labor Charge</span>
+                          <div className="flex justify-between items-center text-amber-600 font-bengali">
+                            <span className="flex items-center gap-1.5">
+                              <span>Unloading Labor</span>
+                              <span className={cn(
+                                "text-[9px] px-1.5 py-0.5 rounded-sm font-bold",
+                                laborPayer === 'supplier' ? "bg-orange-100 text-orange-800" : "bg-amber-100 text-amber-800"
+                              )}>
+                                {laborPayer === 'supplier' ? 'সাপ্লায়ার দিবে (লেজারে)' : 'দোকান দিবে (ড্রয়ারে)'}
+                              </span>
+                            </span>
                             <span className="font-bold">+ ৳ {laborCost.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
                           </div>
                         )}
@@ -2192,7 +2336,10 @@ export default function PurchasesPage() {
 
                         {(() => {
                           const goodsTotal = Math.max(0, cartSubtotal - (commissionAdjustment === 'deduct' ? computedCommission : 0));
-                          const goodsSupplierDue = paymentOption === 'now' ? Math.max(0, goodsTotal - paidAmount) : goodsTotal;
+                          const supplierShipCharge = shippingPayer === 'supplier' ? (shippingCost || 0) : 0;
+                          const supplierLabCharge = laborPayer === 'supplier' ? (laborCost || 0) : 0;
+                          const effectiveSupplierBill = goodsTotal + supplierShipCharge + supplierLabCharge;
+                          const currentInvoiceSupplierDue = paymentOption === 'now' ? Math.max(0, effectiveSupplierBill - paidAmount) : effectiveSupplierBill;
                           return (
                             <>
                               <div className="flex justify-between text-slate-700 font-bold pt-1">
@@ -2211,14 +2358,21 @@ export default function PurchasesPage() {
 
                       {(() => {
                         const goodsTotal = Math.max(0, cartSubtotal - (commissionAdjustment === 'deduct' ? computedCommission : 0));
-                        const goodsSupplierDue = paymentOption === 'now' ? Math.max(0, goodsTotal - paidAmount) : goodsTotal;
+                        const supplierShipCharge = shippingPayer === 'supplier' ? (shippingCost || 0) : 0;
+                        const supplierLabCharge = laborPayer === 'supplier' ? (laborCost || 0) : 0;
+                        const effectiveSupplierBill = goodsTotal + supplierShipCharge + supplierLabCharge;
+                        const currentInvoiceSupplierDue = paymentOption === 'now' ? Math.max(0, effectiveSupplierBill - paidAmount) : effectiveSupplierBill;
                         return (
                           <div className="pt-3 border-t border-slate-100 flex justify-between items-baseline">
                             <div>
                               <span className="text-xs font-bold text-slate-700 block">Grand Total (with Due)</span>
-                              <span className="text-[10px] text-slate-400 font-bold">পণ্যের পাওনা + কোম্পানির পূর্বের পাওনা</span>
+                              <span className="text-[10px] text-slate-400 font-bold">
+                                {supplierShipCharge > 0 || supplierLabCharge > 0 
+                                  ? "পণ্যের পাওনা + পরিবহন/লেবার + পূর্বের পাওনা" 
+                                  : "পণ্যের পাওনা + কোম্পানির পূর্বের পাওনা"}
+                              </span>
                             </div>
-                            <span className="text-2xl font-black text-orange-600">৳ {(goodsSupplierDue + selectedSupplierDue).toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                            <span className="text-2xl font-black text-orange-600">৳ {(currentInvoiceSupplierDue + selectedSupplierDue).toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
                           </div>
                         );
                       })()}
@@ -2244,11 +2398,14 @@ export default function PurchasesPage() {
 
                     {(() => {
                       const goodsTotal = Math.max(0, cartSubtotal - (commissionAdjustment === 'deduct' ? computedCommission : 0));
-                      const goodsSupplierDue = paymentOption === 'now' ? Math.max(0, goodsTotal - paidAmount) : goodsTotal;
+                      const supplierShipCharge = shippingPayer === 'supplier' ? (shippingCost || 0) : 0;
+                      const supplierLabCharge = laborPayer === 'supplier' ? (laborCost || 0) : 0;
+                      const effectiveSupplierBill = goodsTotal + supplierShipCharge + supplierLabCharge;
+                      const currentInvoiceSupplierDue = paymentOption === 'now' ? Math.max(0, effectiveSupplierBill - paidAmount) : effectiveSupplierBill;
                       return (
                         <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-3">
                           <span className="font-bold text-slate-600">Remaining Supplier Due</span>
-                          <span className="text-lg font-black text-rose-600">৳ {goodsSupplierDue.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
+                          <span className="text-lg font-black text-rose-600">৳ {currentInvoiceSupplierDue.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span>
                         </div>
                       );
                     })()}

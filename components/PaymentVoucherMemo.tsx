@@ -141,25 +141,34 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
                            (voucher.partyName && voucher.partyName !== 'কাস্টমার' && voucher.partyName !== 'সরবরাহকারী' && voucher.partyName !== 'দোকান ক্যাশ / মূলধন' ? voucher.partyName : '') || 
                            'ক্যাশে জমা';
 
-  const isIncome = (rawType === 'income' || rawType === 'payment_in') && !isAddMoney;
-  const isExpense = (rawType === 'expense' || rawType === 'payment_out') && !isAddMoney;
+  const isLoanIn = meta.isLoanIn === true || 
+                   voucher.category === 'লোন গ্রহণ' || 
+                   (voucher as any).raw?.transaction_type === 'loan_in' ||
+                   rawNoteStr.includes('[লোন গ্রহণ');
+
+  const isIncome = (rawType === 'income' || rawType === 'payment_in' || isLoanIn) && !isAddMoney;
+  const isExpense = (rawType === 'expense' || rawType === 'payment_out') && !isAddMoney && !isLoanIn;
   
-  const voucherTitle = isAddMoney ? 'টাকা যোগের রশিদ' : isIncome ? 'টাকা জমার রশিদ' : isExpense ? 'পেমেন্ট প্রদান ভাউচার' : 'লেনদেন ভাউচার';
-  const voucherSubtitle = isAddMoney ? '(টাকা যোগ রশিদ)' : isIncome ? '(টাকা জমার রশিদ)' : isExpense ? '(পেমেন্ট প্রদান ভাউচার)' : '(লেনদেন ভাউচার)';
+  const voucherTitle = isLoanIn ? 'লোন গ্রহণ রশিদ / ভাউচার' : isAddMoney ? 'টাকা যোগের রশিদ' : isIncome ? 'টাকা জমার রশিদ' : isExpense ? 'পেমেন্ট প্রদান ভাউচার' : 'লেনদেন ভাউচার';
+  const voucherSubtitle = isLoanIn ? '(সরবরাহকারী ঋণ গ্রহণ রশিদ)' : isAddMoney ? '(টাকা যোগ রশিদ)' : isIncome ? '(টাকা জমার রশিদ)' : isExpense ? '(পেমেন্ট প্রদান ভাউচার)' : '(লেনদেন ভাউচার)';
   
   const amount = Number(voucher.amount || 0);
   const discountAmount = Number(voucher.discountAmount || 0);
   const previousBalance = Number(voucher.previousBalance || 0);
-  const remainingBalance = isIncome ? (previousBalance - amount - discountAmount) : (previousBalance - amount);
+  const remainingBalance = isLoanIn 
+    ? (previousBalance + amount) 
+    : isIncome 
+      ? (previousBalance - amount - discountAmount) 
+      : (previousBalance - amount);
 
-  const voucherNo = voucher.voucherNo || voucher.paymentId || (voucher.id ? (voucher.id.startsWith('TRX') || voucher.id.startsWith('RCV') || voucher.id.startsWith('PAY') ? voucher.id : `${isAddMoney ? 'ADD' : isIncome ? 'RCV' : 'PAY'}-${voucher.id.slice(-6).toUpperCase()}`) : 'RCV-000101');
+  const voucherNo = voucher.voucherNo || voucher.paymentId || (voucher.id ? (voucher.id.startsWith('TRX') || voucher.id.startsWith('RCV') || voucher.id.startsWith('PAY') || voucher.id.startsWith('LOAN') ? voucher.id : `${isLoanIn ? 'LOAN' : isAddMoney ? 'ADD' : isIncome ? 'RCV' : 'PAY'}-${voucher.id.slice(-6).toUpperCase()}`) : 'RCV-000101');
 
   const pm = (voucher.paymentMethod || meta.paymentMethodName || 'Cash').toLowerCase();
   const isBank = pm.includes('bank') || pm.includes('ব্যাংক');
   const isCheque = pm.includes('check') || pm.includes('cheque') || pm.includes('চেক');
   const paymentMethodLabel = isBank ? '🏦 ব্যাংক ডিপোজিট' : isCheque ? '📄 চেক' : '💵 নগদ';
 
-  const partyLabel = isIncome ? 'জমা প্রদানকারীর নাম (গ্রাহক)' : isExpense ? 'প্রাপকের নাম (সরবরাহকারী)' : 'পার্টির নাম';
+  const partyLabel = isLoanIn ? 'ঋণ প্রদানকারী (সরবরাহকারী)' : isIncome ? 'জমা প্রদানকারীর নাম (গ্রাহক)' : isExpense ? 'প্রাপকের নাম (সরবরাহকারী)' : 'পার্টির নাম';
   const operatorName = voucher.operatorName || 'ক্যাশিয়ার';
 
   // Clean JSON metadata from description or notes

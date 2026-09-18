@@ -99,14 +99,20 @@ export function buildLedgerPrintRows(
         try { meta = JSON.parse(tx.notes.split('\n')[0]); } catch {}
       }
 
-      // Exclude labor & shipping charges for suppliers and purchase transactions
+      // Exclude labor & shipping charges for suppliers only if Dokan is paying them
       if (txType === 'purchase' || !isCustomer || isSupplier) {
         const labCost = Number(meta.laborCost || (tx as any).laborCost || (tx as any).labor_cost || 0);
         const shipCost = Number(meta.shippingCost || (tx as any).shippingCost || (tx as any).shipping_cost || (tx as any).transportCost || 0);
-        bill = Math.max(0, bill - (labCost + shipCost));
+        const shipPayer = meta.shippingPayer || (tx as any).shippingPayer || 'shop';
+        const laborPayer = meta.laborPayer || (tx as any).laborPayer || 'shop';
+        const deductLab = laborPayer !== 'supplier' ? labCost : 0;
+        const deductShip = shipPayer !== 'supplier' ? shipCost : 0;
+        bill = Math.max(0, bill - (deductLab + deductShip));
       }
 
-      if (txType === 'payment_in' || txType === 'payment_out' || (isEngineer && txType === 'payment')) {
+      if (txType === 'loan_in') {
+        priorBalance += (bill || paid);
+      } else if (txType === 'payment_in' || txType === 'payment_out' || (isEngineer && txType === 'payment')) {
         priorBalance -= (paid || bill);
       } else if (txType === 'sale_return' || txType === 'purchase_return') {
         priorBalance -= bill;
@@ -174,7 +180,33 @@ export function buildLedgerPrintRows(
       try { meta = JSON.parse(tx.notes.split('\n')[0]); } catch {}
     }
 
-    if (txType === 'payment_in' || txType === 'payment_out' || (isEngineer && txType === 'payment')) {
+    if (txType === 'loan_in') {
+      const loanAmt = Number(tx.totalAmount || tx.paidAmount || 0);
+      if (loanAmt > 0) {
+        totalAmount += loanAmt;
+        const loanNo = tx.invoiceNo || tx.orderId || `LOAN-${String(tx.id || '').slice(0, 5).toUpperCase()}`;
+        const userNote = tx.description || tx.notes || '';
+        let cleanNote = userNote;
+        if (cleanNote.trim().startsWith('{')) {
+          try {
+            const parsed = JSON.parse(cleanNote.split('\n')[0]);
+            cleanNote = parsed.userNote || parsed.note || '';
+          } catch {
+            cleanNote = '';
+          }
+        }
+        rows.push({
+          date: txDateStr,
+          description: `লোন গ্রহণ / ঋণ (ভাউচার: #${loanNo})${cleanNote ? ` - ${cleanNote}` : ''}`,
+          quantity: '-',
+          rate: '-',
+          deposit: '-',
+          amount: formatLedgerNum(loanAmt),
+          rawDeposit: 0,
+          rawAmount: loanAmt,
+        });
+      }
+    } else if (txType === 'payment_in' || txType === 'payment_out' || (isEngineer && txType === 'payment')) {
       const paid = Number(tx.paidAmount || tx.totalAmount || 0);
       if (paid > 0) {
         totalDeposit += paid;
@@ -308,9 +340,8 @@ export function buildLedgerPrintRows(
         if (!tx.subtotal && invDiscount > 0) {
           bill += invDiscount;
         }
-        if (txType === 'purchase' || !isCustomer || isSupplier) {
-          bill = Math.max(0, bill - (labCost + shipCost));
-        }
+        // Deduct labor and shipping so bill represents strictly the goods value
+        bill = Math.max(0, bill - (labCost + shipCost));
         totalAmount += bill;
         rows.push({
           date: txDateStr,
@@ -324,12 +355,17 @@ export function buildLedgerPrintRows(
         });
       }
 
-      // Labor charge: Only for customer sales invoices, NEVER added to supplier ledger
-      if (labCost > 0 && isCustomer && !isSupplier && txType !== 'purchase') {
+      const isSupplierTx = txType === 'purchase' || isSupplier || !isCustomer;
+      const shipPayer = meta.shippingPayer || (tx as any).shippingPayer || 'shop';
+      const laborPayer = meta.laborPayer || (tx as any).laborPayer || 'shop';
+
+      // Labor charge: Added to customer sales, or to supplier purchases if supplier pays/bills it
+      const shouldAddLabor = isSupplierTx ? (laborPayer === 'supplier' && labCost > 0) : (labCost > 0);
+      if (shouldAddLabor) {
         totalAmount += labCost;
         rows.push({
           date: txDateStr,
-          description: 'লেবারি',
+          description: isSupplierTx ? 'আনলোডিং / লেবার খরচ (সাপ্লায়ার বহন করবে)' : 'লেবারি',
           quantity: '১.০',
           rate: formatLedgerNum(labCost),
           deposit: '-',
@@ -339,12 +375,13 @@ export function buildLedgerPrintRows(
         });
       }
 
-      // Transport / shipping charge: Only for customer sales invoices, NEVER added to supplier ledger
-      if (shipCost > 0 && isCustomer && !isSupplier && txType !== 'purchase') {
+      // Transport / shipping charge: Added to customer sales, or to supplier purchases if supplier pays/bills it
+      const shouldAddShipping = isSupplierTx ? (shipPayer === 'supplier' && shipCost > 0) : (shipCost > 0);
+      if (shouldAddShipping) {
         totalAmount += shipCost;
         rows.push({
           date: txDateStr,
-          description: 'ভাড়া',
+          description: isSupplierTx ? 'গাড়ি ভাড়া / পরিবহন (সাপ্লায়ার বহন করবে)' : 'ভাড়া',
           quantity: '১.০',
           rate: formatLedgerNum(shipCost),
           deposit: '-',
