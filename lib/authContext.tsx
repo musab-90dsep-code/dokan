@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { api, AuthUserData } from '@/lib/api';
 
-export type UserRole = 'developer' | 'admin' | 'staff';
+export type UserRole = 'developer' | 'admin' | 'manager' | 'staff';
 
 export interface AuthContextType {
   user: AuthUserData | null;
@@ -15,6 +15,7 @@ export interface AuthContextType {
   role: UserRole;
   isDeveloper: boolean;
   isAdmin: boolean;
+  isManager: boolean;
   isStaff: boolean;
   isViewer: boolean;
   canEditInvoice: boolean;
@@ -170,18 +171,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const role: UserRole = (user?.role as UserRole) || (user?.is_superuser ? 'developer' : 'admin');
   const isDeveloper = role === 'developer' || !!user?.is_superuser;
   const isAdmin = role === 'admin' || isDeveloper;
-  const isStaff = role === 'staff' && !isAdmin && !isDeveloper;
+  const isManager = role === 'manager';
+  const isStaff = (role === 'staff' || (role as string) === 'viewer') && !isAdmin && !isDeveloper && !isManager;
   const isViewer = isStaff; // staff has view-only access
 
   // Specific Permission Rules:
   // 1. Developer (সর্বোচ্চ অ্যাক্সেস): Full access, can edit and delete invoices.
-  // 2. Admin (অ্যাডমিন): Can create invoices, manage customers/suppliers/products/expenses/settings, but CANNOT edit or delete invoices.
-  // 3. Staff (স্টাফ): View-only across the system, cannot create, edit, or delete anything.
+  // 2. Admin (অ্যাডমিন): Full control, can create invoices, manage customers/suppliers/products/expenses/settings, but CANNOT edit or delete invoices.
+  // 3. Manager (ম্যানেজার): Can create invoices, record purchases, add transactions and payments, manage products, but CANNOT access Settings/User management.
+  // 4. Staff (স্টাফ / ভিউয়ার): View-only across the system, cannot create, edit, or delete anything.
   const canEditInvoice = isDeveloper;
   const canDeleteInvoice = isDeveloper;
-  const canCreateInvoice = isAdmin || isDeveloper;
-  const canApproveInvoice = isAdmin || isDeveloper;
-  const canModifyData = isAdmin || isDeveloper;
+  const canCreateInvoice = isAdmin || isDeveloper || isManager;
+  const canApproveInvoice = isAdmin || isDeveloper || isManager;
+  const canModifyData = isAdmin || isDeveloper || isManager;
 
   const isProtected = pathname !== '/login';
   const shouldShowLoader = !isInitialized || (isProtected && !user);
@@ -196,6 +199,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         role,
         isDeveloper,
         isAdmin,
+        isManager,
         isStaff,
         isViewer,
         canEditInvoice,

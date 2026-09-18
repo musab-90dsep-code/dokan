@@ -111,9 +111,17 @@ export default function LoginPage() {
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
               মেসার্স দেলোয়ার এন্ড ব্রাদার্স
             </h1>
-            <p className="text-xs text-slate-500 mt-1 font-medium">
-              সিস্টেমে প্রবেশ করতে আপনার তথ্য দিন
+            <p className="text-xs text-slate-600 mt-1 font-semibold">
+              অনুমোদিত জিমেইল (Gmail) ও পাসওয়ার্ড দিয়ে সিস্টেমে প্রবেশ করুন
             </p>
+          </div>
+
+          {/* Access Policy Notice */}
+          <div className="mb-5 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-900 text-xs flex items-start gap-2.5">
+            <span className="text-base leading-none">🔒</span>
+            <div className="leading-snug text-[11.5px]">
+              <strong className="font-bold">সিস্টেম অ্যাক্সেস পলিসি:</strong> শুধুমাত্র অ্যাডমিন কর্তৃক অনুমতিপ্রাপ্ত জিমেইল অ্যাকাউন্টে সিস্টেম ওপেন হবে।
+            </div>
           </div>
 
           {/* Error Alert */}
@@ -128,24 +136,18 @@ export default function LoginPage() {
             {/* Identifier Input */}
             <div className="space-y-1.5">
               <label className="flex items-center justify-between text-xs font-bold text-slate-700">
-                <span>ইমেইল / ইউজারনেম / মোবাইল</span>
+                <span>অনুমোদিত জিমেইল (Gmail Address)</span>
                 <span className="text-[10px] text-slate-400 font-normal">English (EN)</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  {isEmail ? (
-                    <Mail className="w-4 h-4 text-amber-600" />
-                  ) : isPhone ? (
-                    <Phone className="w-4 h-4 text-emerald-600" />
-                  ) : (
-                    <UserIcon className="w-4 h-4 text-slate-400" />
-                  )}
+                  <Mail className="w-4 h-4 text-amber-600" />
                 </div>
                 <Input
                   type="text"
                   required
                   autoFocus
-                  placeholder="Username, email or mobile..."
+                  placeholder="example@gmail.com"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   data-no-bangla="true"
@@ -157,6 +159,9 @@ export default function LoginPage() {
                   className="no-bangla pl-10 bg-slate-50/70 border-slate-200 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-600/20 text-xs sm:text-sm h-11 rounded-xl transition-all font-sans font-medium"
                 />
               </div>
+              <p className="text-[10.5px] text-slate-400 font-medium pl-1">
+                আপনার অনুমতিপ্রাপ্ত জিমেইল ঠিকানা বা অ্যাডমিন ইউজারনেম দিন
+              </p>
             </div>
 
             {/* Password Input */}

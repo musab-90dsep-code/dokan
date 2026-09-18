@@ -222,7 +222,7 @@ export interface AuthUserData {
   last_name?: string;
   full_name?: string;
   phone?: string;
-  role: 'developer' | 'admin' | 'staff' | 'viewer';
+  role: 'developer' | 'admin' | 'manager' | 'staff' | 'viewer';
   role_display?: string;
   role_badge?: string;
   is_active?: boolean;
@@ -742,13 +742,13 @@ export const api = {
           return [];
         }
       },
-      create: async (data: { username: string; password?: string; role: string; full_name?: string; phone?: string; email?: string }): Promise<AuthUserData> => {
+      create: async (data: { username?: string; password?: string; role: string; full_name?: string; phone?: string; email?: string; is_active?: boolean }): Promise<AuthUserData> => {
         return request<AuthUserData>('/auth/users/', {
           method: 'POST',
           body: JSON.stringify(data),
         });
       },
-      update: async (id: number | string, data: Partial<{ username: string; password?: string; role: string; full_name?: string; phone?: string; email?: string }>): Promise<AuthUserData> => {
+      update: async (id: number | string, data: Partial<{ username: string; password?: string; role: string; full_name?: string; phone?: string; email?: string; is_active?: boolean }>): Promise<AuthUserData> => {
         return request<AuthUserData>(`/auth/users/${id}/`, {
           method: 'PATCH',
           body: JSON.stringify(data),

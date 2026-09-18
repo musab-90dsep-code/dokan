@@ -108,7 +108,7 @@ import { useAuth } from '@/lib/authContext';
 export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, role, logout } = useAuth();
+  const { user, role, isAdmin, isDeveloper, logout } = useAuth();
   const searchParams = useSearchParams();
   const currentType = searchParams?.get('type');
   
@@ -247,7 +247,7 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
           {/* MENU SCROLL AREA */}
           <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2.5 py-3 custom-scrollbar">
             <nav className="space-y-1">
-              {menuStructure.map((item) => {
+              {menuStructure.filter(m => m.href !== '/settings' || isAdmin || isDeveloper).map((item) => {
                 const isOpen = openMenus.includes(item.name);
                 const hasChildren = !!item.children && item.children.length > 0;
                 const isParentActive = hasChildren
@@ -382,16 +382,16 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
               <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
                 <div className={cn(
                   "w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm text-white flex-shrink-0 shadow-2xs",
-                  role === 'staff' ? "bg-blue-600 shadow-blue-600/20" : "bg-amber-600 shadow-amber-600/20"
+                  role === 'developer' ? "bg-purple-600 shadow-purple-600/20" : role === 'manager' ? "bg-emerald-600 shadow-emerald-600/20" : role === 'staff' ? "bg-blue-600 shadow-blue-600/20" : "bg-amber-600 shadow-amber-600/20"
                 )}>
-                  {role === 'staff' ? '👔' : '👑'}
+                  {role === 'developer' ? '🛠️' : role === 'manager' ? '💼' : role === 'staff' ? '👔' : '👑'}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-bold text-slate-800 truncate">
-                    {user.full_name || user.username}
+                    {user.full_name || user.email || user.username}
                   </p>
                   <p className="text-[10px] font-bold text-slate-500 truncate">
-                    {role === 'staff' ? 'স্টাফ' : 'অ্যাডমিন'}
+                    {role === 'developer' ? 'ডেভেলপার' : role === 'manager' ? 'ম্যানেজার' : role === 'staff' ? 'স্টাফ (ভিউয়ার)' : 'অ্যাডমিন'}
                   </p>
                 </div>
               </div>

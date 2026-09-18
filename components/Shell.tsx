@@ -143,6 +143,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const [laborFilterTab, setLaborFilterTab] = useState<'all' | 'pending' | 'paid'>('pending');
   const [settlingShipping, setSettlingShipping] = useState<ShippingChargeItem | null>(null);
   const [settlingLabor, setSettlingLabor] = useState<LaborChargeItem | null>(null);
+  const [isSettlingPayment, setIsSettlingPayment] = useState(false);
 
   const [cheques, setCheques] = useState<ChequeItem[]>([]);
   const [orders, setOrders] = useState<PendingOrderItem[]>([]);
@@ -576,6 +577,8 @@ export function Shell({ children }: { children: ReactNode }) {
   });
 
   const handleSettleShipping = async (item: ShippingChargeItem) => {
+    if (isSettlingPayment) return;
+    setIsSettlingPayment(true);
     try {
       const payAmount = item.dueAmount !== undefined ? item.dueAmount : item.amount;
       const t = item.rawTx;
@@ -630,6 +633,8 @@ export function Shell({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error(err);
       toast.error('গাড়ি ভাড়া পরিশোধ করতে সমস্যা হয়েছে');
+    } finally {
+      setIsSettlingPayment(false);
     }
   };
 
@@ -665,6 +670,8 @@ export function Shell({ children }: { children: ReactNode }) {
   };
 
   const handleSettleLabor = async (item: LaborChargeItem) => {
+    if (isSettlingPayment) return;
+    setIsSettlingPayment(true);
     try {
       const payAmount = item.dueAmount !== undefined ? item.dueAmount : item.amount;
       const t = item.rawTx;
@@ -734,6 +741,8 @@ export function Shell({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error(err);
       toast.error('লেবার খরচ পরিশোধ করতে সমস্যা হয়েছে');
+    } finally {
+      setIsSettlingPayment(false);
     }
   };
 
@@ -1861,18 +1870,20 @@ export function Shell({ children }: { children: ReactNode }) {
                 {(settlingShipping.overpaidAmount || 0) > 0 ? (
                   <Button
                     size="sm"
+                    disabled={isSettlingPayment}
                     onClick={() => handleAdjustOverpaidShipping(settlingShipping)}
-                    className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-4 rounded-xl"
+                    className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-4 rounded-xl disabled:opacity-50"
                   >
-                    হ্যাঁ, অতিরিক্ত ৳ {settlingShipping.overpaidAmount!.toLocaleString('bn-BD')} সমন্বয় করুন
+                    {isSettlingPayment ? 'সমন্বয় হচ্ছে...' : `হ্যাঁ, অতিরিক্ত ৳ ${settlingShipping.overpaidAmount!.toLocaleString('bn-BD')} সমন্বয় করুন`}
                   </Button>
                 ) : (
                   <Button
                     size="sm"
+                    disabled={isSettlingPayment}
                     onClick={() => handleSettleShipping(settlingShipping)}
-                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 rounded-xl"
+                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 rounded-xl disabled:opacity-50"
                   >
-                    হ্যাঁ, বাকি ৳ {(settlingShipping.dueAmount !== undefined ? settlingShipping.dueAmount : settlingShipping.amount).toLocaleString('bn-BD')} পরিশোধ করুন
+                    {isSettlingPayment ? 'পরিশোধ হচ্ছে...' : `হ্যাঁ, বাকি ৳ ${(settlingShipping.dueAmount !== undefined ? settlingShipping.dueAmount : settlingShipping.amount).toLocaleString('bn-BD')} পরিশোধ করুন`}
                   </Button>
                 )}
               </div>
@@ -1971,18 +1982,20 @@ export function Shell({ children }: { children: ReactNode }) {
                 {(settlingLabor.overpaidAmount || 0) > 0 ? (
                   <Button
                     size="sm"
+                    disabled={isSettlingPayment}
                     onClick={() => handleAdjustOverpaidLabor(settlingLabor)}
-                    className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-4 rounded-xl"
+                    className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-4 rounded-xl disabled:opacity-50"
                   >
-                    হ্যাঁ, অতিরিক্ত ৳ {settlingLabor.overpaidAmount!.toLocaleString('bn-BD')} সমন্বয় করুন
+                    {isSettlingPayment ? 'সমন্বয় হচ্ছে...' : `হ্যাঁ, অতিরিক্ত ৳ ${settlingLabor.overpaidAmount!.toLocaleString('bn-BD')} সমন্বয় করুন`}
                   </Button>
                 ) : (
                   <Button
                     size="sm"
+                    disabled={isSettlingPayment}
                     onClick={() => handleSettleLabor(settlingLabor)}
-                    className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-4 rounded-xl"
+                    className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-4 rounded-xl disabled:opacity-50"
                   >
-                    হ্যাঁ, বাকি ৳ {(settlingLabor.dueAmount !== undefined ? settlingLabor.dueAmount : settlingLabor.amount).toLocaleString('bn-BD')} পরিশোধ করুন
+                    {isSettlingPayment ? 'পরিশোধ হচ্ছে...' : `হ্যাঁ, বাকি ৳ ${(settlingLabor.dueAmount !== undefined ? settlingLabor.dueAmount : settlingLabor.amount).toLocaleString('bn-BD')} পরিশোধ করুন`}
                   </Button>
                 )}
               </div>

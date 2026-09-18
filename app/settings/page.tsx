@@ -64,7 +64,8 @@ export default function SettingsPage() {
     full_name: '',
     phone: '',
     email: '',
-    role: 'staff' as 'admin' | 'staff'
+    role: 'manager' as 'admin' | 'manager' | 'staff',
+    is_active: true
   });
   const [isSubmittingUser, setIsSubmittingUser] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
@@ -163,6 +164,21 @@ export default function SettingsPage() {
     toast.success('ডিফল্ট সেটিংসে ফিরিয়ে আনা হয়েছে');
   };
 
+  const handleToggleUserActive = async (u: UserData) => {
+    if (currentUser?.id === u.id) {
+      toast.error('আপনি নিজের একাউন্টের অ্যাক্সেস বন্ধ করতে পারবেন না');
+      return;
+    }
+    const nextActive = u.is_active === false ? true : false;
+    try {
+      await api.auth.users.update(u.id, { is_active: nextActive });
+      toast.success(`"${u.full_name || u.email || u.username}"-এর অ্যাক্সেস ${nextActive ? 'সক্রিয় (Active)' : 'বন্ধ (Inactive)'} করা হয়েছে`);
+      fetchUsers();
+    } catch (err: any) {
+      toast.error(err.message || 'অ্যাক্সেস স্ট্যাটাস পরিবর্তন করা সম্ভব হয়নি');
+    }
+  };
+
   const handleOpenAddUser = () => {
     setEditingUser(null);
     setFormData({
@@ -171,7 +187,8 @@ export default function SettingsPage() {
       full_name: '',
       phone: '',
       email: '',
-      role: 'staff'
+      role: 'manager',
+      is_active: true
     });
     setIsUserModalOpen(true);
   };
@@ -179,20 +196,24 @@ export default function SettingsPage() {
   const handleOpenEditUser = (u: UserData) => {
     setEditingUser(u);
     setFormData({
-      username: u.username,
+      username: u.username || '',
       password: '',
       full_name: u.full_name || '',
       phone: u.phone || '',
       email: u.email || '',
-      role: u.role === 'admin' || (u.role as string) === 'developer' ? 'admin' : 'staff'
+      role: (u.role === 'admin' || (u.role as string) === 'developer') ? 'admin' : (u.role === 'manager' ? 'manager' : 'staff'),
+      is_active: u.is_active !== false
     });
     setIsUserModalOpen(true);
   };
 
   const handleSubmitUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.username.trim()) {
-      toast.error('অনুগ্রহ করে ইউজারনেম দিন');
+    const cleanEmail = formData.email.trim().toLowerCase();
+    const cleanUsername = formData.username.trim();
+
+    if (!cleanEmail && !cleanUsername) {
+      toast.error('অনুগ্রহ করে অনুমোদিত জিমেইল (Gmail) অথবা ইউজারনেম দিন');
       return;
     }
     if (!editingUser && !formData.password.trim()) {
@@ -204,27 +225,29 @@ export default function SettingsPage() {
       setIsSubmittingUser(true);
       if (editingUser) {
         const payload: any = {
-          username: formData.username,
-          full_name: formData.full_name,
-          phone: formData.phone,
-          email: formData.email,
-          role: formData.role
+          username: cleanUsername || cleanEmail.split('@')[0],
+          full_name: formData.full_name.trim(),
+          phone: formData.phone.trim(),
+          email: cleanEmail,
+          role: formData.role,
+          is_active: formData.is_active
         };
         if (formData.password.trim()) {
           payload.password = formData.password.trim();
         }
         await api.auth.users.update(editingUser.id, payload);
-        toast.success(`ব্যবহারকারী "${formData.full_name || formData.username}" সফলভাবে আপডেট হয়েছে`);
+        toast.success(`ব্যবহারকারী "${formData.full_name || cleanEmail || cleanUsername}" সফলভাবে আপডেট হয়েছে`);
       } else {
         await api.auth.users.create({
-          username: formData.username,
-          password: formData.password,
-          full_name: formData.full_name,
-          phone: formData.phone,
-          email: formData.email,
-          role: formData.role
+          username: cleanUsername || cleanEmail.split('@')[0],
+          password: formData.password.trim(),
+          full_name: formData.full_name.trim(),
+          phone: formData.phone.trim(),
+          email: cleanEmail,
+          role: formData.role,
+          is_active: formData.is_active
         });
-        toast.success(`নতুন ব্যবহারকারী "${formData.full_name || formData.username}" তৈরি হয়েছে`);
+        toast.success(`নতুন জিমেইল "${cleanEmail || cleanUsername}" সফলভাবে অনুমোদিত হয়েছে`);
       }
       setIsUserModalOpen(false);
       fetchUsers();
@@ -259,18 +282,29 @@ export default function SettingsPage() {
 
   const getRoleBadge = (role: string) => {
     switch (role) {
-      case 'admin':
       case 'developer':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
-            👑 অ্যাডমিন
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-900 border border-purple-200">
+            🛠️ ডেভেলপার
+          </span>
+        );
+      case 'admin':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-200">
+            👑 অ্যাডমিন (পূর্ণ ক্ষমতা)
+          </span>
+        );
+      case 'manager':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-900 border border-emerald-200">
+            💼 ম্যানেজার (লেনদেন ও বিক্রয়)
           </span>
         );
       case 'staff':
       default:
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-bold bg-blue-100 text-blue-900 border border-blue-300">
-            👔 স্টাফ
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-900 border border-blue-200">
+            👔 স্টাফ (ভিউয়ার)
           </span>
         );
     }
@@ -604,17 +638,17 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* 2. USER & ROLE MANAGEMENT */}
+        {/* 2. USER & GMAIL ROLE MANAGEMENT */}
         {isAdmin && (
           <Card className="border-slate-200 shadow-sm rounded-2xl overflow-hidden bg-white">
             <CardHeader className="bg-slate-50/50 border-b border-slate-100 py-4 px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <CardTitle className="flex items-center gap-2 text-base font-black text-slate-800">
                   <Users className="w-5 h-5 text-blue-600" />
-                  ব্যবহারকারী ব্যবস্থাপনা (User Management)
+                  জিমেইল অ্যাক্সেস ও ব্যবহারকারী ব্যবস্থাপনা (Gmail Access & User Roles)
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500 font-semibold mt-0.5">
-                  অ্যাডমিন ও স্টাফ অ্যাকাউন্ট পরিচালনা
+                  সিস্টেমে প্রবেশের জন্য কর্মীদের জিমেইল অ্যাড্রেসে অনুমতি (অ্যাক্সেস) দিন এবং কে কোন ক্ষমতায় কাজ করতে পারবে তা নির্ধারণ করুন
                 </CardDescription>
               </div>
 
@@ -623,7 +657,7 @@ export default function SettingsPage() {
                 className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-9 px-4 rounded-xl text-xs flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
               >
                 <UserPlus className="w-4 h-4" />
-                <span>+ নতুন ব্যবহারকারী</span>
+                <span>+ নতুন জিমেইলে অ্যাক্সেস দিন</span>
               </Button>
             </CardHeader>
 
@@ -631,10 +665,10 @@ export default function SettingsPage() {
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="font-bold text-slate-600 text-xs py-3 px-6">ব্যবহারকারী / নাম</TableHead>
-                    <TableHead className="font-bold text-slate-600 text-xs py-3 px-4">ইউজারনেম</TableHead>
-                    <TableHead className="font-bold text-slate-600 text-xs py-3 px-4">রোল</TableHead>
-                    <TableHead className="font-bold text-slate-600 text-xs py-3 px-4">মোবাইল</TableHead>
+                    <TableHead className="font-bold text-slate-600 text-xs py-3 px-6">ব্যবহারকারী ও জিমেইল</TableHead>
+                    <TableHead className="font-bold text-slate-600 text-xs py-3 px-4">প্রদত্ত অ্যাক্সেস (Role)</TableHead>
+                    <TableHead className="font-bold text-slate-600 text-xs py-3 px-4 text-center">অ্যাক্সেস স্ট্যাটাস</TableHead>
+                    <TableHead className="font-bold text-slate-600 text-xs py-3 px-4">মোবাইল নম্বর</TableHead>
                     <TableHead className="font-bold text-slate-600 text-xs py-3 px-6 text-right">অ্যাকশন</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -648,63 +682,95 @@ export default function SettingsPage() {
                   ) : usersList.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="py-12 text-center text-slate-400 font-bold">
-                        কোনো ব্যবহারকারী পাওয়া যায়নি
+                        কোনো অনুমোদিত জিমেইল বা ব্যবহারকারী পাওয়া যায়নি
                       </TableCell>
                     </TableRow>
                   ) : (
-                    usersList.map((u) => (
-                      <TableRow key={u.id} className="hover:bg-slate-50/70 transition-colors">
-                        <TableCell className="py-3 px-6">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-700 text-xs shrink-0 border border-slate-200">
-                              {(u.full_name || u.username)[0]?.toUpperCase()}
+                    usersList.map((u) => {
+                      const isActive = u.is_active !== false;
+                      return (
+                        <TableRow key={u.id} className="hover:bg-slate-50/70 transition-colors">
+                          <TableCell className="py-3.5 px-6">
+                            <div className="flex items-center gap-3">
+                              <div className={cn(
+                                "w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm shrink-0 border",
+                                isActive ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-slate-100 border-slate-200 text-slate-400"
+                              )}>
+                                {(u.full_name || u.email || u.username)[0]?.toUpperCase()}
+                              </div>
+                              <div>
+                                <p className="font-black text-slate-900 text-xs flex items-center gap-1.5">
+                                  <span>{u.full_name || u.username}</span>
+                                  {currentUser?.id === u.id && (
+                                    <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">আপনি</span>
+                                  )}
+                                </p>
+                                {u.email ? (
+                                  <p className="text-[11px] text-indigo-600 font-mono font-bold flex items-center gap-1 mt-0.5">
+                                    <span>📧</span>
+                                    <span>{u.email}</span>
+                                  </p>
+                                ) : (
+                                  <p className="text-[11px] text-slate-400 font-mono">@{u.username}</p>
+                                )}
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-black text-slate-800 text-xs">{u.full_name || u.username}</p>
-                              {u.email && <p className="text-[11px] text-slate-400 font-medium">{u.email}</p>}
-                            </div>
-                          </div>
-                        </TableCell>
+                          </TableCell>
 
-                        <TableCell className="py-3 px-4 font-mono font-bold text-slate-700">
-                          @{u.username}
-                        </TableCell>
+                          <TableCell className="py-3.5 px-4">
+                            {getRoleBadge(u.role)}
+                          </TableCell>
 
-                        <TableCell className="py-3 px-4">
-                          {getRoleBadge(u.role)}
-                        </TableCell>
-
-                        <TableCell className="py-3 px-4 text-slate-600">
-                          {u.phone ? toBengaliDigits(u.phone) : '—'}
-                        </TableCell>
-
-                        <TableCell className="py-3 px-6 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleOpenEditUser(u)}
-                              className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg font-bold text-xs"
-                              title="রোল বা পাসওয়ার্ড এডিট করুন"
+                          <TableCell className="py-3.5 px-4 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleUserActive(u)}
+                              disabled={currentUser?.id === u.id}
+                              title={currentUser?.id === u.id ? 'নিজের অ্যাকাউন্ট বন্ধ করা যাবে না' : (isActive ? 'ক্লিক করে অ্যাক্সেস বন্ধ করুন' : 'ক্লিক করে অ্যাক্সেস চালু করুন')}
+                              className={cn(
+                                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer select-none",
+                                isActive
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 shadow-2xs"
+                                  : "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 hover:border-rose-300"
+                              )}
                             >
-                              <Edit2 className="w-3.5 h-3.5 mr-1" /> এডিট
-                            </Button>
-                            {currentUser?.id !== u.id && (
+                              <span className={cn("w-2 h-2 rounded-full", isActive ? "bg-emerald-500 animate-pulse" : "bg-rose-500")} />
+                              <span>{isActive ? 'অনুমতি সক্রিয়' : 'অ্যাক্সেস বন্ধ'}</span>
+                            </button>
+                          </TableCell>
+
+                          <TableCell className="py-3.5 px-4 text-slate-600 font-mono">
+                            {u.phone ? toBengaliDigits(u.phone) : '—'}
+                          </TableCell>
+
+                          <TableCell className="py-3.5 px-6 text-right">
+                            <div className="flex items-center justify-end gap-1">
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleDeleteUser(u.id, u.full_name || u.username)}
-                                disabled={deletingUserId === u.id}
-                                className="h-8 px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg font-bold text-xs"
-                                title="মুছে ফেলুন"
+                                onClick={() => handleOpenEditUser(u)}
+                                className="h-8 px-2.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg font-bold text-xs cursor-pointer"
+                                title="রোল বা পাসওয়ার্ড পরিবর্তন করুন"
                               >
-                                <Trash2 className="w-3.5 h-3.5 mr-1" /> মুছুন
+                                <Edit2 className="w-3.5 h-3.5 mr-1" /> এডিট
                               </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                              {currentUser?.id !== u.id && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteUser(u.id, u.full_name || u.email || u.username)}
+                                  disabled={deletingUserId === u.id}
+                                  className="h-8 px-2.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg font-bold text-xs cursor-pointer"
+                                  title="অ্যাক্সেস ও অ্যাকাউন্ট মুছে ফেলুন"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 mr-1" /> মুছুন
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -713,65 +779,69 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* CREATE / EDIT USER MODAL */}
+      {/* CREATE / EDIT USER & GMAIL ACCESS MODAL */}
       <Dialog open={isUserModalOpen} onOpenChange={setIsUserModalOpen}>
         <DialogContent className="max-w-md rounded-2xl p-6 bg-white font-bengali">
           <DialogHeader>
             <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2">
               {editingUser ? <Edit2 className="w-5 h-5 text-blue-600" /> : <UserPlus className="w-5 h-5 text-blue-600" />}
-              <span>{editingUser ? 'ব্যবহারকারী আপডেট করুন' : 'নতুন ব্যবহারকারী যুক্ত করুন'}</span>
+              <span>{editingUser ? 'জিমেইল অ্যাক্সেস ও তথ্য আপডেট করুন' : 'নতুন জিমেইলে সিস্টেম অ্যাক্সেস দিন'}</span>
             </DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleSubmitUser} className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-slate-700">পূর্ণ নাম (Full Name)</Label>
+              <Label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                <span>অনুমোদিত জিমেইল ঠিকানা (Gmail Address) *</span>
+                <span className="text-[10px] text-slate-400 font-normal">লগইনে ব্যবহার হবে</span>
+              </Label>
+              <Input
+                type="email"
+                required
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="staff@gmail.com"
+                className="font-mono font-bold text-xs rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700">কর্মীর পূর্ণ নাম (Full Name)</Label>
               <Input
                 value={formData.full_name}
                 onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                placeholder="মোঃ দেলোয়ার হোসেন"
+                placeholder="মোঃ আব্দুর রহিম"
                 className="font-bold text-xs rounded-xl"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-700">ইউজারনেম (Username) *</Label>
-                <Input
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  placeholder="staff_manager"
-                  required
-                  className="font-mono font-bold text-xs rounded-xl"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-700">রোল (Role) *</Label>
-                <Select
-                  value={formData.role === 'admin' ? 'admin' : 'staff'}
-                  onValueChange={(val: any) => setFormData({ ...formData, role: val })}
-                >
-                  <SelectTrigger className="font-bold text-xs rounded-xl h-9">
-                    <SelectValue placeholder="রোল নির্বাচন করুন" />
-                  </SelectTrigger>
-                  <SelectContent className="font-bengali text-xs font-bold">
-                    <SelectItem value="admin">👑 অ্যাডমিন (Admin)</SelectItem>
-                    <SelectItem value="staff">👔 স্টাফ (Staff)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700">প্রদত্ত অ্যাক্সেস ক্ষমতা / ভূমিকা (Role) *</Label>
+              <Select
+                value={formData.role}
+                onValueChange={(val: any) => setFormData({ ...formData, role: val })}
+              >
+                <SelectTrigger className="font-bold text-xs rounded-xl h-10">
+                  <SelectValue placeholder="ভূমিকা নির্বাচন করুন" />
+                </SelectTrigger>
+                <SelectContent className="font-bengali text-xs font-bold">
+                  <SelectItem value="admin">👑 অ্যাডমিন (Admin - পূর্ণ নিয়ন্ত্রণ ও সেটিংস)</SelectItem>
+                  <SelectItem value="manager">💼 ম্যানেজার (Manager - বিক্রয়, ক্রয় ও লেনদেন এন্ট্রি)</SelectItem>
+                  <SelectItem value="staff">👔 স্টাফ (Staff - শুধুমাত্র দেখার অনুমতি / View Only)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-slate-700">
-                {editingUser ? 'নতুন পাসওয়ার্ড (পরিবর্তন না করতে চাইলে খালি রাখুন)' : 'পাসওয়ার্ড (Password) *'}
+              <Label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                <span>{editingUser ? 'নতুন পাসওয়ার্ড (পরিবর্তন না করতে চাইলে খালি রাখুন)' : 'পাসওয়ার্ড (Password) *'}</span>
+                <span className="text-[10px] text-slate-400 font-normal">English (EN)</span>
               </Label>
               <Input
                 type="password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder={editingUser ? 'নতুন পাসওয়ার্ড দিন (ঐচ্ছিক)' : 'পাসওয়ার্ড দিন'}
+                placeholder={editingUser ? 'নতুন পাসওয়ার্ড দিন (ঐচ্ছিক)' : 'লগইন পাসওয়ার্ড দিন'}
                 required={!editingUser}
                 className="font-mono font-bold text-xs rounded-xl"
               />
@@ -779,7 +849,7 @@ export default function SettingsPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-700">মোবাইল নম্বর</Label>
+                <Label className="text-xs font-bold text-slate-700">মোবাইল নম্বর (ঐচ্ছিক)</Label>
                 <Input
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -789,15 +859,30 @@ export default function SettingsPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-700">ইমেইল</Label>
+                <Label className="text-xs font-bold text-slate-700">ইউজারনেম (ঐচ্ছিক)</Label>
                 <Input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="user@example.com"
-                  className="font-bold text-xs rounded-xl"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  placeholder="স্বয়ংক্রিয় তৈরি হবে"
+                  className="font-mono font-bold text-xs rounded-xl text-slate-600"
                 />
               </div>
+            </div>
+
+            {/* Active Status Checkbox */}
+            <div className="pt-1">
+              <label className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer transition-colors hover:bg-slate-100/70">
+                <input
+                  type="checkbox"
+                  checked={formData.is_active}
+                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 accent-blue-600 cursor-pointer"
+                />
+                <div>
+                  <span className="font-bold text-xs text-slate-900 block">সিস্টেমে প্রবেশের অনুমতি চালু রাখুন (Active)</span>
+                  <span className="text-[11px] text-slate-500 font-medium">টিক চিহ্ন না দিলে এই জিমেইল দিয়ে সিস্টেমে লগইন করা যাবে না</span>
+                </div>
+              </label>
             </div>
 
             <DialogFooter className="flex flex-row justify-end gap-2 pt-3">
@@ -805,16 +890,16 @@ export default function SettingsPage() {
                 type="button"
                 variant="outline"
                 onClick={() => setIsUserModalOpen(false)}
-                className="rounded-xl font-bold text-xs"
+                className="rounded-xl font-bold text-xs cursor-pointer"
               >
                 বাতিল
               </Button>
               <Button
                 type="submit"
                 disabled={isSubmittingUser}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl cursor-pointer"
               >
-                {isSubmittingUser ? 'সংরক্ষণ হচ্ছে...' : editingUser ? 'আপডেট করুন' : 'সংরক্ষণ করুন'}
+                {isSubmittingUser ? 'সংরক্ষণ হচ্ছে...' : editingUser ? 'আপডেট করুন' : 'অ্যাক্সেস প্রদান করুন'}
               </Button>
             </DialogFooter>
           </form>
