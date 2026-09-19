@@ -63,6 +63,7 @@ const formatBnCurrencyAmount = (amount: number | undefined | null): string => {
 
 interface OrderItem {
   id?: string;
+  productId?: string;
   name: string;
   code?: string;
   price: number;
@@ -406,8 +407,8 @@ function MasterReportsContent() {
         dueAmount: Number(t.due_amount || 0),
         paymentMethod: t.payment_method || '',
         chequeNo: t.cheque_number || '',
-        deliveryType: (t as any).delivery_type || '',
         items: (t.items || []).map(i => ({ 
+          productId: String((i as any).product || (i as any).product_id || ''),
           name: i.product_name, 
           price: Number(i.price || 0), 
           quantity: Number(i.quantity || 0), 
@@ -429,6 +430,7 @@ function MasterReportsContent() {
         paymentMethod: t.payment_method || '',
         deliveryType: (t as any).delivery_type || '',
         items: (t.items || []).map(i => ({ 
+          productId: String((i as any).product || (i as any).product_id || ''),
           name: i.product_name, 
           price: Number(i.price || 0), 
           quantity: Number(i.quantity || 0), 
@@ -1415,60 +1417,212 @@ function MasterReportsContent() {
             {activeTab === 'daily_topsheet' && (() => {
               const selectedDateStr = topsheetDate || format(new Date(), 'yyyy-MM-dd');
               
+              const safeParseDate = (dateVal: any): Date | null => {
+                if (!dateVal) return null;
+                if (dateVal instanceof Date) return isNaN(dateVal.getTime()) ? null : dateVal;
+                let str = String(dateVal).trim();
+                if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+                  const [y, m, d] = str.split('-').map(Number);
+                  return new Date(y, m - 1, d, 12, 0, 0);
+                }
+                if (str.includes(' ') && !str.includes('T')) {
+                  str = str.replace(' ', 'T');
+                }
+                const d = new Date(str);
+                return isNaN(d.getTime()) ? null : d;
+              };
+
               // Filter orders/sales on selected date
               const dayOrders = orders.filter(o => {
-                if (!o.createdAt) return false;
-                const d = new Date(o.createdAt);
-                return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === selectedDateStr;
+                const d = safeParseDate(o.createdAt);
+                return d ? format(d, 'yyyy-MM-dd') === selectedDateStr : false;
               });
 
               // Filter purchases on selected date
               const dayPurchases = purchases.filter(p => {
-                if (!p.createdAt) return false;
-                const d = new Date(p.createdAt);
-                return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === selectedDateStr;
+                const dt = p.createdAt || (p as any).purchaseDate || (p as any).date;
+                const d = safeParseDate(dt);
+                return d ? format(d, 'yyyy-MM-dd') === selectedDateStr : false;
               });
 
               // Filter expenses on selected date
               const dayExpenses = expenses.filter(e => {
-                if (!e.createdAt && !e.date) return false;
-                const d = new Date(e.createdAt || e.date);
-                return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === selectedDateStr;
+                const d = safeParseDate(e.createdAt || e.date);
+                return d ? format(d, 'yyyy-MM-dd') === selectedDateStr : false;
               });
+
+              // Cash Sales Inflow (exclude bank / cheque)
+              const cashSalesInflow = dayOrders.reduce((sum, o) => {
+                const pm = ((o.paymentMethod || '') as string).toLowerCase();
+                if (pm.includes('bank') || pm.includes('cheque') || pm.includes('check') || pm.includes('bkash')) {
+                  return sum;
+                }
+                return sum + (Number(o.paidAmount) || 0);
+              }, 0);
 
               // Filter payment_in (customer collections & advance deposits) on selected date
               const dayCustomerPayments = transactions.filter(t => {
+                if (t.raw?.status === 'cancelled' || t.raw?.status === 'rejected') return false;
+                if (t.raw?.notes?.includes('isHistoricalLedger')) return false;
                 const tType = (t.type || '').toLowerCase();
-                const isPayIn = tType === 'payment_in' || tType === 'payment' || (tType === 'income' && t.raw?.transaction_type === 'payment_in');
+                const isPayIn = tType === 'payment_in' || (tType === 'income' && t.raw?.transaction_type === 'payment_in');
                 if (!isPayIn) return false;
-                if (!t.createdAt) return false;
-                const d = new Date(t.createdAt);
-                return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === selectedDateStr;
+                const d = safeParseDate(t.createdAt);
+                return d ? format(d, 'yyyy-MM-dd') === selectedDateStr : false;
               });
-              const customerPaymentInflow = dayCustomerPayments.reduce((sum, t) => sum + (t.paidAmount || t.amount || 0), 0);
 
-              // Filter payment_out (supplier payments & cash transfers) on selected date
+              const customerPaymentInflow = dayCustomerPayments.reduce((sum, t) => {
+                const pm = ((t.paymentMethod || '') as string).toLowerCase();
+                if (pm.includes('bank') || pm.includes('cheque') || pm.includes('check') || pm.includes('bkash')) {
+                  return sum;
+                }
+                return sum + (Number(t.paidAmount || t.amount) || 0);
+              }, 0);
+
+              // Filter loan_in (loans/hawlat taken) on selected date
+              const dayLoanInPayments = transactions.filter(t => {
+                if (t.raw?.status === 'cancelled' || t.raw?.status === 'rejected') return false;
+                const tType = (t.type || '').toLowerCase();
+                if (tType !== 'loan_in') return false;
+                const d = safeParseDate(t.createdAt);
+                return d ? format(d, 'yyyy-MM-dd') === selectedDateStr : false;
+              });
+
+              const loanInflow = dayLoanInPayments.reduce((sum, t) => {
+                const pm = ((t.paymentMethod || '') as string).toLowerCase();
+                if (pm.includes('bank') || pm.includes('cheque') || pm.includes('check') || pm.includes('bkash')) {
+                  return sum;
+                }
+                return sum + (Number(t.paidAmount || t.amount) || 0);
+              }, 0);
+
+              // Bank & Cheque Received on selected date
+              const bankChequeInflow = dayOrders.reduce((sum, o) => {
+                const pm = ((o.paymentMethod || '') as string).toLowerCase();
+                if (pm.includes('bank') || pm.includes('cheque') || pm.includes('check') || pm.includes('bkash')) {
+                  return sum + (Number(o.paidAmount) || 0);
+                }
+                return sum;
+              }, 0) + dayCustomerPayments.reduce((sum, t) => {
+                const pm = ((t.paymentMethod || '') as string).toLowerCase();
+                if (pm.includes('bank') || pm.includes('cheque') || pm.includes('check') || pm.includes('bkash')) {
+                  return sum + (Number(t.paidAmount || t.amount) || 0);
+                }
+                return sum;
+              }, 0);
+
+              // Filter payment_out (supplier payments) on selected date
               const daySupplierPayments = transactions.filter(t => {
+                if (t.raw?.status === 'cancelled' || t.raw?.status === 'rejected') return false;
+                if (t.raw?.notes?.includes('isHistoricalLedger')) return false;
                 const tType = (t.type || '').toLowerCase();
                 const isPayOut = tType === 'payment_out' || (tType === 'expense' && t.raw?.transaction_type === 'payment_out');
                 if (!isPayOut) return false;
-                if (!t.createdAt) return false;
-                const d = new Date(t.createdAt);
-                return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === selectedDateStr;
+                const d = safeParseDate(t.createdAt);
+                return d ? format(d, 'yyyy-MM-dd') === selectedDateStr : false;
               });
-              const supplierPaymentOutflow = daySupplierPayments.reduce((sum, t) => sum + (t.paidAmount || t.amount || 0), 0);
 
-              // Cash Inflows & Outflows
-              const cashSalesInflow = dayOrders.reduce((sum, o) => sum + (o.paidAmount || 0), 0);
-              const totalCashInflow = cashSalesInflow + customerPaymentInflow;
-              const dueSalesTotal = dayOrders.reduce((sum, o) => sum + (o.dueAmount || 0), 0);
-              const totalDailySalesVal = dayOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+              const supplierPaymentOutflow = daySupplierPayments.reduce((sum, t) => {
+                const pm = ((t.paymentMethod || '') as string).toLowerCase();
+                if (pm.includes('bank') || pm.includes('cheque') || pm.includes('check') || pm.includes('bkash')) {
+                  return sum;
+                }
+                return sum + (Number(t.paidAmount || t.amount) || 0);
+              }, 0);
 
-              const cashPurchaseOutflow = dayPurchases.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
-              const expenseOutflow = dayExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-              const totalOutflow = cashPurchaseOutflow + expenseOutflow + supplierPaymentOutflow;
-              
+              // Cash Purchase Outflow (exclude bank / cheque)
+              const cashPurchaseOutflow = dayPurchases.reduce((sum, p) => {
+                const pm = ((p.paymentMethod || '') as string).toLowerCase();
+                if (pm.includes('bank') || pm.includes('cheque') || pm.includes('check') || pm.includes('bkash')) {
+                  return sum;
+                }
+                return sum + (Number(p.paidAmount) || 0);
+              }, 0);
+
+              // Daily Expense Outflow (exclude bank / cheque)
+              const expenseOutflow = dayExpenses.reduce((sum, e) => {
+                const pm = (((e as any).paymentMethod || '') as string).toLowerCase();
+                if (pm.includes('bank') || pm.includes('cheque') || pm.includes('check') || pm.includes('bkash')) {
+                  return sum;
+                }
+                return sum + (Number(e.amount) || 0);
+              }, 0);
+
+              // Loan Outflow (if any loan/hawlat given/repaid)
+              const dayLoanOutPayments = transactions.filter(t => {
+                if (t.raw?.status === 'cancelled' || t.raw?.status === 'rejected') return false;
+                const tType = (t.type || '').toLowerCase();
+                if (tType !== 'loan_out') return false;
+                const d = safeParseDate(t.createdAt);
+                return d ? format(d, 'yyyy-MM-dd') === selectedDateStr : false;
+              });
+
+              const loanOutflow = dayLoanOutPayments.reduce((sum, t) => {
+                const pm = ((t.paymentMethod || '') as string).toLowerCase();
+                if (pm.includes('bank') || pm.includes('cheque') || pm.includes('check') || pm.includes('bkash')) {
+                  return sum;
+                }
+                return sum + (Number(t.paidAmount || t.amount) || 0);
+              }, 0);
+
+              // Total Inflows & Outflows
+              const totalCashInflow = cashSalesInflow + customerPaymentInflow + loanInflow;
+              const dueSalesTotal = dayOrders.reduce((sum, o) => sum + (Number(o.dueAmount) || 0), 0);
+              const totalDailySalesVal = dayOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+              const totalOutflow = cashPurchaseOutflow + expenseOutflow + supplierPaymentOutflow + loanOutflow;
               const netCashDifference = totalCashInflow - totalOutflow;
+
+              // Calculate Historical Closing Cash Balance up to selected date
+              let cumIn = 0;
+              let cumOut = 0;
+              const bankMethods = ['bank', 'banktobank', 'cheque', 'check', 'mobile_banking', 'mobile', 'bkash'];
+
+              transactions.forEach(t => {
+                if (t.raw?.status === 'cancelled' || t.raw?.status === 'rejected' || t.raw?.status === 'draft') return;
+                const d = safeParseDate(t.createdAt);
+                if (!d || format(d, 'yyyy-MM-dd') > selectedDateStr) return;
+                if (t.raw?.notes?.includes('isHistoricalLedger')) return;
+
+                const tType = (t.type || '').toLowerCase();
+                const pMethod = ((t.paymentMethod || '') as string).toLowerCase();
+                const pAmt = Number(t.paidAmount || t.amount || 0);
+
+                if (tType === 'sale' || tType === 'payment_in' || tType === 'loan_in' || tType === 'income') {
+                  if (pMethod === 'split') {
+                    let meta: any = {};
+                    try {
+                      if (t.raw?.notes?.startsWith('{')) meta = JSON.parse(t.raw.notes.split('\n')[0]);
+                    } catch {}
+                    const cPart = Number(meta.cashPaidAmount || meta.splitCashAmount || pAmt);
+                    cumIn += cPart;
+                    if (t.raw?.cheque_status === 'cleared') {
+                      const qPart = Number(meta.chequePaidAmount || meta.splitChequeAmount || 0);
+                      cumIn += qPart;
+                    }
+                  } else if (pMethod.includes('cheque') || pMethod.includes('check')) {
+                    if (t.raw?.cheque_status === 'cleared') cumIn += pAmt;
+                  } else if (!bankMethods.some(b => pMethod.includes(b))) {
+                    cumIn += pAmt;
+                  }
+                } else if (tType === 'purchase' || tType === 'payment_out' || tType === 'loan_out' || tType === 'expense') {
+                  if (!bankMethods.some(b => pMethod.includes(b))) {
+                    cumOut += pAmt;
+                  }
+                }
+              });
+
+              expenses.forEach(e => {
+                const d = safeParseDate(e.date || e.createdAt);
+                if (!d || format(d, 'yyyy-MM-dd') > selectedDateStr) return;
+                const pMethod = (((e as any).paymentMethod || '') as string).toLowerCase();
+                if (!bankMethods.some(b => pMethod.includes(b))) {
+                  cumOut += Number(e.amount || 0);
+                }
+              });
+
+              const isTopsheetToday = !topsheetDate || topsheetDate === format(new Date(), 'yyyy-MM-dd');
+              const closingEndCash = isTopsheetToday ? (totalCash || 0) : (cumIn - cumOut);
+              const openingCash = closingEndCash - netCashDifference;
 
               // Quantity summaries for Rod & Cement
               let rodSoldKg = 0;
@@ -1477,10 +1631,10 @@ function MasterReportsContent() {
                 (o.items || []).forEach(i => {
                   const unitLower = (i.unit || '').toLowerCase();
                   if (isRodProduct(i)) {
-                    rodSoldKg += unitLower.includes('টন') ? i.quantity * 1000 : i.quantity;
+                    rodSoldKg += unitLower.includes('টন') ? Number(i.quantity) * 1000 : Number(i.quantity);
                   }
                   if (isCementProduct(i)) {
-                    cementSoldBags += i.quantity;
+                    cementSoldBags += Number(i.quantity);
                   }
                 });
               });
@@ -1491,10 +1645,10 @@ function MasterReportsContent() {
                 (p.items || []).forEach(i => {
                   const unitLower = (i.unit || '').toLowerCase();
                   if (isRodProduct(i)) {
-                    rodBoughtKg += unitLower.includes('টন') ? i.quantity * 1000 : i.quantity;
+                    rodBoughtKg += unitLower.includes('টন') ? Number(i.quantity) * 1000 : Number(i.quantity);
                   }
                   if (isCementProduct(i)) {
-                    cementBoughtBags += i.quantity;
+                    cementBoughtBags += Number(i.quantity);
                   }
                 });
               });
@@ -1563,12 +1717,14 @@ function MasterReportsContent() {
                       <p className="text-[10px] font-semibold text-rose-600 mt-1">নগদ ক্রয় + দোকান খরচ</p>
                     </Card>
 
-                    <Card className="p-5 border-indigo-200 bg-gradient-to-br from-indigo-50 to-indigo-100/30 rounded-3xl shadow-xs">
-                      <p className="text-xs font-bold text-indigo-800">আজকের নিট ক্যাশ উদ্বৃত্ত</p>
-                      <p className={`text-2xl font-black mt-1 ${netCashDifference >= 0 ? 'text-indigo-700' : 'text-rose-700'}`}>
-                        {formatBnCurrency(netCashDifference)}
+                    <Card className="p-5 border-emerald-300 bg-gradient-to-br from-emerald-50 via-teal-50/40 to-emerald-100/40 rounded-3xl shadow-xs">
+                      <p className="text-xs font-bold text-emerald-800">দিনশেষের ক্যাশ ব্যালেন্স (End Cash)</p>
+                      <p className="text-2xl font-black text-emerald-700 mt-1">
+                        {formatBnCurrency(closingEndCash)}
                       </p>
-                      <p className="text-[10px] font-semibold text-indigo-600 mt-1">জমা - খরচ</p>
+                      <p className="text-[10px] font-semibold text-emerald-600 mt-1">
+                        প্রারম্ভিক: {formatBnCurrency(openingCash)} | নিট: {netCashDifference >= 0 ? '+' : ''}{formatBnCurrency(netCashDifference)}
+                      </p>
                     </Card>
 
                     <Card className="p-5 border-amber-200 bg-gradient-to-br from-amber-50 to-amber-100/30 rounded-3xl shadow-xs">
@@ -1604,6 +1760,12 @@ function MasterReportsContent() {
                             <TableCell className="font-bold text-slate-800">কাস্টমার থেকে নগদ আদায় ও অগ্রিম জমা (Customer Collections & Advance)</TableCell>
                             <TableCell className="text-right font-black text-emerald-700 px-6">{formatBnCurrency(customerPaymentInflow)}</TableCell>
                           </TableRow>
+                          {loanInflow > 0 && (
+                            <TableRow className="border-b border-slate-100 text-xs bg-amber-50/50">
+                              <TableCell className="font-bold text-amber-900">হাওলাত / ঋণ গ্রহণ (Loan Inflow)</TableCell>
+                              <TableCell className="text-right font-black text-amber-700 px-6">{formatBnCurrency(loanInflow)}</TableCell>
+                            </TableRow>
+                          )}
                           <TableRow className="border-b border-slate-100 text-xs">
                             <TableCell className="font-bold text-slate-800">আজকের তৈরি বকেয়া (Customer Due Created)</TableCell>
                             <TableCell className="text-right font-black text-slate-600 px-6">{formatBnCurrency(dueSalesTotal)}</TableCell>
@@ -1612,6 +1774,12 @@ function MasterReportsContent() {
                             <TableCell className="py-3 px-4 font-black">সর্বমোট ক্যাশ কালেকশন (Cash Inflow)</TableCell>
                             <TableCell className="text-right text-emerald-700 text-sm px-6 font-black">{formatBnCurrency(totalCashInflow)}</TableCell>
                           </TableRow>
+                          {bankChequeInflow > 0 && (
+                            <TableRow className="bg-slate-50/80 text-slate-600 text-xs border-t border-slate-200">
+                              <TableCell className="py-2 px-4 font-bold text-slate-700">ব্যাংক / চেকের মাধ্যমে প্রাপ্তি (Bank/Cheque Received)</TableCell>
+                              <TableCell className="text-right font-black px-6 text-indigo-700">{formatBnCurrency(bankChequeInflow)}</TableCell>
+                            </TableRow>
+                          )}
                         </TableBody>
                       </Table>
                     </Card>
@@ -1637,9 +1805,19 @@ function MasterReportsContent() {
                             <TableCell className="text-right font-black text-rose-700 px-6">{formatBnCurrency(cashPurchaseOutflow)}</TableCell>
                           </TableRow>
                           <TableRow className="border-b border-slate-100 text-xs">
+                            <TableCell className="font-bold text-slate-800">সরবরাহকারীকে নগদ পরিশোধ (Supplier Cash Payment)</TableCell>
+                            <TableCell className="text-right font-black text-rose-700 px-6">{formatBnCurrency(supplierPaymentOutflow)}</TableCell>
+                          </TableRow>
+                          <TableRow className="border-b border-slate-100 text-xs">
                             <TableCell className="font-bold text-slate-800">দৈনন্দিন দোকান খরচ (Expenses)</TableCell>
                             <TableCell className="text-right font-black text-rose-700 px-6">{formatBnCurrency(expenseOutflow)}</TableCell>
                           </TableRow>
+                          {loanOutflow > 0 && (
+                            <TableRow className="border-b border-slate-100 text-xs bg-amber-50/50">
+                              <TableCell className="font-bold text-amber-900">হাওলাত / ঋণ পরিশোধ (Loan Outflow)</TableCell>
+                              <TableCell className="text-right font-black text-rose-700 px-6">{formatBnCurrency(loanOutflow)}</TableCell>
+                            </TableRow>
+                          )}
                           <TableRow className="bg-rose-50/80 font-black text-xs text-rose-900 border-t border-rose-200">
                             <TableCell className="py-3 px-4 font-black">সর্বমোট ক্যাশ প্রদান (Cash Outflow)</TableCell>
                             <TableCell className="text-right text-rose-700 text-sm px-6 font-black">{formatBnCurrency(totalOutflow)}</TableCell>
@@ -1695,6 +1873,9 @@ function MasterReportsContent() {
                             <tbody>
                               <tr className="border-b"><td className="py-1">নগদ বিক্রয় জমা:</td><td className="text-right font-bold">৳{cashSalesInflow.toLocaleString()}</td></tr>
                               <tr className="border-b"><td className="py-1">বকেয়া আদায় ও অগ্রিম জমা:</td><td className="text-right font-bold">৳{customerPaymentInflow.toLocaleString()}</td></tr>
+                              {loanInflow > 0 && (
+                                <tr className="border-b"><td className="py-1">হাওলাত / ঋণ গ্রহণ:</td><td className="text-right font-bold">৳{loanInflow.toLocaleString()}</td></tr>
+                              )}
                               <tr className="border-b"><td className="py-1">বকেয়া তৈরি:</td><td className="text-right font-bold">৳{dueSalesTotal.toLocaleString()}</td></tr>
                               <tr className="font-bold"><td className="py-2">মোট জমা:</td><td className="text-right py-2">৳{totalCashInflow.toLocaleString()}</td></tr>
                             </tbody>
@@ -1706,10 +1887,34 @@ function MasterReportsContent() {
                           <table className="w-full text-xs border-collapse">
                             <tbody>
                               <tr className="border-b"><td className="py-1">নগদ পণ্য ক্রয়:</td><td className="text-right font-bold">৳{cashPurchaseOutflow.toLocaleString()}</td></tr>
+                              <tr className="border-b"><td className="py-1">সরবরাহকারী পরিশোধ:</td><td className="text-right font-bold">৳{supplierPaymentOutflow.toLocaleString()}</td></tr>
                               <tr className="border-b"><td className="py-1">দোকান খরচ:</td><td className="text-right font-bold">৳{expenseOutflow.toLocaleString()}</td></tr>
+                              {loanOutflow > 0 && (
+                                <tr className="border-b"><td className="py-1">হাওলাত / ঋণ পরিশোধ:</td><td className="text-right font-bold">৳{loanOutflow.toLocaleString()}</td></tr>
+                              )}
                               <tr className="font-bold"><td className="py-2">মোট খরচ:</td><td className="text-right py-2">৳{totalOutflow.toLocaleString()}</td></tr>
                             </tbody>
                           </table>
+                        </div>
+                      </div>
+
+                      {/* CASH RECONCILIATION SUMMARY */}
+                      <div className="pt-2 border-t-2 border-black grid grid-cols-4 gap-2 text-center text-xs">
+                        <div className="p-2 border border-black rounded">
+                          <p className="font-bold text-[11px] text-gray-600">প্রারম্ভিক ক্যাশ (Opening)</p>
+                          <p className="font-black text-sm mt-0.5">৳{Math.round(openingCash).toLocaleString('en-IN')}</p>
+                        </div>
+                        <div className="p-2 border border-black rounded bg-emerald-50">
+                          <p className="font-bold text-[11px] text-emerald-800">(+) মোট জমা (Inflow)</p>
+                          <p className="font-black text-sm mt-0.5 text-emerald-900">৳{Math.round(totalCashInflow).toLocaleString('en-IN')}</p>
+                        </div>
+                        <div className="p-2 border border-black rounded bg-rose-50">
+                          <p className="font-bold text-[11px] text-rose-800">(-) মোট খরচ (Outflow)</p>
+                          <p className="font-black text-sm mt-0.5 text-rose-900">৳{Math.round(totalOutflow).toLocaleString('en-IN')}</p>
+                        </div>
+                        <div className="p-2 border-2 border-black rounded bg-slate-100">
+                          <p className="font-black text-[11px] text-slate-900">(=) দিনশেষের ক্যাশ (End Cash)</p>
+                          <p className="font-black text-sm mt-0.5 text-slate-900">৳{Math.round(closingEndCash).toLocaleString('en-IN')}</p>
                         </div>
                       </div>
 
@@ -1756,6 +1961,10 @@ function MasterReportsContent() {
                 if (!dateVal) return null;
                 if (dateVal instanceof Date) return isNaN(dateVal.getTime()) ? null : dateVal;
                 let str = String(dateVal).trim();
+                if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+                  const [y, m, d] = str.split('-').map(Number);
+                  return new Date(y, m - 1, d, 12, 0, 0);
+                }
                 if (str.includes(' ') && !str.includes('T')) {
                   str = str.replace(' ', 'T');
                 }
@@ -1806,53 +2015,69 @@ function MasterReportsContent() {
                 let cumCashIn = 0;
                 let cumCashOut = 0;
                 transactions.forEach(t => {
+                  if (t.raw?.status === 'cancelled' || t.raw?.status === 'rejected' || t.raw?.status === 'draft') return;
                   const d = safeParseDate(t.createdAt);
                   if (!d || format(d, 'yyyy-MM-dd') > selectedDateStr) return;
                   if (t.raw?.notes?.includes('isHistoricalLedger')) return;
+                  
                   const tType = (t.type || '').toLowerCase();
                   const pMethod = ((t.paymentMethod || '') as string).toLowerCase();
                   const pAmt = Number(t.paidAmount || t.amount || 0);
 
-                  if (tType === 'sale' || tType === 'payment_in' || tType === 'income') {
-                    if (!pMethod.includes('cheque') && !pMethod.includes('bank') && !pMethod.includes('bkash')) {
+                  if (tType === 'sale' || tType === 'payment_in' || tType === 'loan_in' || tType === 'income') {
+                    if (pMethod === 'split') {
+                      let meta: any = {};
+                      try {
+                        if (t.raw?.notes?.startsWith('{')) meta = JSON.parse(t.raw.notes.split('\n')[0]);
+                      } catch {}
+                      const cPart = Number(meta.cashPaidAmount || meta.splitCashAmount || pAmt);
+                      cumCashIn += cPart;
+                      if (t.raw?.cheque_status === 'cleared') {
+                        const qPart = Number(meta.chequePaidAmount || meta.splitChequeAmount || 0);
+                        cumCashIn += qPart;
+                      }
+                    } else if (pMethod.includes('cheque') || pMethod.includes('check')) {
+                      if (t.raw?.cheque_status === 'cleared') cumCashIn += pAmt;
+                    } else if (!pMethod.includes('bank') && !pMethod.includes('bkash')) {
                       cumCashIn += pAmt;
                     }
-                  } else if (tType === 'purchase' || tType === 'payment_out' || tType === 'expense') {
+                  } else if (tType === 'purchase' || tType === 'payment_out' || tType === 'loan_out' || tType === 'expense') {
                     if (!pMethod.includes('cheque') && !pMethod.includes('bank') && !pMethod.includes('bkash')) {
                       cumCashOut += pAmt;
                     }
                   }
                 });
                 expenses.forEach(e => {
-                  const d = safeParseDate(e.createdAt || e.date);
+                  const d = safeParseDate(e.date || e.createdAt);
                   if (!d || format(d, 'yyyy-MM-dd') > selectedDateStr) return;
                   const pMethod = (((e as any).paymentMethod || '') as string).toLowerCase();
-                  if (!pMethod.includes('bank') && !pMethod.includes('cheque')) {
+                  if (!pMethod.includes('bank') && !pMethod.includes('cheque') && !pMethod.includes('bkash')) {
                     cumCashOut += Number(e.amount || 0);
                   }
                 });
-                const calculatedBal = cumCashIn - cumCashOut;
-                if (calculatedBal !== 0) {
-                  reportCashBalance = calculatedBal;
-                }
+                reportCashBalance = cumCashIn - cumCashOut;
               }
 
-              // Cheque collections on selected date (only inbound: sales and payment_in)
+              // Cheque collections on selected date (only inbound: sales, payment_in, income)
               let dayChequeAmount = 0;
               transactions.forEach(t => {
+                if (t.raw?.status === 'cancelled' || t.raw?.status === 'rejected' || t.raw?.status === 'draft') return;
                 const d = safeParseDate(t.createdAt);
                 if (!d || format(d, 'yyyy-MM-dd') !== selectedDateStr) return;
                 const tType = (t.type || '').toLowerCase();
                 if (tType !== 'sale' && tType !== 'payment_in' && tType !== 'income') return;
                 const pMethod = ((t.paymentMethod || '') as string).toLowerCase();
-                const pAmt = Number(t.paidAmount || t.amount || 0);
                 const hasCheque = pMethod.includes('cheque') || pMethod.includes('check') || pMethod.includes('চেক') || (t.chequeNo && String(t.chequeNo).trim() !== '');
                 if (hasCheque) {
-                  dayChequeAmount += pAmt;
+                  let chqAmt = Number((t as any).splitChequeAmount || (t as any).split_cheque_amount || 0);
+                  if (chqAmt <= 0) {
+                    chqAmt = Number(t.paidAmount || t.amount || 0);
+                  }
+                  dayChequeAmount += chqAmt;
                 }
               });
 
-              // Daily total cash inflow (sales cash + payment_in cash)
+              // Daily total cash inflow (sales cash + payment_in cash + loan_in cash)
               let dayTotalCashInflow = 0;
               dayAllOrders.forEach(o => {
                 const pMethod = ((o.paymentMethod || '') as string).toLowerCase();
@@ -1861,16 +2086,66 @@ function MasterReportsContent() {
                 }
               });
               transactions.forEach(t => {
+                if (t.raw?.status === 'cancelled' || t.raw?.status === 'rejected') return;
+                if (t.raw?.notes?.includes('isHistoricalLedger')) return;
                 const d = safeParseDate(t.createdAt);
                 if (!d || format(d, 'yyyy-MM-dd') !== selectedDateStr) return;
                 const tType = (t.type || '').toLowerCase();
-                if (tType === 'payment_in') {
+                if (tType === 'payment_in' || tType === 'loan_in') {
                   const pMethod = ((t.paymentMethod || '') as string).toLowerCase();
                   if (!pMethod.includes('cheque') && !pMethod.includes('bank') && !pMethod.includes('bkash')) {
                     dayTotalCashInflow += Number(t.paidAmount || t.amount || 0);
                   }
                 }
               });
+
+              // Helper to calculate product stock on historical date by rolling back subsequent sales & purchases
+              const getHistoricalProductStock = (product: Product): number => {
+                const currentStock = Number(product.stock) || 0;
+                if (isToday) return currentStock;
+
+                const prodId = String(product.id);
+                const pName = (product.name || '').trim().toLowerCase();
+                let salesAfter = 0;
+                let purchasesAfter = 0;
+
+                orders.forEach(o => {
+                  const d = safeParseDate(o.createdAt);
+                  if (!d || format(d, 'yyyy-MM-dd') <= selectedDateStr) return;
+                  (o.items || []).forEach(i => {
+                    const matchId = (i as any).productId && String((i as any).productId) === prodId;
+                    const matchName = (i.name || '').trim().toLowerCase() === pName;
+                    if (matchId || matchName) {
+                      const u = (i.unit || '').toLowerCase();
+                      const pU = (product.unit || '').toLowerCase();
+                      let q = Number(i.quantity) || 0;
+                      if (pU.includes('কেজি') && u.includes('টন')) q *= 1000;
+                      else if (pU.includes('টন') && u.includes('কেজি')) q /= 1000;
+                      salesAfter += q;
+                    }
+                  });
+                });
+
+                purchases.forEach(p => {
+                  const dt = p.createdAt || (p as any).purchaseDate || (p as any).date;
+                  const d = safeParseDate(dt);
+                  if (!d || format(d, 'yyyy-MM-dd') <= selectedDateStr) return;
+                  (p.items || []).forEach(i => {
+                    const matchId = (i as any).productId && String((i as any).productId) === prodId;
+                    const matchName = (i.name || '').trim().toLowerCase() === pName;
+                    if (matchId || matchName) {
+                      const u = (i.unit || '').toLowerCase();
+                      const pU = (product.unit || '').toLowerCase();
+                      let q = Number(i.quantity) || 0;
+                      if (pU.includes('কেজি') && u.includes('টন')) q *= 1000;
+                      else if (pU.includes('টন') && u.includes('কেজি')) q /= 1000;
+                      purchasesAfter += q;
+                    }
+                  });
+                });
+
+                return Math.max(0, currentStock + salesAfter - purchasesAfter);
+              };
 
               // 2. Cement Calculations (Sales, Purchases, Direct Delivery, Stock)
               let cementSoldBags = 0;
@@ -1899,10 +2174,9 @@ function MasterReportsContent() {
 
               // Real cement products from inventory
               const cementProducts = products.filter(p => isCementProduct(p));
+              const totalCementStockBags = cementProducts.reduce((sum, p) => sum + getHistoricalProductStock(p), 0);
 
-              const totalCementStockBags = cementProducts.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
-
-              // Strictly real cement products from current database inventory (NO DUMMY DATA)
+              // Strictly real cement products from database inventory
               const realCementList: { name: string; stock: number }[] = [];
               cementProducts.forEach(p => {
                 const brand = (p.brand || '').trim();
@@ -1910,7 +2184,7 @@ function MasterReportsContent() {
                 const displayName = (brand && !name.toLowerCase().includes(brand.toLowerCase()))
                   ? `${brand} ${name}`
                   : name;
-                const stock = Number(p.stock) || 0;
+                const stock = getHistoricalProductStock(p);
                 const existing = realCementList.find(b => b.name.toLowerCase() === displayName.toLowerCase());
                 if (existing) {
                   existing.stock += stock;
@@ -1959,11 +2233,11 @@ function MasterReportsContent() {
               let rodDirectKg = 0;
               dayAllOrders.forEach(o => {
                 (o.items || []).forEach(i => {
-                  const n = (i.name || '').toLowerCase();
-                  const u = (i.unit || '').toLowerCase();
-                  if (n.includes('রড') || n.includes('rod') || n.includes('রিং') || u.includes('কেজি') || u.includes('টন')) {
+                  if (isRodProduct(i)) {
+                    const u = (i.unit || '').toLowerCase();
                     const qtyKg = u.includes('টন') ? (Number(i.quantity) || 0) * 1000 : (Number(i.quantity) || 0);
                     rodSoldKg += qtyKg;
+                    const n = (i.name || '').toLowerCase();
                     if (n.includes('সরাসরি') || (o.notes || '').toLowerCase().includes('সরাসরি') || (o.notes || '').toLowerCase().includes('direct') || (o as any).deliveryType === 'direct') {
                       rodDirectKg += qtyKg;
                     }
@@ -1974,29 +2248,25 @@ function MasterReportsContent() {
               let rodBoughtKg = 0;
               dayAllPurchases.forEach(p => {
                 (p.items || []).forEach(i => {
-                  const n = (i.name || '').toLowerCase();
-                  const u = (i.unit || '').toLowerCase();
-                  if (n.includes('রড') || n.includes('rod') || n.includes('রিং') || u.includes('কেজি') || u.includes('টন')) {
+                  if (isRodProduct(i)) {
+                    const u = (i.unit || '').toLowerCase();
                     rodBoughtKg += u.includes('টন') ? (Number(i.quantity) || 0) * 1000 : (Number(i.quantity) || 0);
                   }
                 });
               });
 
-              const rodProducts = products.filter(p => {
-                const n = (p.name || '').toLowerCase();
-                const c = (p.category || '').toLowerCase();
-                const u = (p.unit || '').toLowerCase();
-                return n.includes('রড') || n.includes('rod') || n.includes('রিং') || c.includes('রড') || c.includes('rod') || u.includes('কেজি') || u.includes('টন');
-              });
+              const rodProducts = products.filter(p => isRodProduct(p));
 
               const totalRodStockKg = rodProducts.reduce((sum, p) => {
                 const u = (p.unit || '').toLowerCase();
-                return sum + (u.includes('টন') ? (Number(p.stock) || 0) * 1000 : (Number(p.stock) || 0));
+                const stock = getHistoricalProductStock(p);
+                return sum + (u.includes('টন') ? stock * 1000 : stock);
               }, 0);
 
               const realRodList: { name: string; stock: number }[] = rodProducts.map(p => {
                 const u = (p.unit || '').toLowerCase();
-                const qtyKg = u.includes('টন') ? (Number(p.stock) || 0) * 1000 : (Number(p.stock) || 0);
+                const stock = getHistoricalProductStock(p);
+                const qtyKg = u.includes('টন') ? stock * 1000 : stock;
                 return { name: p.name, stock: qtyKg };
               });
 
@@ -2176,19 +2446,19 @@ ${cementBlockLines.join('\n')}
                                 ১/
                               </div>
                               <div>
-                                <p className="text-xs font-bold text-slate-500">ক্যাশ ব্যালেন্স</p>
+                                <p className="text-xs font-bold text-slate-500">দিনশেষের ক্যাশ ব্যালেন্স (End Cash)</p>
                                 <p className="text-lg font-black text-emerald-700">
                                   {reportCashBalance !== 0 ? toBengaliDigits(Math.round(reportCashBalance).toLocaleString('en-IN')) : '০০'} ৳
                                 </p>
                                 {dayTotalCashInflow > 0 && (
                                   <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                                    আজকের নগদ আদায়: ৳{toBengaliDigits(Math.round(dayTotalCashInflow).toLocaleString('en-IN'))}
+                                    ঐ দিনের নগদ জমা: ৳{toBengaliDigits(Math.round(dayTotalCashInflow).toLocaleString('en-IN'))}
                                   </p>
                                 )}
                               </div>
                             </div>
                             <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-md">
-                              ক্যাশ ব্যালেন্স
+                              দিনশেষের ক্যাশ
                             </span>
                           </div>
 

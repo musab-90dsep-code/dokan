@@ -342,7 +342,16 @@ export default function Dashboard() {
     const safeParseDate = (dVal: any) => {
       if (!dVal) return null;
       try {
-        const d = new Date(dVal);
+        if (dVal instanceof Date) return isNaN(dVal.getTime()) ? null : dVal;
+        let str = String(dVal).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+          const [y, m, d] = str.split('-').map(Number);
+          return new Date(y, m - 1, d, 12, 0, 0);
+        }
+        if (str.includes(' ') && !str.includes('T')) {
+          str = str.replace(' ', 'T');
+        }
+        const d = new Date(str);
         return isNaN(d.getTime()) ? null : d;
       } catch {
         return null;
@@ -360,24 +369,26 @@ export default function Dashboard() {
       return d && format(d, 'yyyy-MM-dd') === todayStr;
     });
 
-    // Cheques received today
+    // Cheques received today (Only inbound collections: sales, payment_in, income - no double counting)
     let dayChequeAmount = 0;
-    dayOrders.forEach(o => {
-      const pMethod = ((o.paymentMethod || '') as string).toLowerCase();
-      const hasCheque = pMethod.includes('cheque') || pMethod.includes('check') || pMethod.includes('চেক') || (o.chequeNo && String(o.chequeNo).trim() !== '');
-      if (hasCheque) {
-        dayChequeAmount += Number(o.paidAmount || 0);
-      }
-    });
-
     allTransactions.forEach(t => {
+      if (t.status === 'cancelled' || t.status === 'rejected' || t.status === 'draft') return;
       const d = safeParseDate(t.created_at || t.createdAt);
       if (!d || format(d, 'yyyy-MM-dd') !== todayStr) return;
+      
+      const tType = (t.transaction_type || t.type || '').toLowerCase();
+      if (tType !== 'sale' && tType !== 'payment_in' && tType !== 'income') return;
+      
       const pMethod = ((t.payment_method || t.paymentMethod || '') as string).toLowerCase();
-      const pAmt = Number(t.paid_amount || t.amount || 0);
-      const hasCheque = pMethod.includes('cheque') || pMethod.includes('check') || pMethod.includes('চেক') || (t.cheque_no && String(t.cheque_no).trim() !== '');
+      const hasCheque = pMethod.includes('cheque') || pMethod.includes('check') || pMethod.includes('চেক') || 
+                        Boolean(t.cheque_number || t.cheque_no || t.chequeNo);
+      
       if (hasCheque) {
-        dayChequeAmount += pAmt;
+        let chqAmt = Number((t as any).split_cheque_amount || (t as any).splitChequeAmount || 0);
+        if (chqAmt <= 0) {
+          chqAmt = Number(t.paid_amount || t.amount || 0);
+        }
+        dayChequeAmount += chqAmt;
       }
     });
 
@@ -898,8 +909,35 @@ ${cementBlockLines.join('\n')}
               </div>
             )}
 
-            {/* Tall Vertical Body: Cement on Top, Rod Below */}
+            {/* Tall Vertical Body: Cash & Cheque on Top, Cement & Rod Below */}
             <div className="p-3.5 sm:p-4 flex-1 flex flex-col justify-between gap-3">
+              {/* 0. Cash & Cheque Collection Summary */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-gradient-to-br from-emerald-50/80 to-teal-50/50 border border-emerald-200/90 rounded-2xl p-2.5 flex items-center justify-between shadow-2xs">
+                  <div>
+                    <p className="text-[9.5px] font-bold text-emerald-800 leading-none">১/ ক্যাশ ব্যালেন্স</p>
+                    <p className="text-xs sm:text-sm font-black text-emerald-700 mt-1">
+                      {dailyReportData.totalCashBalance !== 0 ? `${toBengaliDigits(Math.round(dailyReportData.totalCashBalance).toLocaleString('en-IN'))} ৳` : '০০ ৳'}
+                    </p>
+                  </div>
+                  <div className="w-7 h-7 rounded-lg bg-emerald-100/90 text-emerald-700 flex items-center justify-center shrink-0">
+                    <Wallet className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-indigo-50/80 to-amber-50/50 border border-indigo-200/90 rounded-2xl p-2.5 flex items-center justify-between shadow-2xs">
+                  <div>
+                    <p className="text-[9.5px] font-bold text-indigo-800 leading-none">২/ চেক আদায়</p>
+                    <p className="text-xs sm:text-sm font-black text-indigo-700 mt-1">
+                      {dailyReportData.dayChequeAmount > 0 ? `${toBengaliDigits(dailyReportData.dayChequeAmount.toLocaleString('en-IN'))} ৳/` : '০/'}
+                    </p>
+                  </div>
+                  <div className="w-7 h-7 rounded-lg bg-indigo-100/90 text-indigo-700 flex items-center justify-center shrink-0">
+                    <Receipt className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+              </div>
+
               {/* 1. Cement Closing */}
               <div className="bg-gradient-to-br from-blue-50/60 via-white to-sky-50/40 border border-blue-200/80 rounded-2xl p-3 space-y-2">
                 <div className="flex items-center justify-between border-b border-blue-200/60 pb-1.5">
