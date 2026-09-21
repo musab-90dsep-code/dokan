@@ -479,7 +479,7 @@ export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
   return (
     <div 
       id="printable-memo-wrapper" 
-      className="printable-memo font-bengali text-black bg-white w-full max-w-[850px] mx-auto p-4 leading-tight print:p-0 print:m-0 print:w-full print:max-w-none"
+      className="printable-memo font-bengali text-black bg-white w-full max-w-[850px] mx-auto p-4 leading-tight print:p-0 print:m-0 print:w-full print:max-w-none flex flex-col justify-between min-h-[275mm]"
     >
       {/* 1. TOP COLORFUL SHOP BANNER (MATCHES USER'S UPLOADED FILE EXACTLY) */}
       <div className="relative overflow-hidden border border-slate-300 rounded-sm mb-1.5 p-2.5 text-center bg-gradient-to-r from-blue-50/50 via-white to-sky-50/50">
@@ -505,7 +505,7 @@ export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
         {/* Banner Texts */}
         <div className="relative z-10 space-y-0.5">
           <p className="text-[11px] font-bold text-slate-800 tracking-wider">
-            মোবাইলঃ ০১৭১২-০১৪২২৫, ০১৭০১-২৮৫৩৩০, ০১৭২৭-৯৫২৫১৩
+            মোবাইলঃ ০১৭১২-০১৪২২৫, ০১৭২৭-৯৫২৫১৩
           </p>
           <h1 className="text-2xl sm:text-3xl font-black text-[#154284] tracking-tight leading-tight">
             মেসার্স দেলোয়ার এন্ড ব্রাদার্স
@@ -515,7 +515,7 @@ export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
           </p>
           <div className="pt-0.5">
             <span className="inline-block bg-[#325288] text-white px-4 py-0.5 rounded-full text-[10px] font-bold tracking-wide">
-              পরিচালনায়ঃ মোঃ জুয়েল খাঁন ও মোঃ সায়মন শেখ
+              পরিচালনায়ঃ মোঃ সায়মন শেখ
             </span>
           </div>
           <p className="text-[11px] font-bold text-[#c52222]">
@@ -638,22 +638,32 @@ export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
         </div>
       </div>
 
-      {/* 5. DEVELOPER BRANDING & MARKETING FOOTER */}
+      {/* 5. PROFESSIONAL DEVELOPER BRANDING FOOTER (ALWAYS AT PAGE BOTTOM) */}
       <div 
         data-has-dev-footer="true" 
-        className="mt-4 pt-2 border-t border-dashed border-slate-400 flex items-center justify-between text-[10px] font-bold text-slate-600 break-inside-avoid"
+        className="mt-auto pt-2 pb-0.5 border-t border-slate-200/90 flex items-center justify-between text-[9px] font-sans text-slate-400 select-none break-inside-avoid"
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={DEVELOPER_LOGO_BASE64} alt="Dev Logo" className="w-4 h-4 object-contain rounded" style={{ width: '16px', height: '16px' }} />
-          <span className="bg-slate-900 text-white text-[8px] px-1.5 py-0.5 rounded font-mono font-black uppercase tracking-wider">DEV</span>
-          <span>সফটওয়্যার পরিচালনায়: <strong className="text-black font-black">{promo.softwareCompany || 'Hasanah Tech Solution'}</strong></span>
+          <img src={DEVELOPER_LOGO_BASE64} alt="" className="w-3.5 h-3.5 object-contain opacity-60 grayscale rounded-xs" />
+          <span className="text-[7.5px] font-mono font-semibold uppercase tracking-wider px-1 py-0.2 rounded border border-slate-200 bg-slate-50 text-slate-500">
+            SYS
+          </span>
+          <span className="text-slate-500 font-normal">
+            সফটওয়্যার পরিচালনায়: <strong className="font-semibold text-slate-600">{promo.softwareCompany || 'Hasanah Tech Solution'}</strong>
+          </span>
         </div>
-        <div className="flex items-center gap-3">
+
+        <div className="flex items-center gap-2 text-slate-400 font-mono text-[8.5px]">
           {promo.softwareWebsite && (
-            <span>🌐 <strong className="text-slate-800 font-mono font-bold">{promo.softwareWebsite}</strong></span>
+            <>
+              <span className="text-slate-400 font-normal">{promo.softwareWebsite}</span>
+              <span className="text-slate-300">•</span>
+            </>
           )}
-          <span>📞 হটলাইন: <strong className="text-black font-mono font-black">{toBnDigits(promo.softwarePhone || '01349345353')}</strong></span>
+          <span className="text-slate-500 font-normal">
+            হটলাইন: <strong className="font-semibold text-slate-600">{toBnDigits(promo.softwarePhone || '01349345353')}</strong>
+          </span>
         </div>
       </div>
     </div>

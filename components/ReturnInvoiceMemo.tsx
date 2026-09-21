@@ -175,7 +175,7 @@ export const ReturnInvoiceMemo: React.FC<ReturnInvoiceMemoProps> = ({
       <div 
         id="printable-memo-wrapper" 
         className={cn(
-          "w-full max-w-[820px] mx-auto bg-white text-black p-8 space-y-6 print:shadow-none print:border-none print:p-0 print:m-0 print:w-full print:max-w-none print:rounded-none",
+          "w-full max-w-[820px] mx-auto bg-white text-black p-8 space-y-6 print:shadow-none print:border-none print:p-0 print:m-0 print:w-full print:max-w-none print:rounded-none min-h-[275mm] flex flex-col justify-between",
           !showPrintButton && "rounded-2xl"
         )}
       >
@@ -395,17 +395,20 @@ export const ReturnInvoiceMemo: React.FC<ReturnInvoiceMemoProps> = ({
           </div>
 
           {/* Software Company Branding & Promotion Footer */}
-          <div data-has-dev-footer="true" className="pt-2 border-t border-dashed border-slate-300 flex items-center justify-between text-[10px] font-bold text-slate-500">
+          <div data-has-dev-footer="true" className="pt-2 border-t border-slate-200/90 flex items-center justify-between text-[9.5px] text-slate-400 mt-auto select-none">
             <div className="flex items-center gap-1.5">
-              <span className="bg-slate-900 text-white text-[9px] px-1.5 py-0.5 rounded font-mono font-black uppercase tracking-wider">DEV</span>
-              <span>Software Developed By: <strong className="text-black font-black">{shop.softwareCompany || shop.software || 'Hasanah Tech Solution'}</strong></span>
+              <span className="text-[7.5px] font-mono font-semibold uppercase tracking-wider px-1 py-0.2 rounded border border-slate-200 bg-slate-50 text-slate-500">SYS</span>
+              <span className="text-slate-500">Software Developed By: <strong className="font-semibold text-slate-600">{shop.softwareCompany || shop.software || 'Hasanah Tech Solution'}</strong></span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-slate-400 font-mono text-[8.5px]">
               {shop.softwareWebsite && (
-                <span>🌐 <strong className="text-slate-800 font-mono font-bold">{shop.softwareWebsite}</strong></span>
+                <>
+                  <span className="text-slate-400 font-normal">{shop.softwareWebsite}</span>
+                  <span className="text-slate-300">•</span>
+                </>
               )}
               {shop.softwarePhone && (
-                <span>📞 ডেভেলপার হেল্পলাইন: <strong className="text-black font-mono font-black">{shop.softwarePhone}</strong></span>
+                <span className="text-slate-500 font-normal">হেল্পলাইন: <strong className="font-semibold text-slate-600">{toBengaliDigits(shop.softwarePhone)}</strong></span>
               )}
             </div>
           </div>

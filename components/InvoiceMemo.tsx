@@ -283,7 +283,7 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
       <div 
         id="printable-memo-wrapper" 
         className={cn(
-          "w-full max-w-[850px] mx-auto bg-white text-slate-900 p-6 space-y-3 font-sans print:shadow-none print:border-none print:p-0 print:m-0 print:w-full print:max-w-none print:rounded-none",
+          "w-full max-w-[850px] mx-auto bg-white text-slate-900 p-6 space-y-3 font-sans print:shadow-none print:border-none print:p-0 print:m-0 print:w-full print:max-w-none print:rounded-none min-h-[275mm] flex flex-col justify-between",
           !showPrintButton && "rounded-2xl"
         )}
       >
@@ -897,12 +897,12 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
         </div>
 
         {/* --- 6. FOOTER (QR CODE, SOFTWARE BRANDING & BARCODE) --- */}
-        <div data-has-dev-footer="true" className="border-t border-slate-300 pt-3 flex items-center justify-between text-[11px] font-bold text-slate-700 keep-together">
+        <div data-has-dev-footer="true" className="border-t border-slate-200/90 pt-2.5 flex items-center justify-between text-[10px] text-slate-500 keep-together mt-auto select-none">
           
           {/* Left QR Code & Thank You */}
           <div className="flex items-center gap-2">
             {/* SVG QR Code */}
-            <svg className="w-10 h-10 shrink-0 border border-slate-300 p-0.5 rounded" viewBox="0 0 32 32" fill="currentColor">
+            <svg className="w-9 h-9 shrink-0 border border-slate-200 p-0.5 rounded opacity-75" viewBox="0 0 32 32" fill="currentColor">
               <rect x="2" y="2" width="10" height="10" fill="#000" />
               <rect x="4" y="4" width="6" height="6" fill="#fff" />
               <rect x="5" y="5" width="4" height="4" fill="#000" />
@@ -923,17 +923,19 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
               <rect x="14" y="26" width="6" height="4" fill="#000" />
               <rect x="22" y="26" width="8" height="4" fill="#000" />
             </svg>
-            <div className="font-bengali text-[10px] text-slate-700 leading-tight">
-              <p>ধন্যবাদ আপনার সাথে থাকার জন্য।</p>
-              <p>আবার ব্যবসা করার সুযোগ দিন।</p>
+            <div className="font-bengali text-[9.5px] text-slate-500 leading-tight">
+              <p>ধন্যবাদ আমাদের সাথে থাকার জন্য।</p>
+              <p className="text-slate-400">আবার ব্যবসা করার সুযোগ দিন।</p>
             </div>
           </div>
 
           {/* Center Software Contact */}
-          <div className="text-center text-[10px] text-slate-600 space-y-0.5">
-            <p>সফটওয়্যার পরিচালনায়: <strong className="text-slate-900">{shop.softwareCompany || shop.software || 'Hasanah Tech Solution'}</strong></p>
-            {shop.softwarePhone && <p>হটলাইন: <span className="font-mono">{toBengaliDigits(shop.softwarePhone)}</span></p>}
-            {shop.softwareWebsite && <p>ওয়েবসাইট: <span className="font-mono">{shop.softwareWebsite}</span></p>}
+          <div className="text-center text-[9px] text-slate-400 space-y-0.5">
+            <p className="text-slate-500">সফটওয়্যার পরিচালনায়: <strong className="font-semibold text-slate-600">{shop.softwareCompany || shop.software || 'Hasanah Tech Solution'}</strong></p>
+            <p className="text-slate-400 font-mono text-[8.5px]">
+              {shop.softwarePhone && <span>হটলাইন: <strong className="font-semibold text-slate-600">{toBengaliDigits(shop.softwarePhone)}</strong></span>}
+              {shop.softwareWebsite && <span> • {shop.softwareWebsite}</span>}
+            </p>
           </div>
 
           {/* Right Barcode */}

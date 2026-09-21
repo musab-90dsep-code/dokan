@@ -23,7 +23,6 @@ import { bn } from 'date-fns/locale';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { generateLedgerEntries } from '@/components/PartyProfilePage';
-import { DeveloperBranding } from '@/components/DeveloperBranding';
 import { DEVELOPER_LOGO_BASE64 } from '@/lib/developerLogo';
 
 interface CustomerDueItem {
@@ -565,9 +564,6 @@ export default function CustomerDuesPage() {
           </CardContent>
         </Card>
 
-        {/* DEVELOPER BRANDING CARD (FOR WEB VIEW) */}
-        <DeveloperBranding variant="card" className="mt-8" />
-
       </div>
 
       {/* ========================================================================= */}
@@ -576,7 +572,7 @@ export default function CustomerDuesPage() {
       <div 
         id="customer-dues-printable-sheet" 
         className="hidden print:block font-bengali text-black text-[12px] leading-tight p-0 m-0"
-        style={{ color: '#000000', backgroundColor: '#ffffff', width: '100%' }}
+        style={{ color: '#000000', backgroundColor: '#ffffff', width: '100%', minHeight: '275mm', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
       >
         
         {/* ========================================================= */}
@@ -781,31 +777,33 @@ export default function CustomerDuesPage() {
           </div>
         )}
 
-        {/* DEVELOPER BRANDING & MARKETING FOOTER (PRINT) */}
+        {/* DEVELOPER BRANDING FOOTER (PRINT - ALWAYS AT BOTTOM) */}
         <div 
           data-has-dev-footer="true" 
           style={{ 
-            marginTop: '10px', 
+            marginTop: 'auto', 
             paddingTop: '6px', 
-            borderTop: '1px dashed #64748b', 
+            borderTop: '1px solid #e2e8f0', 
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'space-between', 
-            fontSize: '10.5px', 
-            fontWeight: 700, 
-            color: '#334155',
-            pageBreakInside: 'avoid'
+            fontSize: '9px', 
+            fontWeight: 400, 
+            color: '#64748b',
+            pageBreakInside: 'avoid',
+            userSelect: 'none'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={DEVELOPER_LOGO_BASE64} alt="Dev Logo" style={{ height: '20px', width: '20px', objectFit: 'contain', borderRadius: '4px' }} />
-            <span style={{ backgroundColor: '#0f172a', color: '#ffffff', fontSize: '8.5px', fontWeight: 900, padding: '1px 4px', borderRadius: '3px', textTransform: 'uppercase' }}>DEV</span>
-            <span>সফটওয়্যার পরিচালনায়: <strong style={{ color: '#000000', fontWeight: 900 }}>Hasanah Tech Solution</strong></span>
+            <img src={DEVELOPER_LOGO_BASE64} alt="" style={{ height: '14px', width: '14px', objectFit: 'contain', opacity: 0.65, filter: 'grayscale(100%)', borderRadius: '2px' }} />
+            <span style={{ border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#64748b', fontSize: '7px', fontWeight: 700, padding: '0.5px 3px', borderRadius: '2px', textTransform: 'uppercase' }}>SYS</span>
+            <span>সফটওয়্যার পরিচালনায়: <strong style={{ color: '#475569', fontWeight: 600 }}>Hasanah Tech Solution</strong></span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span>🌐 <strong>www.hasanahtech.vercel.app</strong></span>
-            <span>📞 হটলাইন: <strong style={{ color: '#000000', fontWeight: 900 }}>০১৩৪৯৩৪৫৩৫৩</strong></span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'monospace', fontSize: '8.5px' }}>
+            <span>www.hasanahtech.vercel.app</span>
+            <span style={{ color: '#cbd5e1' }}>•</span>
+            <span>হটলাইন: <strong style={{ color: '#475569', fontWeight: 600 }}>০১৩৪৯৩৪৫৩৫৩</strong></span>
           </div>
         </div>
 

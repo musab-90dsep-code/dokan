@@ -16,6 +16,7 @@ export interface ShopSettingsData {
   currency: string;
   logo_url?: string;
   receipt_footer?: string;
+  commission_pin?: string;
 }
 
 export interface CustomerSiteData {
@@ -225,6 +226,7 @@ export interface AuthUserData {
   role: 'developer' | 'admin' | 'manager' | 'staff' | 'viewer';
   role_display?: string;
   role_badge?: string;
+  avatar?: string;
   is_active?: boolean;
   is_superuser?: boolean;
   date_joined?: string;
@@ -727,6 +729,12 @@ export const api = {
     me: async (): Promise<AuthUserData> => {
       return request<AuthUserData>('/auth/me/');
     },
+    updateProfile: async (data: { full_name?: string; phone?: string; email?: string; password?: string; avatar?: string }): Promise<AuthUserData> => {
+      return request<AuthUserData>('/auth/me/', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+    },
     logout: async (): Promise<{ message: string }> => {
       return request<{ message: string }>('/auth/logout/', {
         method: 'POST',
@@ -742,13 +750,13 @@ export const api = {
           return [];
         }
       },
-      create: async (data: { username?: string; password?: string; role: string; full_name?: string; phone?: string; email?: string; is_active?: boolean }): Promise<AuthUserData> => {
+      create: async (data: { username?: string; password?: string; role: string; full_name?: string; phone?: string; email?: string; avatar?: string; is_active?: boolean }): Promise<AuthUserData> => {
         return request<AuthUserData>('/auth/users/', {
           method: 'POST',
           body: JSON.stringify(data),
         });
       },
-      update: async (id: number | string, data: Partial<{ username: string; password?: string; role: string; full_name?: string; phone?: string; email?: string; is_active?: boolean }>): Promise<AuthUserData> => {
+      update: async (id: number | string, data: Partial<{ username: string; password?: string; role: string; full_name?: string; phone?: string; email?: string; avatar?: string; is_active?: boolean }>): Promise<AuthUserData> => {
         return request<AuthUserData>(`/auth/users/${id}/`, {
           method: 'PATCH',
           body: JSON.stringify(data),

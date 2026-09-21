@@ -10,7 +10,7 @@ import {
   TrendingUp, RefreshCcw, Calendar, Search, Edit2,
   Wallet, Truck, PieChart, Printer, FileSpreadsheet, Scale,
   Plus, Percent, ArrowRight, Lightbulb, Settings2,
-  Download, ArrowLeft, Clock, Eye, CheckCircle2, ChevronRight, ChevronLeft, CalendarDays,
+  Download, ArrowLeft, Clock, Eye, EyeOff, Lock, KeyRound, CheckCircle2, ChevronRight, ChevronLeft, CalendarDays,
   ShoppingBag, Layers, DollarSign, Calculator,
   Copy, Check
 } from 'lucide-react';
@@ -28,7 +28,6 @@ import { bn } from 'date-fns/locale';
 import { printElement } from '@/lib/printUtils';
 import { toBengaliDigits } from '@/lib/bengaliUtils';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
-import { DeveloperBranding } from '@/components/DeveloperBranding';
 import { DEVELOPER_LOGO_BASE64 } from '@/lib/developerLogo';
 
 const formatBnDate = (dateVal: Date | string | undefined | null, pattern: string = 'dd MMMM - yyyy') => {
@@ -101,16 +100,19 @@ export const isCementProduct = (item?: { name?: string; unit?: string; category?
 
 export const isRodProduct = (item?: { name?: string; unit?: string; category?: string } | null): boolean => {
   if (!item) return false;
+  // সিমেন্ট প্রোডাক্ট কখনো রড হিসেবে গণ্য হবে না (যেমন সেভেন রিংস সিমেন্ট)
+  if (isCementProduct(item)) return false;
+
   const n = (item.name || '').toLowerCase();
   const u = (item.unit || '').toLowerCase();
   const c = ((item as any).category || '').toLowerCase();
 
   if (u.includes('কেজি') || u.includes('টন') || u.includes('kg') || u.includes('ton')) return true;
-  if (c.includes('রড') || c.includes('rod')) return true;
+  if (c.includes('রড') || c.includes('rod') || c.includes('রিং') || c.includes('ring')) return true;
 
   return (
     n.includes('রড') || n.includes('rod') ||
-    n.includes('মিমি') || n.includes('মি.মি') || n.includes('মিলি') || n.includes('mm') ||
+    n.includes('মিমি') || n.includes('মি.মি') || n.includes('মিলি') || n.includes('মি.লি') || n.includes('mm') ||
     n.includes('রিং') || n.includes('ring') ||
     n.includes('বিএসআরএম') || n.includes('bsrm') ||
     n.includes('এসসিআরএম') || n.includes('scrm') ||
@@ -118,7 +120,10 @@ export const isRodProduct = (item?: { name?: string; unit?: string; category?: s
     n.includes('এফএসএল') || n.includes('fsl') ||
     n.includes('ডিএসআরএম') || n.includes('dsrm') ||
     n.includes('থার্মেক্স') || n.includes('thermax') ||
-    n.includes('এইচকেজি') || n.includes('আইআরএমএল') || n.includes('আইআরএল')
+    n.includes('এইচকেজি') || n.includes('hkg') ||
+    n.includes('আইআরএমএল') || n.includes('irml') || n.includes('আইআরএল') ||
+    n.includes('সুতা') || n.includes('সূতা') ||
+    n.includes('তার') || n.includes('wire')
   );
 };
 
@@ -289,8 +294,38 @@ function MasterReportsContent() {
   const [journalCommission, setJournalCommission] = useState<Commission | null>(null);
   const [journalAccountType, setJournalAccountType] = useState<'cash' | 'bank' | 'adjustment'>('cash');
   const [journalBankId, setJournalBankId] = useState<string>('');
-  const [journalConfirmText, setJournalConfirmText] = useState<string>('');
+  const [journalPassword, setJournalPassword] = useState<string>('');
+  const [showJournalPassword, setShowJournalPassword] = useState<boolean>(false);
+  const [commissionPin, setCommissionPin] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('commission_pin') || '1234').trim();
+    }
+    return '1234';
+  });
   const [isSubmittingJournal, setIsSubmittingJournal] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    api.settings.get().then(s => {
+      if (mounted && s.commission_pin) {
+        setCommissionPin(s.commission_pin.trim());
+      }
+    }).catch(() => {});
+
+    const handlePinUpdate = (e: any) => {
+      if (e?.detail) setCommissionPin(String(e.detail).trim());
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('commissionPinUpdated', handlePinUpdate);
+      return () => {
+        mounted = false;
+        window.removeEventListener('commissionPinUpdated', handlePinUpdate);
+      };
+    }
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Bank Management States & Handlers
   const [bankModalOpen, setBankModalOpen] = useState(false);
@@ -668,15 +703,17 @@ function MasterReportsContent() {
     setJournalCommission(comm);
     const isPurchase = comm.id.startsWith('comm_purchase_');
     setJournalAccountType(isPurchase ? 'adjustment' : 'cash');
-    setJournalConfirmText('');
+    setJournalPassword('');
+    setShowJournalPassword(false);
     if (banks.length > 0) setJournalBankId(banks[0].id);
     setJournalModalOpen(true);
   };
 
   const handleExecuteAutoJournal = async () => {
     if (!journalCommission) return;
-    if (journalConfirmText.trim().toLowerCase() !== 'confirm') {
-      toast.error("নিশ্চিত করতে অনুগ্রহ করে 'confirm' লিখুন");
+    const activePin = (commissionPin || (typeof window !== 'undefined' ? localStorage.getItem('commission_pin') : null) || '1234').trim();
+    if (!journalPassword.trim() || journalPassword.trim() !== activePin) {
+      toast.error('ভুল পাসওয়ার্ড! সেটিংস থেকে নির্ধারিত সঠিক কমিশন অনুমোদন পাসওয়ার্ড দিন।');
       return;
     }
     setIsSubmittingJournal(true);
@@ -765,7 +802,8 @@ function MasterReportsContent() {
       fetchBankList();
       toast.success('কমিশন সফলভাবে অনুমোদিত (Approve) হয়েছে!');
       setJournalModalOpen(false);
-      setJournalConfirmText('');
+      setJournalPassword('');
+      setShowJournalPassword(false);
     } catch (err: any) {
       console.error(err);
       toast.error(err?.message || 'কমিশন অনুমোদন করতে ব্যর্থ হয়েছে');
@@ -1265,7 +1303,7 @@ function MasterReportsContent() {
                   <div 
                     id="customer-dues-printable-sheet" 
                     className="hidden print:block font-bengali text-black text-[12px] leading-tight p-0 m-0"
-                    style={{ color: '#000000', backgroundColor: '#ffffff', width: '100%' }}
+                    style={{ color: '#000000', backgroundColor: '#ffffff', width: '100%', minHeight: '275mm', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
                   >
                     {/* SECTION 1: বাকী তালিকা */}
                     <div className="space-y-0">
@@ -1379,31 +1417,33 @@ function MasterReportsContent() {
                       </div>
                     )}
 
-                    {/* DEVELOPER BRANDING & MARKETING FOOTER (PRINT) */}
+                    {/* DEVELOPER BRANDING FOOTER (PRINT - ALWAYS AT BOTTOM) */}
                     <div 
                       data-has-dev-footer="true" 
                       style={{ 
-                        marginTop: '10px', 
+                        marginTop: 'auto', 
                         paddingTop: '6px', 
-                        borderTop: '1px dashed #64748b', 
+                        borderTop: '1px solid #e2e8f0', 
                         display: 'flex', 
                         alignItems: 'center', 
                         justifyContent: 'space-between', 
-                        fontSize: '10.5px', 
-                        fontWeight: 700, 
-                        color: '#334155',
-                        pageBreakInside: 'avoid'
+                        fontSize: '9px', 
+                        fontWeight: 400, 
+                        color: '#64748b',
+                        pageBreakInside: 'avoid',
+                        userSelect: 'none'
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={DEVELOPER_LOGO_BASE64} alt="Dev Logo" style={{ height: '20px', width: '20px', objectFit: 'contain', borderRadius: '4px' }} />
-                        <span style={{ backgroundColor: '#0f172a', color: '#ffffff', fontSize: '8.5px', fontWeight: 900, padding: '1px 4px', borderRadius: '3px', textTransform: 'uppercase' }}>DEV</span>
-                        <span>সফটওয়্যার পরিচালনায়: <strong style={{ color: '#000000', fontWeight: 900 }}>Hasanah Tech Solution</strong></span>
+                        <img src={DEVELOPER_LOGO_BASE64} alt="" style={{ height: '14px', width: '14px', objectFit: 'contain', opacity: 0.65, filter: 'grayscale(100%)', borderRadius: '2px' }} />
+                        <span style={{ border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#64748b', fontSize: '7px', fontWeight: 700, padding: '0.5px 3px', borderRadius: '2px', textTransform: 'uppercase' }}>SYS</span>
+                        <span>সফটওয়্যার পরিচালনায়: <strong style={{ color: '#475569', fontWeight: 600 }}>Hasanah Tech Solution</strong></span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span>🌐 <strong>www.hasanahtech.vercel.app</strong></span>
-                        <span>📞 হটলাইন: <strong style={{ color: '#000000', fontWeight: 900 }}>০১৩৪৯৩৪৫৩৫৩</strong></span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'monospace', fontSize: '8.5px' }}>
+                        <span>www.hasanahtech.vercel.app</span>
+                        <span style={{ color: '#cbd5e1' }}>•</span>
+                        <span>হটলাইন: <strong style={{ color: '#475569', fontWeight: 600 }}>০১৩৪৯৩৪৫৩৫৩</strong></span>
                       </div>
                     </div>
                   </div>
@@ -2420,10 +2460,6 @@ ${cementBlockLines.join('\n')}
                           তারিখ - <span className="text-amber-300 font-black">{dateFormattedBn}</span>
                         </p>
                       </div>
-
-                      {/* Subtle Watermark Icons */}
-                      <Truck className="absolute -left-4 -bottom-4 w-28 h-28 text-white/5 pointer-events-none" />
-                      <Layers className="absolute -right-4 -top-4 w-28 h-28 text-white/5 pointer-events-none" />
                     </div>
 
                     <div className="p-6 space-y-6">
@@ -2725,9 +2761,27 @@ ${cementBlockLines.join('\n')}
               // 1. Filter data based on selected period mode and date
               const filterByPeriod = (createdAt: any) => {
                 if (!createdAt) return true;
-                const d = typeof createdAt === 'string' ? new Date(createdAt) : createdAt;
-                if (isNaN(d.getTime())) return true;
-                const itemDateStr = format(d, 'yyyy-MM-dd');
+                let itemDateStr = '';
+                if (typeof createdAt === 'string') {
+                  if (createdAt.length >= 10 && createdAt[4] === '-' && createdAt[7] === '-') {
+                    if (!createdAt.includes('T') && !createdAt.includes(' ')) {
+                      itemDateStr = createdAt.slice(0, 10);
+                    }
+                  }
+                  if (!itemDateStr) {
+                    const d = new Date(createdAt);
+                    if (!isNaN(d.getTime())) {
+                      itemDateStr = format(d, 'yyyy-MM-dd');
+                    } else {
+                      itemDateStr = createdAt.slice(0, 10);
+                    }
+                  }
+                } else if (createdAt instanceof Date && !isNaN(createdAt.getTime())) {
+                  itemDateStr = format(createdAt, 'yyyy-MM-dd');
+                } else {
+                  return true;
+                }
+
                 if (incomePeriodMode === 'today') {
                   return itemDateStr === incomeStatementDate;
                 } else if (incomePeriodMode === 'month') {
@@ -2791,25 +2845,105 @@ ${cementBlockLines.join('\n')}
               const filteredPurchases = purchases.filter(p => filterByPeriod(p.createdAt));
               const filteredExpenses = expenses.filter(e => filterByPeriod(e.createdAt || e.date));
 
-              // 2. Revenue Breakdown (আয়ের খাত)
-              const cementSalesItems = filteredOrders.flatMap(o => (o.items || []).filter(i => isCementProduct(i)));
-              const cementSalesQty = cementSalesItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
-              const cementSalesAmount = cementSalesItems.reduce((sum, i) => sum + (Number((i as any).total) || ((Number(i.price) || 0) * (Number(i.quantity) || 0))), 0);
-
-              const rodSalesItems = filteredOrders.flatMap(o => (o.items || []).filter(i => isRodProduct(i)));
-              const rodSalesQty = rodSalesItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
-              const rodSalesAmount = rodSalesItems.reduce((sum, i) => sum + (Number((i as any).total) || ((Number(i.price) || 0) * (Number(i.quantity) || 0))), 0);
-
+              // 2. Revenue Breakdown (আয়ের খাত - রড ও রিং রডের আওতায় এবং সিমেন্ট; কোনো অন্যান্য পণ্য নয়)
               const totalOrderSalesAmount = filteredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
-              const otherSalesAmount = Math.max(0, totalOrderSalesAmount - (cementSalesAmount + rodSalesAmount));
-              const totalSalesIncome = cementSalesAmount + rodSalesAmount + otherSalesAmount;
+
+              let cementSalesQty = 0;
+              let cementSalesAmount = 0;
+              let rodSalesQty = 0;
+
+              filteredOrders.forEach(o => {
+                const items = o.items || [];
+                const orderTotal = Number(o.totalAmount) || 0;
+
+                if (items.length === 0) {
+                  const isCementOrder = (o.notes || '').toLowerCase().includes('সিমেন্ট') || (o.notes || '').toLowerCase().includes('cement');
+                  if (isCementOrder) {
+                    cementSalesAmount += orderTotal;
+                  }
+                  return;
+                }
+
+                const cItems = items.filter(i => isCementProduct(i));
+                const rItems = items.filter(i => !isCementProduct(i));
+
+                cItems.forEach(i => {
+                  cementSalesQty += Number(i.quantity) || 0;
+                });
+
+                rItems.forEach(i => {
+                  const u = (i.unit || '').toLowerCase();
+                  const qtyKg = u.includes('টন') || u.includes('ton') 
+                    ? (Number(i.quantity) || 0) * 1000 
+                    : (Number(i.quantity) || 0);
+                  rodSalesQty += qtyKg;
+                });
+
+                const cSum = cItems.reduce((sum, i) => sum + (Number((i as any).total) || ((Number(i.price) || 0) * (Number(i.quantity) || 0))), 0);
+                const rSum = rItems.reduce((sum, i) => sum + (Number((i as any).total) || ((Number(i.price) || 0) * (Number(i.quantity) || 0))), 0);
+
+                if (cSum > 0 && rSum === 0) {
+                  cementSalesAmount += orderTotal;
+                } else if (rSum > 0 && cSum === 0) {
+                  // pure rod / ring
+                } else if (cSum + rSum > 0) {
+                  const cRatio = cSum / (cSum + rSum);
+                  cementSalesAmount += orderTotal * cRatio;
+                }
+              });
+
+              // রড ও রিং এবং যাবতীয় পণ্য রডের হিসেবে সমন্বিত
+              const rodSalesAmount = Math.max(0, totalOrderSalesAmount - cementSalesAmount);
+              const totalSalesIncome = cementSalesAmount + rodSalesAmount;
 
               // 3. Cement Direct Costs (সিমেন্ট ক্রয় ও পরিবহন ব্যয়)
-              const cementPurchaseItems = filteredPurchases.flatMap(p => (p.items || []).filter(i => isCementProduct(i)));
-              const cementPurchaseQty = cementPurchaseItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
-              const cementPurchaseAmount = cementPurchaseItems.length > 0 
-                ? cementPurchaseItems.reduce((sum, i) => sum + (Number((i as any).total) || ((Number(i.price) || 0) * (Number(i.quantity) || 0))), 0)
-                : filteredPurchases.filter(p => isCementProduct({ name: p.supplierName }) || p.items?.some(i => isCementProduct(i))).reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+              const totalOrderPurchaseAmount = filteredPurchases.reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+
+              let cementPurchaseQty = 0;
+              let cementPurchaseAmount = 0;
+              let rodPurchaseQty = 0;
+
+              filteredPurchases.forEach(p => {
+                const items = p.items || [];
+                const pTotal = Number(p.totalAmount) || 0;
+
+                if (items.length === 0) {
+                  const isCementPurchase = isCementProduct({ name: p.supplierName }) || (p.notes || '').toLowerCase().includes('সিমেন্ট') || (p.notes || '').toLowerCase().includes('cement');
+                  if (isCementPurchase) {
+                    cementPurchaseAmount += pTotal;
+                  }
+                  return;
+                }
+
+                const cItems = items.filter(i => isCementProduct(i));
+                const rItems = items.filter(i => !isCementProduct(i));
+
+                cItems.forEach(i => {
+                  cementPurchaseQty += Number(i.quantity) || 0;
+                });
+
+                rItems.forEach(i => {
+                  const u = (i.unit || '').toLowerCase();
+                  const qtyKg = u.includes('টন') || u.includes('ton') 
+                    ? (Number(i.quantity) || 0) * 1000 
+                    : (Number(i.quantity) || 0);
+                  rodPurchaseQty += qtyKg;
+                });
+
+                const cSum = cItems.reduce((sum, i) => sum + (Number((i as any).total) || ((Number(i.price) || 0) * (Number(i.quantity) || 0))), 0);
+                const rSum = rItems.reduce((sum, i) => sum + (Number((i as any).total) || ((Number(i.price) || 0) * (Number(i.quantity) || 0))), 0);
+
+                if (cSum > 0 && rSum === 0) {
+                  cementPurchaseAmount += pTotal;
+                } else if (rSum > 0 && cSum === 0) {
+                  // pure rod / ring
+                } else if (cSum + rSum > 0) {
+                  const cRatio = cSum / (cSum + rSum);
+                  cementPurchaseAmount += pTotal * cRatio;
+                }
+              });
+
+              const rodPurchaseAmount = Math.max(0, totalOrderPurchaseAmount - cementPurchaseAmount);
 
               const cementTruckFare = filteredExpenses.filter(e => 
                 (e.title?.includes('সিমেন্ট') && (e.title?.includes('গাড়ি') || e.title?.includes('ভাড়া') || e.title?.includes('পরিবহন'))) || 
@@ -2817,40 +2951,31 @@ ${cementBlockLines.join('\n')}
               ).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
               const cementUnloadLabor = filteredExpenses.filter(e => 
-                (e.title?.includes('সিমেন্ট') && (e.title?.includes('লেবার') || e.title?.includes('আনলোড') || e.title?.includes('লেভারি'))) || 
-                (e.category?.includes('সিমেন্ট আনলোড') || e.category?.includes('সিমেন্ট লেবার'))
+                (e.title?.includes('সিমেন্ট') && (e.title?.includes('লেবার') || e.title?.includes('আনলোড') || e.title?.includes('লেভারি') || e.title?.includes('খালাস'))) || 
+                (e.category?.includes('সিমেন্ট আনলোড') || e.category?.includes('সিমেন্ট লেবার') || e.category?.includes('সিমেন্ট খালাস'))
               ).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
               const cementTotalDirectCost = cementPurchaseAmount + cementTruckFare + cementUnloadLabor;
 
-              // 4. Rod Direct Costs (রড ক্রয় ও পরিবহন ব্যয়)
-              const rodPurchaseItems = filteredPurchases.flatMap(p => (p.items || []).filter(i => isRodProduct(i)));
-              const rodPurchaseQty = rodPurchaseItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
-              const rodPurchaseAmount = rodPurchaseItems.length > 0 
-                ? rodPurchaseItems.reduce((sum, i) => sum + (Number((i as any).total) || ((Number(i.price) || 0) * (Number(i.quantity) || 0))), 0)
-                : filteredPurchases.filter(p => isRodProduct({ name: p.supplierName }) || p.items?.some(i => isRodProduct(i))).reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
-
+              // 4. Rod Direct Costs (রড ও রিং ক্রয় ও পরিবহন ব্যয়)
               const rodTruckFare = filteredExpenses.filter(e => 
-                (e.title?.includes('রড') && (e.title?.includes('গাড়ি') || e.title?.includes('ভাড়া') || e.title?.includes('পরিবহন'))) || 
-                (e.category?.includes('রড গাড়ি') || e.category?.includes('রড পরিবহন'))
+                ((e.title?.includes('রড') || e.title?.includes('রিং')) && (e.title?.includes('গাড়ি') || e.title?.includes('ভাড়া') || e.title?.includes('পরিবহন'))) || 
+                (e.category?.includes('রড গাড়ি') || e.category?.includes('রড পরিবহন') || e.category?.includes('রিং পরিবহন'))
               ).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
               const rodUnloadLabor = filteredExpenses.filter(e => 
-                (e.title?.includes('রড') && (e.title?.includes('লেবার') || e.title?.includes('আনলোড') || e.title?.includes('লেভারি'))) || 
-                (e.category?.includes('রড আনলোড') || e.category?.includes('রড লেবার'))
+                ((e.title?.includes('রড') || e.title?.includes('রিং')) && (e.title?.includes('লেবার') || e.title?.includes('আনলোড') || e.title?.includes('লেভারি') || e.title?.includes('খালাস'))) || 
+                (e.category?.includes('রড আনলোড') || e.category?.includes('রড লেবার') || e.category?.includes('রিং লেবার') || e.category?.includes('রড খালাস'))
               ).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
               const rodTotalDirectCost = rodPurchaseAmount + rodTruckFare + rodUnloadLabor;
-              
-              const totalOrderPurchaseAmount = filteredPurchases.reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
-              const otherPurchaseAmount = Math.max(0, totalOrderPurchaseAmount - (cementPurchaseAmount + rodPurchaseAmount));
-              const totalDirectCost = cementTotalDirectCost + rodTotalDirectCost + otherPurchaseAmount;
+              const totalDirectCost = cementTotalDirectCost + rodTotalDirectCost;
 
               // 5. Operating Expenses (ব্যাবসা পরিচালন ব্যয়)
               const directExpIds = new Set(
                 filteredExpenses.filter(e => 
-                  ((e.title?.includes('সিমেন্ট') || e.title?.includes('রড')) && 
-                   (e.title?.includes('গাড়ি') || e.title?.includes('ভাড়া') || e.title?.includes('লেবার') || e.title?.includes('আনলোড')))
+                  ((e.title?.includes('সিমেন্ট') || e.title?.includes('রড') || e.title?.includes('রিং')) && 
+                   (e.title?.includes('গাড়ি') || e.title?.includes('ভাড়া') || e.title?.includes('লেবার') || e.title?.includes('আনলোড') || e.title?.includes('খালাস')))
                 ).map(e => e.id)
               );
 
@@ -2872,9 +2997,9 @@ ${cementBlockLines.join('\n')}
                   { name: 'দোকান ভাড়া', amount: 0 },
                   { name: 'বিদ্যুৎ বিল', amount: 0 },
                   { name: 'স্টাফ বেতন', amount: 0 },
-                  { name: 'পরিবহন ভাড়া', amount: 0 },
-                  { name: 'রড লেবারী বাবদ', amount: 0 },
-                  { name: 'সিমেন্ট লেবারী বাবদ', amount: 0 },
+                  { name: 'আপ্যায়ন খরচ', amount: 0 },
+                  { name: 'মোবাইল ও ইন্টারনেট বিল', amount: 0 },
+                  { name: 'অফিস খরচ', amount: 0 },
                   { name: 'বিবিধ খরচ', amount: 0 }
                 );
               }
@@ -3089,7 +3214,7 @@ ${cementBlockLines.join('\n')}
                     <Card className="p-4 border-emerald-200 bg-gradient-to-br from-emerald-50/90 to-teal-50/40 rounded-2xl shadow-xs">
                       <p className="text-xs font-bold text-emerald-800">মোট বিক্রয় আয় (Total Revenue)</p>
                       <p className="text-2xl font-black text-emerald-700 mt-1">{formatBnCurrency(totalSalesIncome)}</p>
-                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">সিমেন্ট + রড + অন্যান্য পণ্য</p>
+                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">সিমেন্ট ও রড বিক্রয়</p>
                     </Card>
 
                     <Card className="p-4 border-rose-200 bg-gradient-to-br from-rose-50/90 to-red-50/40 rounded-2xl shadow-xs">
@@ -3232,15 +3357,7 @@ ${cementBlockLines.join('\n')}
                             <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(rodSalesAmount)}</td>
                           </tr>
 
-                          {/* আয়ের খাত: ৩. অন্যান্য পণ্য বিক্রয় আয় (যদি থাকে) */}
-                          {otherSalesAmount > 0 && (
-                            <tr style={{ pageBreakInside: 'avoid' }}>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>৩</td>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>অন্যান্য পণ্য বিক্রয় বাবদ আয়</td>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center', fontWeight: 700, fontSize: '14px' }}>—</td>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(otherSalesAmount)}</td>
-                            </tr>
-                          )}
+
 
                           {/* মোট আয় */}
                           <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
@@ -3351,33 +3468,7 @@ ${cementBlockLines.join('\n')}
                             </td>
                           </tr>
 
-                          {/* অন্যান্য পণ্য ক্রয় বাবদ ব্যয় (যদি থাকে) */}
-                          {otherPurchaseAmount > 0 && (
-                            <>
-                              <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
-                                <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
-                              </tr>
-                              <tr style={{ pageBreakInside: 'avoid' }}>
-                                <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontSize: '14px', fontWeight: 800, color: '#000000' }}>
-                                  অন্যান্য পণ্য
-                                </td>
-                              </tr>
-                              <tr style={{ pageBreakInside: 'avoid' }}>
-                                <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>১</td>
-                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>অন্যান্য পণ্য ক্রয় ব্যয়</td>
-                                <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center', fontWeight: 700, fontSize: '14px' }}>—</td>
-                                <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(otherPurchaseAmount)}</td>
-                              </tr>
-                              <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
-                                <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
-                                  মোট অন্যান্য পণ্য বাবদ ব্যয়
-                                </td>
-                                <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
-                                  {formatBnNumber(otherPurchaseAmount)}
-                                </td>
-                              </tr>
-                            </>
-                          )}
+
 
                           {/* ফাঁকা স্পেসিং রো */}
                           <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
@@ -3600,15 +3691,7 @@ ${cementBlockLines.join('\n')}
                           <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(rodSalesAmount)}</td>
                         </tr>
 
-                        {/* আয়ের খাত: ৩. অন্যান্য পণ্য বিক্রয় আয় (যদি থাকে) */}
-                        {otherSalesAmount > 0 && (
-                          <tr style={{ pageBreakInside: 'avoid' }}>
-                            <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>৩</td>
-                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>অন্যান্য পণ্য বিক্রয় বাবদ আয়</td>
-                            <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center', fontWeight: 700, fontSize: '14px' }}>—</td>
-                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(otherSalesAmount)}</td>
-                          </tr>
-                        )}
+
 
                         {/* মোট আয় */}
                         <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
@@ -3719,33 +3802,7 @@ ${cementBlockLines.join('\n')}
                           </td>
                         </tr>
 
-                        {/* অন্যান্য পণ্য ক্রয় বাবদ ব্যয় (যদি থাকে) */}
-                        {otherPurchaseAmount > 0 && (
-                          <>
-                            <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
-                              <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '3px 8px' }}></td>
-                            </tr>
-                            <tr style={{ pageBreakInside: 'avoid' }}>
-                              <td colSpan={4} style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontSize: '14px', fontWeight: 800, color: '#000000' }}>
-                                অন্যান্য পণ্য
-                              </td>
-                            </tr>
-                            <tr style={{ pageBreakInside: 'avoid' }}>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>১</td>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>অন্যান্য পণ্য ক্রয় ব্যয়</td>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 6px', textAlign: 'center', fontWeight: 700, fontSize: '14px' }}>—</td>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>{formatBnNumber(otherPurchaseAmount)}</td>
-                            </tr>
-                            <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
-                              <td colSpan={3} style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'center', fontWeight: 900, fontSize: '15px' }}>
-                                মোট অন্যান্য পণ্য বাবদ ব্যয়
-                              </td>
-                              <td style={{ border: '1.5px solid #000000', padding: '6px 8px', textAlign: 'right', fontWeight: 900, fontSize: '15px' }}>
-                                {formatBnNumber(otherPurchaseAmount)}
-                              </td>
-                            </tr>
-                          </>
-                        )}
+
 
                         {/* ফাঁকা স্পেসিং রো */}
                         <tr style={{ height: '14px', pageBreakInside: 'avoid' }}>
@@ -5211,7 +5268,7 @@ ${cementBlockLines.join('\n')}
 
 
         {/* COMMISSION APPROVAL MODAL */}
-        <Dialog open={journalModalOpen} onOpenChange={(open) => { setJournalModalOpen(open); if (!open) setJournalConfirmText(''); }}>
+        <Dialog open={journalModalOpen} onOpenChange={(open) => { setJournalModalOpen(open); if (!open) { setJournalPassword(''); setShowJournalPassword(false); } }}>
           <DialogContent className="max-w-md font-bengali rounded-3xl">
             <DialogHeader>
               <DialogTitle className="font-black text-slate-900 text-lg flex items-center gap-2">
@@ -5270,30 +5327,61 @@ ${cementBlockLines.join('\n')}
                   </div>
                 )}
 
-                {/* Confirm Text Input */}
-                <div className="space-y-1.5 p-3.5 bg-amber-50/80 border border-amber-200 rounded-2xl">
-                  <Label className="text-xs font-black text-amber-950 block">
-                    কমিশন অনুমোদন নিশ্চিত করতে নিচে <span className="font-mono text-rose-600 font-black bg-white px-1.5 py-0.5 rounded border border-amber-300">confirm</span> লিখুন:
-                  </Label>
-                  <Input
-                    value={journalConfirmText}
-                    onChange={(e) => setJournalConfirmText(e.target.value)}
-                    placeholder="এখানে confirm লিখুন..."
-                    className="h-10 rounded-xl bg-white border-amber-300 font-mono text-xs font-black text-slate-900 focus:border-amber-500 focus:ring-amber-500"
-                  />
-                  {journalConfirmText && journalConfirmText.trim().toLowerCase() !== 'confirm' && (
-                    <p className="text-[11px] font-bold text-rose-600 mt-1">
-                      ⚠️ অনুগ্রহ করে হুবহু &apos;confirm&apos; লিখুন
+                {/* Password / PIN Input */}
+                <div className="space-y-2 p-3.5 bg-amber-50/90 border border-amber-200 rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-black text-amber-950 flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 text-amber-600" />
+                      কমিশন অনুমোদন পাসওয়ার্ড (PIN):
+                    </Label>
+                    <span className="text-[10px] text-amber-700 font-semibold bg-amber-100/80 px-2 py-0.5 rounded-full">
+                      সেটিংস থেকে পরিবর্তনযোগ্য
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      type={showJournalPassword ? "text" : "password"}
+                      value={journalPassword}
+                      onChange={(e) => setJournalPassword(e.target.value)}
+                      placeholder="কমিশন অনুমোদন পাসওয়ার্ড দিন..."
+                      className="h-10 rounded-xl bg-white border-amber-300 pr-10 font-mono text-sm font-black tracking-wider text-slate-900 focus:border-amber-500 focus:ring-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowJournalPassword(prev => !prev)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none p-1"
+                      title={showJournalPassword ? "পাসওয়ার্ড লুকান" : "পাসওয়ার্ড দেখুন"}
+                    >
+                      {showJournalPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                  {journalPassword && journalPassword.trim() !== (commissionPin || (typeof window !== 'undefined' ? localStorage.getItem('commission_pin') : null) || '1234').trim() ? (
+                    <p className="text-[11px] font-bold text-rose-600 flex items-center gap-1 mt-1">
+                      ⚠️ ভুল পাসওয়ার্ড! সঠিক কমিশন অনুমোদন পাসওয়ার্ড প্রদান করুন
                     </p>
-                  )}
+                  ) : journalPassword ? (
+                    <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1 mt-1">
+                      ✓ পাসওয়ার্ড সঠিক হয়েছে, অনুমোদন করতে পারেন
+                    </p>
+                  ) : null}
                 </div>
               </div>
             )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setJournalModalOpen(false); setJournalConfirmText(''); }} className="rounded-xl text-xs font-bold">বাতিল</Button>
+              <Button 
+                variant="outline" 
+                onClick={() => { setJournalModalOpen(false); setJournalPassword(''); setShowJournalPassword(false); }} 
+                className="rounded-xl text-xs font-bold"
+              >
+                বাতিল
+              </Button>
               <Button 
                 onClick={handleExecuteAutoJournal} 
-                disabled={isSubmittingJournal || journalConfirmText.trim().toLowerCase() !== 'confirm'} 
+                disabled={isSubmittingJournal || !journalPassword.trim() || journalPassword.trim() !== (commissionPin || (typeof window !== 'undefined' ? localStorage.getItem('commission_pin') : null) || '1234').trim()} 
                 className="rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed gap-1.5"
               >
                 <CheckCircle2 className="w-4 h-4" />
@@ -5370,9 +5458,6 @@ ${cementBlockLines.join('\n')}
             </form>
           </DialogContent>
         </Dialog>
-
-        {/* DEVELOPER BRANDING CARD (FOR WEB VIEW IN REPORTS) */}
-        <DeveloperBranding variant="card" className="mt-8" />
 
       </div>
     </Shell>

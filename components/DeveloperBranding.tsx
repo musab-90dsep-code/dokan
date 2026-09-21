@@ -26,12 +26,13 @@ export const DeveloperBranding: React.FC<DeveloperBrandingProps> = ({
   const waPhone = cleanPhoneNum.startsWith('0') ? `88${cleanPhoneNum}` : cleanPhoneNum;
 
   // 1. PRINT-ONLY FOOTER (Attached to printable reports/sheets)
+  // 1. PRINT-ONLY FOOTER (Attached to printable reports/sheets)
   if (variant === 'print') {
     return (
       <div 
         data-has-dev-footer="true" 
         className={cn(
-          "w-full pt-2.5 mt-3 border-t border-dashed border-slate-400 text-slate-800 text-[10px] flex items-center justify-between font-bengali leading-tight print:flex",
+          "w-full mt-auto pt-2 pb-0.5 border-t border-slate-200/90 flex items-center justify-between text-[9px] font-sans text-slate-400 select-none print:flex",
           className
         )}
         style={{ pageBreakInside: 'avoid' }}
@@ -40,23 +41,28 @@ export const DeveloperBranding: React.FC<DeveloperBrandingProps> = ({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img 
             src={DEVELOPER_LOGO_BASE64} 
-            alt="Dev Logo" 
-            className="w-5 h-5 object-contain rounded shrink-0" 
-            style={{ width: '20px', height: '20px' }}
+            alt="" 
+            className="w-3.5 h-3.5 object-contain opacity-60 grayscale rounded-xs shrink-0" 
+            style={{ width: '14px', height: '14px' }}
           />
-          <span className="bg-slate-900 text-white text-[8px] font-black font-mono px-1.5 py-0.5 rounded uppercase tracking-wider">
-            DEV
+          <span className="text-[7.5px] font-mono font-semibold uppercase tracking-wider px-1 py-0.2 rounded border border-slate-200 bg-slate-50 text-slate-500">
+            SYS
           </span>
-          <span className="font-bold">
-            সফটওয়্যার পরিচালনায়: <strong className="font-black text-black">{promo.softwareCompany}</strong>
+          <span className="text-slate-500 font-normal">
+            সফটওয়্যার পরিচালনায়: <strong className="font-semibold text-slate-600">{promo.softwareCompany}</strong>
           </span>
         </div>
 
-        <div className="flex items-center gap-3 font-semibold text-slate-700">
+        <div className="flex items-center gap-2 text-slate-400 font-mono text-[8.5px]">
           {promo.softwareWebsite && (
-            <span>🌐 <strong>{promo.softwareWebsite}</strong></span>
+            <>
+              <span className="text-slate-400 font-normal">{promo.softwareWebsite}</span>
+              <span className="text-slate-300">•</span>
+            </>
           )}
-          <span>📞 হটলাইন: <strong className="font-black text-black">{phoneBn}</strong></span>
+          <span className="text-slate-500 font-normal">
+            হটলাইন: <strong className="font-semibold text-slate-600">{phoneBn}</strong>
+          </span>
         </div>
       </div>
     );

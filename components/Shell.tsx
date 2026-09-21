@@ -917,10 +917,15 @@ export function Shell({ children }: { children: ReactNode }) {
             {/* User Avatar & Name & Role */}
             <div className="flex items-center gap-2 sm:gap-2.5 pl-2 sm:pl-3 border-l border-slate-200">
               <div className={cn(
-                "h-8 w-8 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-sm flex-shrink-0",
+                "h-8 w-8 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-sm flex-shrink-0 overflow-hidden border border-slate-200",
                 role === 'staff' ? "bg-blue-600 shadow-blue-600/20" : "bg-amber-600 shadow-amber-600/20"
               )}>
-                {role === 'staff' ? '👔' : '👑'}
+                {user?.avatar ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={user.avatar} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  role === 'staff' ? '👔' : '👑'
+                )}
               </div>
               <div className="hidden md:block text-left font-bengali">
                 <p className="text-xs font-black text-slate-800 flex items-center gap-1.5">

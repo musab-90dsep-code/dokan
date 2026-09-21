@@ -230,7 +230,7 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
       {/* --- EXACT REPLICA PAYMENT VOUCHER / MONEY RECEIPT SHEET --- */}
       <div 
         id="printable-memo-wrapper" 
-        className="w-full max-w-[210mm] mx-auto bg-white p-6 md:p-8 space-y-4 text-slate-800 border border-slate-300 shadow-xl print:shadow-none print:border-none print:m-0 print:p-4 text-xs"
+        className="w-full max-w-[210mm] mx-auto bg-white p-6 md:p-8 space-y-4 text-slate-800 border border-slate-300 shadow-xl print:shadow-none print:border-none print:m-0 print:p-4 text-xs min-h-[275mm] flex flex-col justify-between"
       >
         {/* --- 1. HEADER (LOGO, SHOP DETAILS & VOUCHER META BOX) --- */}
         <div className="grid grid-cols-12 gap-2 items-center border-b pb-3 border-slate-300">
@@ -516,11 +516,11 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
         </div>
 
         {/* --- 6. FOOTER (SOFTWARE BRANDING & QR/BARCODE) --- */}
-        <div data-has-dev-footer="true" className="border-t border-slate-300 pt-3 flex items-center justify-between text-[11px] font-bold text-slate-700 keep-together">
+        <div data-has-dev-footer="true" className="border-t border-slate-200/90 pt-2.5 flex items-center justify-between text-[10px] text-slate-500 keep-together mt-auto select-none">
           
           {/* Left QR Code */}
           <div className="flex items-center gap-2">
-            <svg className="w-9 h-9 shrink-0 border border-slate-300 p-0.5 rounded" viewBox="0 0 32 32" fill="currentColor">
+            <svg className="w-9 h-9 shrink-0 border border-slate-200 p-0.5 rounded opacity-75" viewBox="0 0 32 32" fill="currentColor">
               <rect x="2" y="2" width="10" height="10" fill="#000" />
               <rect x="4" y="4" width="6" height="6" fill="#fff" />
               <rect x="5" y="5" width="4" height="4" fill="#000" />
@@ -532,17 +532,17 @@ export const PaymentVoucherMemo: React.FC<PaymentVoucherMemoProps> = ({
               <rect x="5" y="23" width="4" height="4" fill="#000" />
             </svg>
             <div>
-              <p className="font-bengali font-bold text-slate-900">অফিসিয়াল পেমেন্ট ভাউচার কপি</p>
-              <p className="text-[10px] text-slate-500 font-medium">কম্পিউটারাইজড রিসিট সংগৃহীত</p>
+              <p className="font-bengali font-bold text-slate-600 text-[9.5px]">অফিসিয়াল পেমেন্ট ভাউচার কপি</p>
+              <p className="text-[9px] text-slate-400 font-medium">কম্পিউটারাইজড রিসিট সংগৃহীত</p>
             </div>
           </div>
 
           {/* Center Software Branding */}
-          <div className="text-center space-y-0.5">
-            <p className="text-[10px] text-slate-500 font-medium">সফটওয়্যার পরিচালনায়:</p>
-            <p className="font-bold text-slate-900">{shop.softwareCompany || 'Hasanah Tech Solution'}</p>
-            <p className="text-[10px] font-mono text-slate-600">
-              📞 {toBengaliDigits(shop.softwarePhone || '01349345353')}
+          <div className="text-center text-[9px] text-slate-400 space-y-0.5">
+            <p className="text-slate-500">সফটওয়্যার পরিচালনায়: <strong className="font-semibold text-slate-600">{shop.softwareCompany || 'Hasanah Tech Solution'}</strong></p>
+            <p className="text-slate-400 font-mono text-[8.5px]">
+              <span>হটলাইন: <strong className="font-semibold text-slate-600">{toBengaliDigits(shop.softwarePhone || '01349345353')}</strong></span>
+              {shop.softwareWebsite && <span> • {shop.softwareWebsite}</span>}
             </p>
           </div>
 

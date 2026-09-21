@@ -265,7 +265,7 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
       <div 
         id="printable-memo-wrapper" 
         className={cn(
-          "w-full max-w-[850px] mx-auto bg-white text-slate-900 p-6 space-y-3 font-bengali print:shadow-none print:border-none print:p-0 print:m-0 print:w-full print:max-w-none print:rounded-none",
+          "w-full max-w-[850px] mx-auto bg-white text-slate-900 p-6 space-y-3 font-bengali print:shadow-none print:border-none print:p-0 print:m-0 print:w-full print:max-w-none print:rounded-none min-h-[275mm] flex flex-col justify-between",
           !showPrintButton && "rounded-2xl"
         )}
       >
@@ -743,7 +743,7 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
         </div>
 
         {/* --- 6. FOOTER (QR CODE, SOFTWARE BRANDING & BARCODE) --- */}
-        <div data-has-dev-footer="true" className="border-t border-slate-300 pt-3 flex items-center justify-between text-[11px] font-bold text-slate-700 keep-together">
+        <div data-has-dev-footer="true" className="border-t border-slate-200/90 pt-2.5 flex items-center justify-between text-[10px] text-slate-500 keep-together mt-auto select-none">
           
           {/* Left QR Code & Thank You */}
           <div className="flex items-center gap-2">
@@ -774,11 +774,11 @@ export const PurchaseInvoiceMemo: React.FC<PurchaseInvoiceMemoProps> = ({
           </div>
 
           {/* Center Software Branding */}
-          <div className="text-center space-y-0.5">
-            <p className="text-[10px] text-slate-500 font-medium">সফটওয়্যার পরিচালনায়:</p>
-            <p className="font-bold text-slate-900">{shop.softwareCompany || 'Hasanah Tech Solution'}</p>
-            <p className="text-[10px] font-mono text-slate-600">
-              📞 {toBengaliDigits(shop.softwarePhone || '01349345353')} | {shop.softwareWebsite || 'www.hasanahtech.vercel.app'}
+          <div className="text-center text-[9px] text-slate-400 space-y-0.5">
+            <p className="text-slate-500">সফটওয়্যার পরিচালনায়: <strong className="font-semibold text-slate-600">{shop.softwareCompany || 'Hasanah Tech Solution'}</strong></p>
+            <p className="text-slate-400 font-mono text-[8.5px]">
+              <span>হটলাইন: <strong className="font-semibold text-slate-600">{toBengaliDigits(shop.softwarePhone || '01349345353')}</strong></span>
+              {shop.softwareWebsite && <span> • {shop.softwareWebsite}</span>}
             </p>
           </div>
 

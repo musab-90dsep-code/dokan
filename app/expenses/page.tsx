@@ -361,12 +361,26 @@ export default function ExpensePage() {
 
   // Filtered Expenses
   const filteredExpenses = expenses.filter(exp => {
-    const matchCategory = selectedCategory === 'all' ? true : exp.category === selectedCategory;
-    const matchSearch = exp.title?.toLowerCase().includes(search.toLowerCase()) ||
-      exp.vendor?.toLowerCase().includes(search.toLowerCase()) ||
-      exp.billNo?.toLowerCase().includes(search.toLowerCase());
+    const matchCategory = selectedCategory === 'all' ? true : (exp.category === selectedCategory || exp.title === selectedCategory);
+    const query = (searchQuery || search || '').trim().toLowerCase();
+    const matchSearch = !query ||
+      exp.title?.toLowerCase().includes(query) ||
+      exp.vendor?.toLowerCase().includes(query) ||
+      exp.billNo?.toLowerCase().includes(query) ||
+      exp.category?.toLowerCase().includes(query);
     return matchCategory && matchSearch;
   });
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  const totalExpenses = filteredExpenses.length;
+  const totalPages = Math.max(1, Math.ceil(totalExpenses / pageSize));
+  const validCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (validCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalExpenses);
+  const paginatedExpenses = filteredExpenses.slice(startIndex, endIndex);
 
   // Safe Date Helper
   const safeDate = (val: any): Date | null => {
@@ -664,7 +678,7 @@ export default function ExpensePage() {
                     <p className="font-bold text-sm">কোনো খরচের ইতিহাস পাওয়া যায়নি</p>
                   </div>
                 ) : (
-                  filteredExpenses.map((exp) => {
+                  paginatedExpenses.map((exp) => {
                     const catObj = allCategories.find((c: any) => c.id === exp.category || c.name === exp.category || c.name === exp.title) || defaultCategories[10];
                     const IconComp = catObj?.icon || Layers;
                     const expDate = safeDate(exp.date) || new Date();
@@ -733,11 +747,75 @@ export default function ExpensePage() {
                 )}
               </div>
 
-              {/* SEE MORE BUTTON */}
-              <div className="text-center pt-2">
-                <Button variant="ghost" className="text-slate-500 font-bold text-xs hover:text-slate-800 cursor-pointer">
-                  সকল খরচ সংরক্ষিত আছে
-                </Button>
+              {/* TIMELINE PAGINATION CONTROLS */}
+              <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-3">
+                  <span className="text-slate-500 font-semibold">
+                    মোট <strong className="text-slate-800">{toBengaliDigits(totalExpenses)}</strong> টির মধ্যে <strong className="text-slate-800">{toBengaliDigits(totalExpenses > 0 ? startIndex + 1 : 0)}</strong> - <strong className="text-slate-800">{toBengaliDigits(endIndex)}</strong> দেখানো হচ্ছে (পৃষ্ঠা {toBengaliDigits(validCurrentPage)}/{toBengaliDigits(totalPages)})
+                  </span>
+
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500 font-bold border-l pl-3 border-slate-200">
+                    <span>প্রতি পেজে:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => setPageSize(Number(e.target.value))}
+                      className="h-7 px-2 rounded-md border border-slate-200 bg-white font-bold text-slate-700 cursor-pointer text-xs"
+                    >
+                      <option value={5}>৫ টি</option>
+                      <option value={10}>১০ টি</option>
+                      <option value={20}>২০ টি</option>
+                      <option value={50}>৫০ টি</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 font-bold">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={validCurrentPage <= 1}
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    className="h-8 px-2.5 rounded-md text-xs font-bold bg-white text-slate-700 border-slate-200 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-0.5" /> আগের পেজ
+                  </Button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(p => p === 1 || p === totalPages || Math.abs(p - validCurrentPage) <= 1)
+                      .map((page, idx, arr) => {
+                        const prev = arr[idx - 1];
+                        const showEllipsis = prev && page - prev > 1;
+                        return (
+                          <div key={page} className="flex items-center gap-1">
+                            {showEllipsis && <span className="px-1 text-slate-400">...</span>}
+                            <button
+                              type="button"
+                              onClick={() => setCurrentPage(page)}
+                              className={cn(
+                                "w-8 h-8 rounded-md text-xs font-bold transition-all border cursor-pointer",
+                                validCurrentPage === page
+                                  ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                              )}
+                            >
+                              {toBengaliDigits(page)}
+                            </button>
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={validCurrentPage >= totalPages}
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    className="h-8 px-2.5 rounded-md text-xs font-bold bg-white text-slate-700 border-slate-200 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
+                  >
+                    পরের পেজ <ChevronRight className="w-4 h-4 ml-0.5" />
+                  </Button>
+                </div>
               </div>
 
             </Card>

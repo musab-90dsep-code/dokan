@@ -17,8 +17,8 @@ export const getSoftwarePromoInfo = (): Required<SoftwarePromoInfo> => {
     softwarePhone: '01349345353',
     softwareWebsite: 'www.hasanahtech.vercel.app',
     softwareLogo: DEVELOPER_LOGO_BASE64,
-    watermarkText: 'Hasanah Tech Solution • 01349345353',
-    showWatermark: true,
+    watermarkText: '',
+    showWatermark: false,
     showFooter: true,
   };
 
@@ -32,8 +32,8 @@ export const getSoftwarePromoInfo = (): Required<SoftwarePromoInfo> => {
           softwarePhone: parsed.softwarePhone || defaults.softwarePhone,
           softwareWebsite: parsed.softwareWebsite || defaults.softwareWebsite,
           softwareLogo: parsed.softwareLogo || defaults.softwareLogo,
-          watermarkText: parsed.watermarkText || `${parsed.softwareCompany || defaults.softwareCompany} • ${parsed.softwarePhone || defaults.softwarePhone}`,
-          showWatermark: parsed.showWatermark !== false,
+          watermarkText: '',
+          showWatermark: false,
           showFooter: parsed.showFooter !== false,
         };
       }
@@ -45,7 +45,7 @@ export const getSoftwarePromoInfo = (): Required<SoftwarePromoInfo> => {
 /**
  * Utility function to print a specific DOM element in an isolated hidden iframe.
  * Avoids browser scroll offset, modal translation, and page background interference.
- * Injects developer watermark overlay and marketing footer on all printed documents.
+ * Injects marketing footer on all printed documents (watermark removed).
  */
 export const printElement = (elementId: string) => {
   if (typeof window === 'undefined') return;
@@ -83,35 +83,17 @@ export const printElement = (elementId: string) => {
     .map(s => s.outerHTML)
     .join('\n');
 
-  const watermarkHtml = promo.showWatermark ? `
-    <div class="print-watermark-overlay" aria-hidden="true">
-      <div class="watermark-inner">
-        ${Array.from({ length: 6 }).map(() => `
-          <div class="watermark-item">
-            <img src="${promo.softwareLogo || DEVELOPER_LOGO_BASE64}" class="wm-logo-img" alt="" />
-            <span class="wm-title">${promo.softwareCompany}</span>
-            <span class="wm-phone">হটলাইন: ${toBengaliDigits(promo.softwarePhone)} / ${promo.softwarePhone}</span>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  ` : '';
-
   const footerHtml = (!hasLocalFooter && promo.showFooter) ? `
     <div class="print-global-dev-footer" data-has-dev-footer="true">
       <div class="dev-footer-left">
-        <img src="${promo.softwareLogo || DEVELOPER_LOGO_BASE64}" class="dev-footer-logo" alt="Dev Logo" />
-        <span class="dev-badge">DEV</span>
-        <span>সফটওয়্যার পরিচালনায়: <strong>${promo.softwareCompany}</strong></span>
+        <img src="${promo.softwareLogo || DEVELOPER_LOGO_BASE64}" class="dev-footer-logo" alt="" />
+        <span class="dev-badge">SYS</span>
+        <span class="dev-text">সফটওয়্যার পরিচালনায়: <strong>${promo.softwareCompany}</strong></span>
       </div>
-      <div class="dev-footer-center">
-        <span>হটলাইন: <strong>${toBengaliDigits(promo.softwarePhone)}</strong></span>
-      </div>
-      ${promo.softwareWebsite ? `
       <div class="dev-footer-right">
-        <span>ওয়েবসাইট: <strong>${promo.softwareWebsite}</strong></span>
+        ${promo.softwareWebsite ? `<span class="dev-web">${promo.softwareWebsite}</span><span class="dev-dot">•</span>` : ''}
+        <span class="dev-phone">হটলাইন: <strong>${toBengaliDigits(promo.softwarePhone)}</strong></span>
       </div>
-      ` : ''}
     </div>
   ` : '';
 
@@ -174,72 +156,7 @@ export const printElement = (elementId: string) => {
             print-color-adjust: exact !important;
           }
 
-          /* Global Watermark Styles - Repeated Across Every Page */
-          .print-watermark-overlay {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            z-index: 999999 !important;
-            pointer-events: none !important;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-            overflow: hidden !important;
-          }
-          .watermark-inner {
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: space-around !important;
-            align-items: center !important;
-            width: 150vw !important;
-            height: 150vh !important;
-            transform: rotate(-30deg) !important;
-            opacity: 0.055 !important;
-            user-select: none !important;
-          }
-          .watermark-item {
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: center !important;
-            justify-content: center !important;
-            margin: 35px 0 !important;
-            text-align: center !important;
-          }
-          .wm-title {
-            font-size: 32px !important;
-            font-weight: 900 !important;
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-            color: #000000 !important;
-            letter-spacing: 4px !important;
-            text-transform: uppercase !important;
-            white-space: nowrap !important;
-            line-height: 1.1 !important;
-          }
-          .wm-phone {
-            font-size: 18px !important;
-            font-weight: 800 !important;
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-            color: #000000 !important;
-            letter-spacing: 2.5px !important;
-            white-space: nowrap !important;
-            margin-top: 4px !important;
-            line-height: 1.1 !important;
-          }
-
-          .wm-logo-img {
-            width: 46px !important;
-            height: 46px !important;
-            object-fit: contain !important;
-            opacity: 0.18 !important;
-            margin-bottom: 6px !important;
-            filter: grayscale(40%) !important;
-          }
-
-          /* Global Print Marketing Footer */
+          /* Global Print Footer - Clean, Subtle & Always at Bottom of Page */
           .print-global-dev-footer {
             position: fixed !important;
             bottom: 0 !important;
@@ -247,48 +164,65 @@ export const printElement = (elementId: string) => {
             right: 0 !important;
             width: 100% !important;
             box-sizing: border-box !important;
-            padding: 2.5px 8px !important;
-            border-top: 1px dashed #94a3b8 !important;
+            padding: 3px 10px !important;
+            border-top: 1px solid #e2e8f0 !important;
             background: #ffffff !important;
             display: flex !important;
             justify-content: space-between !important;
             align-items: center !important;
-            font-size: 8px !important;
-            color: #334155 !important;
+            font-size: 8.5px !important;
+            color: #64748b !important;
             z-index: 999998 !important;
             font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+            letter-spacing: 0.2px !important;
           }
           .dev-footer-left {
             display: flex !important;
             align-items: center !important;
+            gap: 5px !important;
+          }
+          .dev-footer-right {
+            display: flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+            font-size: 8px !important;
           }
           .dev-footer-logo {
-            width: 15px !important;
-            height: 15px !important;
+            width: 13px !important;
+            height: 13px !important;
             object-fit: contain !important;
-            border-radius: 3px !important;
-            margin-right: 5px !important;
+            opacity: 0.65 !important;
+            filter: grayscale(100%) !important;
+            border-radius: 2px !important;
             display: inline-block !important;
             vertical-align: middle !important;
           }
           .print-global-dev-footer .dev-badge {
-            background: #0f172a !important;
-            color: #ffffff !important;
-            font-size: 7.5px !important;
-            font-weight: 900 !important;
-            padding: 0.5px 3.5px !important;
-            border-radius: 3px !important;
+            background: #f8fafc !important;
+            color: #64748b !important;
+            border: 1px solid #cbd5e1 !important;
+            font-size: 7px !important;
+            font-weight: 700 !important;
+            padding: 0.5px 3px !important;
+            border-radius: 2px !important;
             text-transform: uppercase !important;
-            margin-right: 4px !important;
+            letter-spacing: 0.5px !important;
             display: inline-block !important;
           }
+          .dev-text {
+            color: #64748b !important;
+          }
+          .dev-dot {
+            color: #cbd5e1 !important;
+          }
           .print-global-dev-footer strong {
-            color: #0f172a !important;
+            color: #475569 !important;
+            font-weight: 600 !important;
           }
         </style>
       </head>
       <body>
-        ${watermarkHtml}
         ${elem.outerHTML}
         ${footerHtml}
       </body>
