@@ -7,7 +7,7 @@ import {
   RotateCcw, Search, Plus, Package, User, DollarSign, FileText, X, 
   ShoppingCart, AlertCircle, Trash2, ArrowRight, CheckCircle2, RefreshCw, Calendar,
   Filter, ChevronUp, ChevronDown, ArrowLeft, Lightbulb, Printer, Edit2, Eye, Receipt,
-  Check, ShieldAlert, Sparkles, ChevronLeft, ChevronRight
+  Check, ShieldAlert, Sparkles, ChevronLeft, ChevronRight, Banknote, CreditCard
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -40,6 +40,8 @@ interface ReturnEntry {
   netRefundValue: number;
   dueAdjusted: number;
   cashRefundPaid: number;
+  paymentMethod?: string;
+  bankAccountId?: string;
   returnedItems: ReturnItem[];
   newTakenItems: ReturnItem[];
   reason: string;
@@ -132,6 +134,18 @@ export default function SalesReturnsPage() {
 
   const [reason, setReason] = useState('');
   const [cashRefundInput, setCashRefundInput] = useState(0);
+
+  // Payment / Cash Refund Entry States
+  const [banks, setBanks] = useState<any[]>([]);
+  const [cashRefundPaidInput, setCashRefundPaidInput] = useState<number>(0);
+  const [settlementMode, setSettlementMode] = useState<'due_adjust' | 'cash' | 'custom'>('due_adjust');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank' | 'mobile_banking'>('cash');
+  const [bankAccountId, setBankAccountId] = useState<string>('');
+
+  // Fetch Banks
+  useEffect(() => {
+    api.banks.list().then(res => setBanks(res || [])).catch(() => setBanks([]));
+  }, []);
 
   // View, Edit, Delete States
   const [selectedReturn, setSelectedReturn] = useState<ReturnEntry | null>(null);
@@ -279,6 +293,16 @@ export default function SalesReturnsPage() {
     setReturnCart(entry.returnedItems || []);
     setNewTakenCart(entry.newTakenItems || []);
     setReason(entry.reason || '');
+    setCashRefundPaidInput(entry.cashRefundPaid || 0);
+    setPaymentMethod(((entry.paymentMethod as any) || 'cash'));
+    setBankAccountId(entry.bankAccountId || '');
+    if ((entry.cashRefundPaid || 0) > 0 && (entry.dueAdjusted || 0) > 0) {
+      setSettlementMode('custom');
+    } else if ((entry.cashRefundPaid || 0) > 0) {
+      setSettlementMode('cash');
+    } else {
+      setSettlementMode('due_adjust');
+    }
     setIsOpen(true);
   };
 
@@ -380,6 +404,8 @@ export default function SalesReturnsPage() {
           netRefundValue: netRefund,
           dueAdjusted: Number(r.due_amount || 0),
           cashRefundPaid: Number(r.paid_amount || 0),
+          paymentMethod: r.payment_method || 'cash',
+          bankAccountId: (r as any).bank_account ? String((r as any).bank_account) : '',
           status: r.status || 'pending',
           returnedItems: (r.items || []).map(i => ({
             id: String(i.product || ''),
@@ -513,8 +539,29 @@ export default function SalesReturnsPage() {
 
   const selectedCust = customers.find(c => c.id === selectedCustomerId);
   const currentDue = round2(selectedCust?.totalDue || 0);
-  const dueAdjusted = netRefundValue > 0 ? round2(Math.min(currentDue, netRefundValue)) : 0;
-  const cashRefundPaid = netRefundValue > 0 ? round2(netRefundValue - dueAdjusted) : 0;
+
+  // Settlement calculations based on settlementMode and cash refund inputs
+  let dueAdjusted = 0;
+  let cashRefundPaid = 0;
+
+  if (netRefundValue > 0) {
+    if (settlementMode === 'cash') {
+      cashRefundPaid = netRefundValue;
+      dueAdjusted = 0;
+    } else if (settlementMode === 'due_adjust') {
+      dueAdjusted = round2(Math.min(currentDue, netRefundValue));
+      cashRefundPaid = round2(Math.max(0, netRefundValue - dueAdjusted));
+    } else {
+      // custom mode
+      cashRefundPaid = Math.min(netRefundValue, Math.max(0, round2(cashRefundPaidInput)));
+      dueAdjusted = round2(Math.min(currentDue, Math.max(0, netRefundValue - cashRefundPaid)));
+    }
+  }
+
+  const customerAdvanceCreated = (netRefundValue > 0 && (dueAdjusted + cashRefundPaid) < netRefundValue)
+    ? round2(netRefundValue - dueAdjusted - cashRefundPaid)
+    : 0;
+
   const newCustomerDue = netRefundValue > 0 
     ? round2(Math.max(0, currentDue - dueAdjusted))
     : round2(currentDue + Math.abs(netRefundValue));
@@ -536,7 +583,12 @@ export default function SalesReturnsPage() {
         invoiceNo: activeInvoice ? activeInvoice.invoice_no : undefined,
         newTakenItems: newTakenCart,
         totalNewTakenValue: totalNewTakenValue,
-        netRefundValue: netRefundValue
+        netRefundValue: netRefundValue,
+        cashRefundPaid: round2(cashRefundPaid),
+        dueAdjusted: round2(dueAdjusted),
+        settlementMode: settlementMode,
+        paymentMethod: cashRefundPaid > 0 ? paymentMethod : 'cash',
+        bankAccountId: (cashRefundPaid > 0 && (paymentMethod === 'bank' || paymentMethod === 'mobile_banking') && bankAccountId) ? bankAccountId : undefined,
       };
 
       const retInvoiceNo = editingReturn ? undefined : `RET-${String(returns.length + 1).padStart(6, '0')}`;
@@ -550,6 +602,8 @@ export default function SalesReturnsPage() {
         total_amount: round2(totalReturnedValue),
         paid_amount: round2(cashRefundPaid),
         due_amount: round2(dueAdjusted),
+        payment_method: cashRefundPaid > 0 ? paymentMethod : 'cash',
+        bank_account: (cashRefundPaid > 0 && (paymentMethod === 'bank' || paymentMethod === 'mobile_banking') && bankAccountId) ? Number(bankAccountId) : null,
         items: returnCart.map(item => {
           const numId = Number(item.id);
           const q = round2(item.quantity);
@@ -606,6 +660,10 @@ export default function SalesReturnsPage() {
       setReturnCart([]);
       setNewTakenCart([]);
       setReason('');
+      setCashRefundPaidInput(0);
+      setSettlementMode('due_adjust');
+      setPaymentMethod('cash');
+      setBankAccountId('');
       loadReturnsData();
     } catch (err: any) {
       console.error(err);
@@ -712,6 +770,10 @@ export default function SalesReturnsPage() {
                   setReturnCart([]);
                   setNewTakenCart([]);
                   setReason('');
+                  setCashRefundPaidInput(0);
+                  setSettlementMode('due_adjust');
+                  setPaymentMethod('cash');
+                  setBankAccountId('');
                   setIsOpen(true);
                 }}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-bengali h-10 px-5 rounded-md font-bold shadow-md shadow-blue-600/20 active:scale-95 transition-all text-xs cursor-pointer"
@@ -950,7 +1012,12 @@ export default function SalesReturnsPage() {
                             <span className="block font-bold text-blue-700">বকেয়া কাটা: ৳ {r.dueAdjusted.toLocaleString()}</span>
                           )}
                           {r.cashRefundPaid > 0 && (
-                            <span className="block font-bold text-rose-600">ক্যাশ ফেরত: ৳ {r.cashRefundPaid.toLocaleString()}</span>
+                            <span className="block font-bold text-rose-600">
+                              ক্যাশ ফেরত: ৳ {r.cashRefundPaid.toLocaleString()}
+                              <span className="text-[10px] text-slate-500 font-normal ml-1">
+                                ({r.paymentMethod === 'bank' ? 'ব্যাংক' : r.paymentMethod === 'mobile_banking' ? 'মোবাইল' : 'নগদ'})
+                              </span>
+                            </span>
                           )}
                           {r.dueAdjusted === 0 && r.cashRefundPaid === 0 && (
                             <span className="font-bold text-emerald-600">সমপরিমাণ অ্যাডজাস্ট</span>
@@ -1722,39 +1789,308 @@ export default function SalesReturnsPage() {
                           </span>
                         </div>
 
-                        {/* DUE ADJUSTMENT NOTICE BOX */}
+                        {/* DUE / ADVANCE LIVE SUMMARY */}
                         {netRefundValue > 0 && selectedCust && (
-                          <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-md space-y-2 text-xs">
-                            <p className="font-bold text-amber-900 flex items-center gap-1.5">
-                              <AlertCircle className="w-4 h-4 text-amber-600" /> অটোমেটিক বকেয়া সামঞ্জস্যতা
-                            </p>
-                            <div className="space-y-1 text-[11px] text-amber-800 font-medium">
-                              {dueAdjusted > 0 ? (
-                                <p className="font-bold text-blue-800">
-                                  ✓ কাস্টমারের বকেয়া থেকে কাটা হবে (-): ৳ {dueAdjusted.toLocaleString()}
-                                </p>
-                              ) : (
-                                <p className="font-semibold text-slate-700">• কাস্টমারের কোনো পূর্বের বকেয়া নেই</p>
-                              )}
-
-                              {cashRefundPaid > 0 ? (
-                                <p className="font-black text-rose-700">
-                                  💵 ক্যাশ রিফান্ড প্রদান করতে হবে: ৳ {cashRefundPaid.toLocaleString()}
-                                </p>
-                              ) : (
-                                <p className="font-bold text-emerald-700">
-                                  ✓ সম্পূর্ণ ফেরত মূল্য কাস্টমারের বকেয়া পরিশোধে সমন্বয় হয়েছে।
-                                </p>
-                              )}
-
-                              <div className="pt-2 border-t border-amber-200 text-xs font-black text-slate-900 flex justify-between">
-                                <span>রিটার্নের পর অবশিষ্ট বকেয়া:</span>
-                                <span className="text-blue-700">৳ {newCustomerDue.toLocaleString()}</span>
-                              </div>
+                          <div className="p-3 bg-slate-50 border border-slate-200 rounded-md space-y-1.5 text-xs">
+                            <div className="flex justify-between items-center text-slate-700">
+                              <span className="font-semibold">বর্তমান বকেয়া:</span>
+                              <span className="font-bold font-mono">৳ {currentDue.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-blue-700">
+                              <span className="font-bold">সমন্বয় হবে:</span>
+                              <span className="font-black font-mono">- ৳ {dueAdjusted.toLocaleString()}</span>
+                            </div>
+                            <div className="pt-1.5 border-t border-slate-200 flex justify-between items-center text-slate-900 font-black">
+                              <span>অবশিষ্ট বকেয়া:</span>
+                              <span className={cn("font-mono font-black", newCustomerDue > 0 ? "text-blue-700" : "text-emerald-700")}>
+                                ৳ {newCustomerDue.toLocaleString()}
+                              </span>
                             </div>
                           </div>
                         )}
                       </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* INTERACTIVE PAYMENT & CASH REFUND ENTRY CARD */}
+                  <Card className="bg-white border-slate-200/80 rounded-md shadow-xs overflow-hidden">
+                    <div className="bg-slate-900 text-white p-3.5 px-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Banknote className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-black tracking-wide">রিফান্ড ও পেমেন্ট এন্ট্রি (Payment Entry)</span>
+                      </div>
+                      {netRefundValue > 0 && (
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono font-bold px-2 py-0.5 rounded border border-emerald-500/30">
+                          রিফান্ড: ৳ {netRefundValue.toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+
+                    <CardContent className="p-4 space-y-4 text-xs font-bengali">
+                      {netRefundValue <= 0 ? (
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-md text-slate-500 text-center font-medium">
+                          {netRefundValue === 0 
+                            ? 'ফেরত ও নতুন নেওয়া পণ্যের মূল্য সমান, কোনো রিফান্ড বা বকেয়া সমন্বয় প্রয়োজন নেই।'
+                            : `গ্রাহক অতিরিক্ত মূল্যের পণ্য নিয়েছেন, গ্রাহকের বকেয়া বৃদ্ধি পাবে ৳ ${Math.abs(netRefundValue).toLocaleString()}`
+                          }
+                        </div>
+                      ) : (
+                        <>
+                          {/* Settlement Mode Selection Pills */}
+                          <div>
+                            <Label className="text-[11px] font-bold text-slate-700 mb-1.5 block">
+                              নিষ্পত্তি পদ্ধতি নির্বাচন করুন:
+                            </Label>
+                            <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-lg border border-slate-200">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSettlementMode('due_adjust');
+                                  setCashRefundPaidInput(Math.max(0, round2(netRefundValue - currentDue)));
+                                }}
+                                className={cn(
+                                  "py-1.5 px-2 rounded-md font-bold text-[11px] transition-all flex flex-col items-center gap-0.5 cursor-pointer text-center",
+                                  settlementMode === 'due_adjust'
+                                    ? "bg-white text-blue-700 shadow-xs border border-slate-200 font-black"
+                                    : "text-slate-600 hover:text-slate-900"
+                                )}
+                              >
+                                <span>📑 বকেয়া সমন্বয়</span>
+                                <span className="text-[9px] font-normal text-slate-400">Due Adjust</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSettlementMode('cash');
+                                  setCashRefundPaidInput(netRefundValue);
+                                }}
+                                className={cn(
+                                  "py-1.5 px-2 rounded-md font-bold text-[11px] transition-all flex flex-col items-center gap-0.5 cursor-pointer text-center",
+                                  settlementMode === 'cash'
+                                    ? "bg-white text-emerald-700 shadow-xs border border-slate-200 font-black"
+                                    : "text-slate-600 hover:text-slate-900"
+                                )}
+                              >
+                                <span>💵 নগদ ফেরত</span>
+                                <span className="text-[9px] font-normal text-slate-400">Full Cash</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSettlementMode('custom');
+                                }}
+                                className={cn(
+                                  "py-1.5 px-2 rounded-md font-bold text-[11px] transition-all flex flex-col items-center gap-0.5 cursor-pointer text-center",
+                                  settlementMode === 'custom'
+                                    ? "bg-white text-purple-700 shadow-xs border border-slate-200 font-black"
+                                    : "text-slate-600 hover:text-slate-900"
+                                )}
+                              >
+                                <span>⚙️ কাস্টম স্প্লিট</span>
+                                <span className="text-[9px] font-normal text-slate-400">Custom</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Cash Refund Amount Input Box */}
+                          <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                                <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                                ক্যাশ ফেরত পরিশোধের পরিমাণ (৳):
+                              </Label>
+                              <span className="text-xs font-black font-mono text-emerald-700">
+                                ৳ {cashRefundPaid.toLocaleString()}
+                              </span>
+                            </div>
+
+                            <Input
+                              type="number"
+                              step="any"
+                              min="0"
+                              max={netRefundValue}
+                              value={settlementMode === 'cash' ? netRefundValue : settlementMode === 'due_adjust' ? Math.max(0, round2(netRefundValue - currentDue)) : cashRefundPaidInput}
+                              onChange={(e) => {
+                                const val = Math.max(0, parseFloat(e.target.value) || 0);
+                                setCashRefundPaidInput(val);
+                                if (settlementMode !== 'custom') {
+                                  setSettlementMode('custom');
+                                }
+                              }}
+                              placeholder="ফেরত দেওয়া টাকার পরিমাণ..."
+                              className="bg-white border-slate-300 h-9 text-right font-mono font-black text-sm text-slate-900 rounded-md"
+                            />
+
+                            {/* Preset Buttons */}
+                            <div className="flex flex-wrap items-center gap-1 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSettlementMode('custom');
+                                  setCashRefundPaidInput(0);
+                                }}
+                                className="px-2 py-0.5 rounded bg-white hover:bg-slate-100 text-[10px] font-bold text-slate-600 border border-slate-200 cursor-pointer"
+                              >
+                                ৳ ০ (ক্যাশ নয়)
+                              </button>
+
+                              {netRefundValue > 0 && currentDue > 0 && netRefundValue > currentDue && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSettlementMode('custom');
+                                    setCashRefundPaidInput(round2(netRefundValue - currentDue));
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-white hover:bg-slate-100 text-[10px] font-bold text-blue-700 border border-blue-200 cursor-pointer"
+                                >
+                                  বকেয়া বাদে বাকি ৳ {(netRefundValue - currentDue).toLocaleString()}
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSettlementMode('cash');
+                                  setCashRefundPaidInput(netRefundValue);
+                                }}
+                                className="px-2 py-0.5 rounded bg-white hover:bg-slate-100 text-[10px] font-bold text-emerald-700 border border-emerald-200 cursor-pointer ml-auto"
+                              >
+                                সম্পূর্ণ ৳ {netRefundValue.toLocaleString()} ক্যাশ
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Payment Method & Bank Account Selection (Visible when cash refund > 0) */}
+                          {cashRefundPaid > 0 && (
+                            <div className="space-y-3 p-3 bg-blue-50/60 border border-blue-200 rounded-lg">
+                              <Label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                                <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                                ক্যাশ ফেরত পরিশোধের মাধ্যম (Payment Method):
+                              </Label>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                                {/* Payment Method Dropdown — same as invoice */}
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] font-bold text-slate-600">পেমেন্ট মাধ্যম</Label>
+                                  <Select
+                                    value={paymentMethod}
+                                    onValueChange={(val: any) => {
+                                      setPaymentMethod(val);
+                                      if (val === 'cash') setBankAccountId('');
+                                    }}
+                                  >
+                                    <SelectTrigger className="rounded-md h-10 bg-white border-slate-200 text-xs font-bold w-full">
+                                      <SelectValue>
+                                        {paymentMethod === 'cash' ? '💵 নগদ (Cash)' :
+                                         paymentMethod === 'bank' ? '🏦 ব্যাংক ট্রান্সফার' :
+                                         paymentMethod === 'mobile_banking' ? '📱 মোবাইল ব্যাংকিং' : '💵 নগদ (Cash)'}
+                                      </SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent className="text-xs font-bold">
+                                      <SelectItem value="cash">💵 নগদ (Cash)</SelectItem>
+                                      <SelectItem value="bank">🏦 ব্যাংক ট্রান্সফার</SelectItem>
+                                      <SelectItem value="mobile_banking">📱 মোবাইল ব্যাংকিং (বিকাশ/নগদ)</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+
+                                {/* Paid Amount Display */}
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] font-bold text-slate-600">পরিশোধের পরিমাণ (৳)</Label>
+                                  <div className="h-10 rounded-md bg-emerald-50 border border-emerald-200 flex items-center px-3 font-black text-sm text-emerald-700">
+                                    ৳ {cashRefundPaid.toLocaleString()}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Bank Account Selector (Bank / Mobile Banking) */}
+                              {(paymentMethod === 'bank' || paymentMethod === 'mobile_banking') && (
+                                <div className="p-3 bg-white border border-blue-100 rounded-md space-y-2 animate-in fade-in-0">
+                                  <p className="font-bold text-blue-900 text-xs flex items-center gap-1">
+                                    {paymentMethod === 'bank' ? '🏦 দোকানের ব্যাংক একাউন্ট (যেখান থেকে দেওয়া হবে)' : '📱 মোবাইল ব্যাংকিং একাউন্ট'}
+                                  </p>
+                                  <div className="space-y-1">
+                                    <Label className="text-[10px] font-bold text-slate-600">একাউন্ট নির্বাচন করুন</Label>
+                                    <Select
+                                      value={bankAccountId}
+                                      onValueChange={(val: string | null) => setBankAccountId(val === 'none' || !val ? '' : val)}
+                                    >
+                                      <SelectTrigger className="h-9 rounded-md bg-slate-50 text-xs font-bold border-slate-200">
+                                        <SelectValue placeholder="-- একাউন্ট নির্বাচন করুন --" />
+                                      </SelectTrigger>
+                                      <SelectContent className="text-xs font-bold">
+                                        {banks.length > 0 ? (
+                                          banks.map((b) => (
+                                            <SelectItem key={b.id} value={String(b.id)}>
+                                              {b.name}{b.account_number ? ` (${b.account_number})` : ''} — ব্যালেন্স: ৳ {Number(b.balance || 0).toLocaleString()}
+                                            </SelectItem>
+                                          ))
+                                        ) : (
+                                          <SelectItem value="none" disabled>
+                                            ⚠️ কোনো ব্যাংক যুক্ত নেই (আগে ব্যাংক যোগ করুন)
+                                          </SelectItem>
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Live Settlement Summary & Impact */}
+                          <div className="p-3.5 bg-slate-900 text-white rounded-lg space-y-2">
+                            <p className="text-[10px] uppercase font-black tracking-wider text-slate-400 border-b border-slate-800 pb-1.5">
+                              📌 চূড়ান্ত নিষ্পত্তির ফলাফল (Summary)
+                            </p>
+
+                            <div className="space-y-1.5 text-xs">
+                              <div className="flex justify-between items-center text-rose-400">
+                                <span className="font-semibold flex items-center gap-1">
+                                  💵 নগদ ক্যাশ ফেরত প্রদান:
+                                </span>
+                                <span className="font-mono font-black text-sm">
+                                  ৳ {cashRefundPaid.toLocaleString()}
+                                  {cashRefundPaid > 0 && (
+                                    <span className="text-[10px] ml-1 font-bold text-slate-300">
+                                      ({paymentMethod === 'cash' ? 'নগদ' : paymentMethod === 'bank' ? 'ব্যাংক' : 'মোবাইল'})
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between items-center text-blue-300">
+                                <span className="font-semibold flex items-center gap-1">
+                                  📑 বকেয়া সমন্বয়/কর্তন:
+                                </span>
+                                <span className="font-mono font-black">
+                                  ৳ {dueAdjusted.toLocaleString()}
+                                </span>
+                              </div>
+
+                              {customerAdvanceCreated > 0 && (
+                                <div className="flex justify-between items-center text-emerald-400">
+                                  <span className="font-semibold flex items-center gap-1">
+                                    🎉 গ্রাহকের অগ্রিম জমা:
+                                  </span>
+                                  <span className="font-mono font-black">
+                                    ৳ {customerAdvanceCreated.toLocaleString()}
+                                  </span>
+                                </div>
+                              )}
+
+                              <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-xs font-bold text-slate-200">
+                                <span>রিটার্ন পরবর্তী অবশিষ্ট বকেয়া:</span>
+                                <span className={cn("font-mono font-black text-sm", newCustomerDue > 0 ? "text-amber-400" : "text-emerald-400")}>
+                                  ৳ {newCustomerDue.toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </CardContent>
                   </Card>
 

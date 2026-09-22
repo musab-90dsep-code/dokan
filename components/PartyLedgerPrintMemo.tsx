@@ -115,7 +115,7 @@ export function buildLedgerPrintRows(
       } else if (txType === 'payment_in' || txType === 'payment_out' || (isEngineer && txType === 'payment')) {
         priorBalance -= (paid || bill);
       } else if (txType === 'sale_return' || txType === 'purchase_return') {
-        priorBalance -= bill;
+        priorBalance -= (bill - paid);
       } else if (isEngineer) {
         const comm = Number(meta.engineerTotalCommission || (tx as any).engineerTotalCommission || 0);
         const rodKg = Number(meta.engineerRodKg || (tx as any).engineerRodKg || 0);
@@ -238,6 +238,7 @@ export function buildLedgerPrintRows(
       }
     } else if (txType === 'sale_return' || txType === 'purchase_return') {
       const retAmt = Number(tx.totalAmount || 0);
+      const refundPaid = Number(tx.paidAmount || 0);
       if (retAmt > 0) {
         totalDeposit += retAmt;
         rows.push({
@@ -249,6 +250,19 @@ export function buildLedgerPrintRows(
           amount: '-',
           rawDeposit: retAmt,
           rawAmount: 0,
+        });
+      }
+      if (refundPaid > 0) {
+        totalAmount += refundPaid;
+        rows.push({
+          date: txDateStr,
+          description: isCustomer ? 'নগদ ক্যাশ ফেরত প্রদান' : 'ফেরত প্রাপ্তি ক্যাশ গ্রহণ',
+          quantity: '-',
+          rate: '-',
+          deposit: '-',
+          amount: formatLedgerNum(refundPaid),
+          rawDeposit: 0,
+          rawAmount: refundPaid,
         });
       }
     } else if (isEngineer) {

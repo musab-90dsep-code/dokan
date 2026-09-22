@@ -150,6 +150,8 @@ export const ReturnInvoiceMemo: React.FC<ReturnInvoiceMemoProps> = ({
 
   const dueAdjusted = returnEntry.dueAdjusted || 0;
   const cashRefundPaid = returnEntry.cashRefundPaid || 0;
+  const paymentMethod = (returnEntry as any).paymentMethod || (returnEntry as any).payment_method || 'cash';
+  const payMethodLabel = paymentMethod === 'bank' ? 'ব্যাংক' : paymentMethod === 'mobile_banking' ? 'মোবাইল ব্যাংকিং' : 'নগদ ক্যাশ';
 
   return (
     <div className="w-full font-bengali">
@@ -362,7 +364,7 @@ export const ReturnInvoiceMemo: React.FC<ReturnInvoiceMemoProps> = ({
 
             {cashRefundPaid > 0 && (
               <div className="flex justify-between items-center text-rose-700 font-black">
-                <span>নগদ ক্যাশ ফেরত প্রদান:</span>
+                <span>ক্যাশ ফেরত প্রদান ({payMethodLabel}):</span>
                 <span className="font-black">৳ {toBengaliDigits(cashRefundPaid.toLocaleString('en-IN'))}</span>
               </div>
             )}

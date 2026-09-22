@@ -331,6 +331,7 @@ export function generateLedgerEntries(
         });
       } else if (txType === 'sale_return' || txType === 'purchase_return') {
         const returnAmount = Number(tx.totalAmount || 0);
+        const refundPaid = Number(tx.paidAmount || 0);
         cumulativeBalance -= returnAmount;
         const retPrefix = isCustomer ? 'RET-2026-' : 'PRET-2026-';
         const retNo = tx.invoiceNo || `${retPrefix}${tx.id.slice(0, 5).toUpperCase()}`;
@@ -340,7 +341,7 @@ export function generateLedgerEntries(
           date: txDate,
           refNo: retNo,
           type: 'RETURN',
-          description: `${isCustomer ? 'বিক্রয় ফেরত' : 'ক্রয় ফেরত'} (${tx.note || 'পণ্য ফেরত সমন্বয়'})`,
+          description: `${isCustomer ? 'বিক্রয় ফেরত' : 'ক্রয় ফেরত'} (${tx.note || 'পণ্য ফেরত জমা'})`,
           invoiceNo: retNo,
           debit: 0,
           credit: returnAmount,
@@ -349,6 +350,28 @@ export function generateLedgerEntries(
           orderId: tx.id,
           dueAmount: 0
         });
+
+        if (refundPaid > 0) {
+          cumulativeBalance += refundPaid;
+          let retPayMethod = 'নগদ';
+          if (tx.paymentMethod === 'bank') retPayMethod = 'ব্যাংক';
+          else if (tx.paymentMethod === 'mobile_banking' || tx.paymentMethod === 'mobile' || tx.paymentMethod === 'bkash') retPayMethod = 'মোবাইল ব্যাংকিং';
+
+          entries.push({
+            id: `${tx.id}-refund`,
+            date: txDate,
+            refNo: `${retNo}-PAY`,
+            type: 'PAYMENT',
+            description: `${isCustomer ? 'নগদ ক্যাশ ফেরত প্রদান' : 'ফেরত প্রাপ্তি ক্যাশ গ্রহণ'} (চালান #${retNo})`,
+            invoiceNo: retNo,
+            debit: refundPaid,
+            credit: 0,
+            runningBalance: cumulativeBalance,
+            paymentMethod: retPayMethod,
+            orderId: tx.id,
+            dueAmount: 0
+          });
+        }
       } else {
         // Normal Sale or Purchase
         const invPrefix = isCustomer ? 'INV-2026-' : 'PUR-2026-';
