@@ -4342,19 +4342,7 @@ ${cementBlockLines.join('\n')}
                             </tr>
                           ))}
 
-                          {/* 7. গ্রাহক / পার্টিদের আলাদা তালিকা (যদি থাকে) */}
-                          {customersWithDue.map((c) => (
-                            <tr key={c.id} style={{ pageBreakInside: 'avoid' }}>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
-                                {c.name} {c.businessName && c.businessName !== c.name ? `(${c.businessName}) ` : ''}-
-                              </td>
-                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
-                                {formatBnNumber(c.totalDue)}
-                              </td>
-                            </tr>
-                          ))}
-
-                          {/* 8. মোট বাকী */}
+                          {/* 7. মোট বাকী */}
                           <tr style={{ pageBreakInside: 'avoid' }}>
                             <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
                               মোট বাকী -
@@ -4731,19 +4719,7 @@ ${cementBlockLines.join('\n')}
                           </tr>
                         ))}
 
-                        {/* 7. গ্রাহক / পার্টিদের আলাদা তালিকা (যদি থাকে) */}
-                        {customersWithDue.map((c) => (
-                          <tr key={c.id} style={{ pageBreakInside: 'avoid' }}>
-                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
-                              {c.name} {c.businessName && c.businessName !== c.name ? `(${c.businessName}) ` : ''}-
-                            </td>
-                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
-                              {formatBnNumber(c.totalDue)}
-                            </td>
-                          </tr>
-                        ))}
-
-                        {/* 8. মোট বাকী */}
+                        {/* 7. মোট বাকী */}
                         <tr style={{ pageBreakInside: 'avoid' }}>
                           <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
                             মোট বাকী -
