@@ -9,7 +9,7 @@ import {
   FileText, Settings, Building2, MapPin, CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { toBengaliDigits, parseProductDetails } from '@/lib/bengaliUtils';
+import { toBengaliDigits, parseProductDetails, cleanLegacyBengaliText } from '@/lib/bengaliUtils';
 import { printElement } from '@/lib/printUtils';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/authContext';
@@ -528,7 +528,7 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
                         {toBengaliDigits(idx + 1)}
                       </td>
                       <td className="py-2.5 px-3 text-left font-bold text-slate-900">
-                        <span>{item.name}</span> <span className="text-slate-500 text-[11px] font-normal">{bundleInfo}</span>
+                        <span>{cleanLegacyBengaliText(item.name)}</span> <span className="text-slate-500 text-[11px] font-normal">{bundleInfo}</span>
                       </td>
                       <td className="py-2.5 px-2 text-center text-slate-600">
                         {item.brand || '—'}

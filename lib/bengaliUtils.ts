@@ -284,15 +284,67 @@ export function cleanLegacyBengaliText(input: any): string {
   str = str.replace(/iW/g, 'রড');
   str = str.replace(/wg[:.]\s*wj/gi, 'মি.মি');
 
-  // 3. Remove extra English in parentheses (e.g. "(Holcim Strong Structure - PCC)", "(King Brand - PCC)", "(OPC)")
-  // so ledger shows clean Bengali product name without redundant English subtitles
-  str = str.replace(/\s*\([^)]*[A-Za-z]+[^)]*\)/g, '');
+  // 3. Remove extra English in parentheses or brackets (e.g. "(Holcim Supercrete - PCC)", "(King Brand - PCC)", "(OPC)")
+  // when Bengali text is present, so ledger shows clean Bengali product name without redundant English subtitles
+  const hasBengali = /[\u0980-\u09FF]/.test(str);
+  if (hasBengali) {
+    str = str.replace(/\s*[\(\[][^)\]]*[A-Za-z]+[^)\]]*[\)\]]/g, '');
+    str = str.replace(/\s*[-/|]\s*[A-Za-z0-9\s-]+$/g, '');
+  } else {
+    str = str.replace(/\(([^)]+)\)/g, '$1').replace(/\[([^\]]+)\]/g, '$1');
+  }
 
-  // 4. Translate standalone common English product/brand names to clean Bengali
-  str = str.replace(/Holcim Waterprotect/gi, 'হোলসিম ওয়াটারপ্রোটেক্ট');
-  str = str.replace(/Holcim/gi, 'হোলসিম');
-  str = str.replace(/Aman/gi, 'আমান');
-  str = str.replace(/Pistol Ring/gi, 'পিস্তল রিং');
+  // 4. Comprehensive English to Bengali product & brand transliterations
+  const BRAND_TRANSLATIONS: [RegExp, string | ((...args: any[]) => string)][] = [
+    [/Holcim\s*Waterprotect/gi, 'হোলসিম ওয়াটারপ্রোটেক্ট'],
+    [/Holcim\s*Supercrete\s*Plus/gi, 'হোলসিম সুপারক্রিট প্লাস'],
+    [/Holcim\s*Supercrete/gi, 'হোলসিম সুপারক্রিট'],
+    [/Holcim\s*Strong\s*Structure/gi, 'হোলসিম স্ট্রং স্ট্রাকচার'],
+    [/Holcim\s*Coastal\s*Guard/gi, 'হোলসিম কোস্টাল গার্ড'],
+    [/Holcim/gi, 'হোলসিম'],
+    [/King\s*Brand/gi, 'কিং ব্র্যান্ড'],
+    [/SCRM\s*TMX/gi, 'এসসিআরএম টিএমএক্স'],
+    [/SCRM/gi, 'এসসিআরএম'],
+    [/BSRM/gi, 'বিএসআরএম'],
+    [/KSML/gi, 'কেএসএমএল'],
+    [/HKG/gi, 'এইচকেজি'],
+    [/DSRM/gi, 'ডিএসআরএম'],
+    [/KSRM/gi, 'কেএসআরএম'],
+    [/AKS/gi, 'একেএস'],
+    [/GPH\s*Ispat/gi, 'জিপিএইচ ইস্পাত'],
+    [/GPH/gi, 'জিপিএইচ'],
+    [/Anwar\s*Ispat/gi, 'আনোয়ার ইস্পাত'],
+    [/Anwar/gi, 'আনোয়ার'],
+    [/RSRM/gi, 'আরএসআরএম'],
+    [/SSRM/gi, 'এসএসআরএম'],
+    [/Aman/gi, 'আমান'],
+    [/Anchor/gi, 'অ্যাংকর'],
+    [/Fresh/gi, 'ফ্রেশ'],
+    [/Crown/gi, 'ক্রাউন'],
+    [/Seven\s*Rings?/gi, 'সেভেন রিংস'],
+    [/Premier/gi, 'প্রিমিয়ার'],
+    [/Akij/gi, 'আকিজ'],
+    [/Bashundhara/gi, 'বসুন্ধরা'],
+    [/Pistol\s*Ring/gi, 'পিস্তল রিং'],
+    [/Pistol/gi, 'পিস্তল'],
+    [/\bRing\b/gi, 'রিং'],
+    [/\bRod\b/gi, 'রড'],
+    [/\bCement\b/gi, 'সিমেন্ট'],
+    [/\bPCC\b/gi, 'পিসিসি'],
+    [/\bOPC\b/gi, 'ওপিসি'],
+    [/\bTMX\b/gi, 'টিএমএক্স'],
+    [/(\d+(?:\.\d+)?)\s*(?:mm|milli)\b/gi, (_: string, n: string) => `${toBengaliDigits(n)} মিলি`],
+    [/\bmm\b/gi, 'মিলি'],
+  ];
+
+  for (const [re, bnText] of BRAND_TRANSLATIONS) {
+    str = str.replace(re, bnText as any);
+  }
+
+  // If Bengali is present and there are still isolated stray English letters remaining, clean them up
+  if (/[\u0980-\u09FF]/.test(str)) {
+    str = str.replace(/\s*\b[A-Za-z]+\b\s*/g, ' ');
+  }
 
   // Normalize multi-spaces
   return str.replace(/\s+/g, ' ').trim();

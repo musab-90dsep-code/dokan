@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { Printer, FileText, User, Truck, ClipboardList, CreditCard, Edit3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { toBengaliDigits, numberToBengaliWords, parseProductDetails } from '@/lib/bengaliUtils';
+import { toBengaliDigits, numberToBengaliWords, parseProductDetails, cleanLegacyBengaliText } from '@/lib/bengaliUtils';
 import { printElement } from '@/lib/printUtils';
 
 export interface OrderItem {
@@ -564,7 +564,7 @@ export const InvoiceMemo: React.FC<InvoiceMemoProps> = ({
                     <tr key={idx} className="text-slate-900 font-medium">
                       <td className="border border-slate-300 py-1.5 px-1 text-center font-mono">{toBengaliDigits(idx + 1)}</td>
                       <td className="border border-slate-300 py-1.5 px-2 text-left font-bold">
-                        <span>{item.name}</span> <span className="text-slate-500 text-[11px] font-normal">{bundleInfo}</span>
+                        <span>{cleanLegacyBengaliText(item.name)}</span> <span className="text-slate-500 text-[11px] font-normal">{bundleInfo}</span>
                       </td>
                       <td className="border border-slate-300 py-1.5 px-2 text-center">{item.brand || '—'}</td>
                       <td className="border border-slate-300 py-1.5 px-2 text-center">{item.variant || '—'}</td>

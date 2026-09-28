@@ -550,7 +550,7 @@ export const PartyLedgerPrintMemo: React.FC<PartyLedgerPrintMemoProps> = ({
       <div className="border border-black mb-1 bg-white">
         <div className="relative border-b border-black py-0.5 px-3 text-center">
           <span className="font-black text-xs tracking-widest uppercase">
-            {hasSelectedSite ? (selectedSite === '__no_site__' ? 'INVOICE / খতিয়ান (সাধারণ খাতা - সাইট ছাড়া)' : `INVOICE / খতিয়ান (সাইট: ${selectedSite})`) : 'INVOICE'}
+            {hasSelectedSite ? (selectedSite === '__no_site__' ? 'খতিয়ান / চালান (সাধারণ খাতা - সাইট ছাড়া)' : `খতিয়ান / চালান (সাইট: ${selectedSite})`) : 'খতিয়ান / চালান'}
           </span>
           <span className="absolute right-3 top-0.5 font-bold text-xs">০১</span>
         </div>
