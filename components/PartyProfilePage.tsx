@@ -2534,7 +2534,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                     paidAmount: selectedInvoiceTx.paidAmount,
                     dueAmount: selectedInvoiceTx.dueAmount,
                     items: (selectedInvoiceTx.items || []).map((it: any) => ({
-                      name: it.name || it.product_name || 'পণ্য',
+                      name: cleanLegacyBengaliText(it.name || it.product_name || 'পণ্য'),
                       quantity: Number(it.quantity || 1),
                       price: Number(it.price || it.rate || 0),
                       unit: it.unit || 'টি',
@@ -2578,7 +2578,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   paidAmount: selectedInvoiceTx.paidAmount,
                   dueAmount: selectedInvoiceTx.dueAmount,
                   items: (selectedInvoiceTx.items || []).map((it: any) => ({
-                    name: it.name || 'পণ্য',
+                    name: cleanLegacyBengaliText(it.name || it.product_name || 'পণ্য'),
                     quantity: Number(it.quantity || 1),
                     price: Number(it.price || it.rate || 0),
                     unit: it.unit || 'টি',

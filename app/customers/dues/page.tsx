@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Shell } from '@/components/Shell';
 import { api } from '@/lib/api';
 import { 
@@ -64,6 +64,8 @@ export default function CustomerDuesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'due' | 'advance'>('due');
   const [sortBy, setSortBy] = useState<'due_desc' | 'due_asc' | 'name_asc'>('due_desc');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
 
   const loadDuesData = async () => {
     try {
@@ -73,10 +75,10 @@ export default function CustomerDuesPage() {
 
       // Build customer due records matching exact ledger logic
       const mapped: CustomerDueItem[] = partyList.map(c => {
-        const cTransactions = transactions.filter(t => 
-          String(t.party) === String(c.id) || 
-          (t.party_name && String(t.party_name).trim().toLowerCase() === String(c.name).trim().toLowerCase())
-        );
+        const cTransactions = transactions.filter(t => {
+          const tPartyId = typeof t.party === 'object' && t.party !== null ? (t.party as any).id : t.party;
+          return String(tPartyId) === String(c.id);
+        });
 
         const formattedTx = cTransactions.map(t => ({
           id: String(t.id || t.invoice_no),
@@ -233,6 +235,13 @@ export default function CustomerDuesPage() {
       return 0;
     });
   }, [customers, dueCustomers, advanceCustomers, activeTab, searchQuery, sortBy]);
+
+  const totalItems = displayedCustomers.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const validCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (validCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
+  const paginatedCustomers = displayedCustomers.slice(startIndex, endIndex);
 
   const handlePrint = () => {
     printElement('customer-dues-printable-sheet');
@@ -396,7 +405,7 @@ export default function CustomerDuesPage() {
               <Input
                 placeholder="গ্রাহকের নাম, মোবাইল বা ঠিকানা দিয়ে খুঁজুন..."
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                 className="pl-9 rounded-xl h-10 bg-slate-50/50 border-slate-200 text-xs font-bold w-full"
               />
             </div>
@@ -405,7 +414,7 @@ export default function CustomerDuesPage() {
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 w-full md:w-auto">
               <button
                 type="button"
-                onClick={() => setActiveTab('due')}
+                onClick={() => { setActiveTab('due'); setCurrentPage(1); }}
                 className={cn(
                   "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex-1 md:flex-initial text-center",
                   activeTab === 'due' 
@@ -418,7 +427,7 @@ export default function CustomerDuesPage() {
               
               <button
                 type="button"
-                onClick={() => setActiveTab('advance')}
+                onClick={() => { setActiveTab('advance'); setCurrentPage(1); }}
                 className={cn(
                   "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex-1 md:flex-initial text-center",
                   activeTab === 'advance' 
@@ -431,7 +440,7 @@ export default function CustomerDuesPage() {
 
               <button
                 type="button"
-                onClick={() => setActiveTab('all')}
+                onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
                 className={cn(
                   "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex-1 md:flex-initial text-center",
                   activeTab === 'all' 
@@ -445,7 +454,7 @@ export default function CustomerDuesPage() {
 
             {/* Sort Dropdown */}
             <div className="w-full md:w-48 shrink-0">
-              <Select value={sortBy} onValueChange={(val: any) => setSortBy(val)}>
+              <Select value={sortBy} onValueChange={(val: any) => { setSortBy(val); setCurrentPage(1); }}>
                 <SelectTrigger className="rounded-xl h-10 bg-slate-50/50 border-slate-200 text-xs font-bold">
                   <SelectValue />
                 </SelectTrigger>
@@ -497,13 +506,13 @@ export default function CustomerDuesPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    displayedCustomers.map((c, idx) => (
+                    paginatedCustomers.map((c, idx) => (
                       <TableRow 
                         key={c.id}
                         className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors text-xs"
                       >
                         <TableCell className="text-center font-mono font-bold text-slate-600 py-3.5">
-                          {toBengaliDigits(idx + 1)}
+                          {toBengaliDigits(startIndex + idx + 1)}
                         </TableCell>
                         <TableCell>
                           <div>
@@ -547,7 +556,7 @@ export default function CustomerDuesPage() {
             {!loading && displayedCustomers.length > 0 && (
               <div className="bg-slate-50 border-t border-slate-200 px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-bold text-slate-700">
                 <div>
-                  মোট দেখানো হচ্ছে: <strong className="text-slate-900">{toBengaliDigits(displayedCustomers.length)}</strong> জন গ্রাহক
+                  মোট দেখানো হচ্ছে: <strong className="text-slate-900">{toBengaliDigits(totalItems)}</strong> জন গ্রাহকের মধ্যে {toBengaliDigits(startIndex + 1)} থেকে {toBengaliDigits(endIndex)}
                 </div>
                 <div className="flex items-center gap-4 text-sm">
                   <span>
@@ -558,6 +567,101 @@ export default function CustomerDuesPage() {
                       মোট অগ্রিম জমা: <strong className="text-emerald-600">৳ {formatBnCurrency(displayedCustomers.reduce((a, b) => a + b.advanceAmount, 0))}</strong>
                     </span>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Pagination Controls Footer */}
+            {!loading && totalItems > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 border-t border-slate-200/80 bg-white text-xs font-semibold text-slate-500">
+                <div>
+                  পৃষ্ঠা <strong className="text-slate-900 font-bold">{toBengaliDigits(validCurrentPage)}</strong> / {toBengaliDigits(totalPages)}
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    disabled={validCurrentPage <= 1}
+                    onClick={() => setCurrentPage(1)}
+                    className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                    title="প্রথম পেজ"
+                  >
+                    «
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    disabled={validCurrentPage <= 1}
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                    title="পূর্ববর্তী পেজ"
+                  >
+                    ‹
+                  </Button>
+
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(p => p === 1 || p === totalPages || Math.abs(p - validCurrentPage) <= 1)
+                    .map((page, idx, arr) => {
+                      const prev = arr[idx - 1];
+                      const showEllipsis = prev && page - prev > 1;
+                      return (
+                        <React.Fragment key={page}>
+                          {showEllipsis && <span className="text-slate-400 px-1 text-xs">...</span>}
+                          <Button
+                            variant={validCurrentPage === page ? "default" : "outline"}
+                            onClick={() => setCurrentPage(page)}
+                            className={cn(
+                              "w-7 h-7 rounded-lg text-xs font-bold p-0",
+                              validCurrentPage === page
+                                ? "bg-blue-600 hover:bg-blue-700 text-white"
+                                : "border-slate-200 text-slate-600 hover:bg-slate-100"
+                            )}
+                          >
+                            {toBengaliDigits(page)}
+                          </Button>
+                        </React.Fragment>
+                      );
+                    })}
+
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    disabled={validCurrentPage >= totalPages}
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                    title="পরবর্তী পেজ"
+                  >
+                    ›
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    disabled={validCurrentPage >= totalPages}
+                    onClick={() => setCurrentPage(totalPages)}
+                    className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                    title="শেষ পেজ"
+                  >
+                    »
+                  </Button>
+
+                  <Select 
+                    value={String(pageSize)} 
+                    onValueChange={(val) => {
+                      setPageSize(Number(val));
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-24 h-7 rounded-lg border-slate-200 text-xs font-bold ml-2">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="font-bengali text-xs">
+                      <SelectItem value="10">১০ / পেজ</SelectItem>
+                      <SelectItem value="25">২৫ / পেজ</SelectItem>
+                      <SelectItem value="50">৫০ / পেজ</SelectItem>
+                      <SelectItem value="100">১০০ / পেজ</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             )}

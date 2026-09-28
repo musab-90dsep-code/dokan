@@ -284,6 +284,16 @@ export function cleanLegacyBengaliText(input: any): string {
   str = str.replace(/iW/g, 'রড');
   str = str.replace(/wg[:.]\s*wj/gi, 'মি.মি');
 
+  // 3. Remove extra English in parentheses (e.g. "(Holcim Strong Structure - PCC)", "(King Brand - PCC)", "(OPC)")
+  // so ledger shows clean Bengali product name without redundant English subtitles
+  str = str.replace(/\s*\([^)]*[A-Za-z]+[^)]*\)/g, '');
+
+  // 4. Translate standalone common English product/brand names to clean Bengali
+  str = str.replace(/Holcim Waterprotect/gi, 'হোলসিম ওয়াটারপ্রোটেক্ট');
+  str = str.replace(/Holcim/gi, 'হোলসিম');
+  str = str.replace(/Aman/gi, 'আমান');
+  str = str.replace(/Pistol Ring/gi, 'পিস্তল রিং');
+
   // Normalize multi-spaces
   return str.replace(/\s+/g, ' ').trim();
 }

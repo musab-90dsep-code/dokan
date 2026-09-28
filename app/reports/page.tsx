@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Shell } from '@/components/Shell';
@@ -280,6 +280,8 @@ function MasterReportsContent() {
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [dueReportTab, setDueReportTab] = useState<'due' | 'advance' | 'all'>('due');
+  const [dueReportPage, setDueReportPage] = useState<number>(1);
+  const [dueReportPageSize, setDueReportPageSize] = useState<number>(25);
 
   // Daily Topsheet & Daily Sales Statement States
   const [topsheetDate, setTopsheetDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
@@ -1173,6 +1175,19 @@ function MasterReportsContent() {
                   ? advanceCustomers
                   : customers;
 
+              const filteredCustomers = displayedCustomers.filter(c => 
+                !searchQuery || 
+                c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                (c.businessName && c.businessName.toLowerCase().includes(searchQuery.toLowerCase()))
+              );
+
+              const totalItems = filteredCustomers.length;
+              const totalPages = Math.max(1, Math.ceil(totalItems / dueReportPageSize));
+              const validCurrentPage = Math.min(Math.max(1, dueReportPage), totalPages);
+              const startIndex = (validCurrentPage - 1) * dueReportPageSize;
+              const endIndex = Math.min(startIndex + dueReportPageSize, totalItems);
+              const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex);
+
               return (
                 <div className="space-y-6 animate-in fade-in duration-300">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -1199,7 +1214,7 @@ function MasterReportsContent() {
                       <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 w-full sm:w-auto">
                         <button
                           type="button"
-                          onClick={() => setDueReportTab('due')}
+                          onClick={() => { setDueReportTab('due'); setDueReportPage(1); }}
                           className={cn(
                             "px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
                             dueReportTab === 'due' ? "bg-white text-rose-700 shadow-xs border border-rose-200" : "text-slate-600 hover:text-slate-900"
@@ -1209,7 +1224,7 @@ function MasterReportsContent() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setDueReportTab('advance')}
+                          onClick={() => { setDueReportTab('advance'); setDueReportPage(1); }}
                           className={cn(
                             "px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
                             dueReportTab === 'advance' ? "bg-white text-emerald-700 shadow-xs border border-emerald-200" : "text-slate-600 hover:text-slate-900"
@@ -1219,7 +1234,7 @@ function MasterReportsContent() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setDueReportTab('all')}
+                          onClick={() => { setDueReportTab('all'); setDueReportPage(1); }}
                           className={cn(
                             "px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
                             dueReportTab === 'all' ? "bg-white text-slate-900 shadow-xs border border-slate-200" : "text-slate-600 hover:text-slate-900"
@@ -1233,7 +1248,7 @@ function MasterReportsContent() {
                         <Input 
                           placeholder="কাস্টমার নাম / মোবাইল খুঁজুন..." 
                           value={searchQuery} 
-                          onChange={e => setSearchQuery(e.target.value)} 
+                          onChange={e => { setSearchQuery(e.target.value); setDueReportPage(1); }} 
                           className="h-10 text-xs font-bold rounded-xl bg-slate-50/50 border-slate-200 w-full sm:w-64" 
                         />
                         <Button 
@@ -1259,16 +1274,15 @@ function MasterReportsContent() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {displayedCustomers.length === 0 ? (
+                        {filteredCustomers.length === 0 ? (
                           <TableRow><TableCell colSpan={5} className="text-center py-8 text-slate-400 font-bengali">কোনো রেকর্ড পাওয়া যায়নি</TableCell></TableRow>
-                        ) : displayedCustomers
-                          .filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                        ) : paginatedCustomers
                           .map((c, index) => {
                             const hasDue = (c.totalDue || 0) > 0;
                             const hasAdv = (c.advanceBalance || 0) > 0;
                             return (
-                              <TableRow key={c.id} className="border-b border-slate-100">
-                                <TableCell className="text-center font-bold text-xs">{toBnNum(index + 1)}</TableCell>
+                              <TableRow key={c.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
+                                <TableCell className="text-center font-bold text-xs">{toBnNum(startIndex + index + 1)}</TableCell>
                                 <TableCell className="font-mono text-xs font-bold text-slate-600">CUS-{toBnNum(c.id.padStart(4, '0'))}</TableCell>
                                 <TableCell className="font-black text-slate-900 text-sm">
                                   {c.name}
@@ -1297,6 +1311,101 @@ function MasterReportsContent() {
                           })}
                       </TableBody>
                     </Table>
+
+                    {/* Pagination Footer */}
+                    {totalItems > 0 && (
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 border-t border-slate-200/80 bg-slate-50/60 text-xs font-semibold text-slate-500">
+                        <div>
+                          মোট <strong className="text-slate-900 font-bold">{toBnNum(totalItems)}</strong> জন কাস্টমারের মধ্যে {toBnNum(startIndex + 1)} থেকে {toBnNum(endIndex)} দেখানো হচ্ছে
+                        </div>
+
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Button 
+                            variant="outline" 
+                            size="icon" 
+                            disabled={validCurrentPage <= 1}
+                            onClick={() => setDueReportPage(1)}
+                            className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                            title="প্রথম পেজ"
+                          >
+                            «
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="icon" 
+                            disabled={validCurrentPage <= 1}
+                            onClick={() => setDueReportPage(prev => Math.max(1, prev - 1))}
+                            className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                            title="পূর্ববর্তী পেজ"
+                          >
+                            ‹
+                          </Button>
+
+                          {Array.from({ length: totalPages }, (_, i) => i + 1)
+                            .filter(p => p === 1 || p === totalPages || Math.abs(p - validCurrentPage) <= 1)
+                            .map((page, idx, arr) => {
+                              const prev = arr[idx - 1];
+                              const showEllipsis = prev && page - prev > 1;
+                              return (
+                                <React.Fragment key={page}>
+                                  {showEllipsis && <span className="text-slate-400 px-1 text-xs">...</span>}
+                                  <Button
+                                    variant={validCurrentPage === page ? "default" : "outline"}
+                                    onClick={() => setDueReportPage(page)}
+                                    className={cn(
+                                      "w-7 h-7 rounded-lg text-xs font-bold p-0",
+                                      validCurrentPage === page
+                                        ? "bg-blue-600 hover:bg-blue-700 text-white"
+                                        : "border-slate-200 text-slate-600 hover:bg-slate-100"
+                                    )}
+                                  >
+                                    {toBnNum(page)}
+                                  </Button>
+                                </React.Fragment>
+                              );
+                            })}
+
+                          <Button 
+                            variant="outline" 
+                            size="icon" 
+                            disabled={validCurrentPage >= totalPages}
+                            onClick={() => setDueReportPage(prev => Math.min(totalPages, prev + 1))}
+                            className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                            title="পরবর্তী পেজ"
+                          >
+                            ›
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="icon" 
+                            disabled={validCurrentPage >= totalPages}
+                            onClick={() => setDueReportPage(totalPages)}
+                            className="w-7 h-7 rounded-lg border-slate-200 text-xs text-slate-600 disabled:opacity-40"
+                            title="শেষ পেজ"
+                          >
+                            »
+                          </Button>
+
+                          <Select 
+                            value={String(dueReportPageSize)} 
+                            onValueChange={(val) => {
+                              setDueReportPageSize(Number(val));
+                              setDueReportPage(1);
+                            }}
+                          >
+                            <SelectTrigger className="w-24 h-7 rounded-lg border-slate-200 text-xs font-bold ml-2">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="font-bengali text-xs">
+                              <SelectItem value="10">১০ / পেজ</SelectItem>
+                              <SelectItem value="25">২৫ / পেজ</SelectItem>
+                              <SelectItem value="50">৫০ / পেজ</SelectItem>
+                              <SelectItem value="100">১০০ / পেজ</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
                   </Card>
 
                   {/* 🖨️ A4 PRINTABLE DUE & ADVANCE SHEET (EXACT MATCH FOR printElement) */}

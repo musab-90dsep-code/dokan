@@ -165,6 +165,7 @@ export default function ExpensePage() {
     status: 'পরিশোধিত' as 'পরিশোধিত' | 'বকেয়া',
     paymentMethod: 'Cash' as 'Cash' | 'Bank',
     bankId: '',
+    notes: '',
   });
 
   const handleOpenCreateExpense = () => {
@@ -176,6 +177,7 @@ export default function ExpensePage() {
       status: 'পরিশোধিত',
       paymentMethod: 'Cash',
       bankId: banks[0]?.id || '',
+      notes: '',
     });
     setIsAddExpenseOpen(true);
   };
@@ -189,6 +191,7 @@ export default function ExpensePage() {
       status: exp.status || 'পরিশোধিত',
       paymentMethod: exp.paymentMethod || 'Cash',
       bankId: exp.bankId || banks[0]?.id || '',
+      notes: exp.note || '',
     });
     setIsAddExpenseOpen(true);
   };
@@ -339,6 +342,7 @@ export default function ExpensePage() {
         date: newExpense.date,
         payment_method: newExpense.paymentMethod === 'Bank' ? 'bank' : 'cash',
         bank_account: newExpense.paymentMethod === 'Bank' && newExpense.bankId ? Number(newExpense.bankId) : null,
+        notes: newExpense.notes?.trim() || '',
       };
 
       if (editingExpenseId) {
@@ -367,7 +371,8 @@ export default function ExpensePage() {
       exp.title?.toLowerCase().includes(query) ||
       exp.vendor?.toLowerCase().includes(query) ||
       exp.billNo?.toLowerCase().includes(query) ||
-      exp.category?.toLowerCase().includes(query);
+      exp.category?.toLowerCase().includes(query) ||
+      exp.note?.toLowerCase().includes(query);
     return matchCategory && matchSearch;
   });
 
@@ -709,7 +714,14 @@ export default function ExpensePage() {
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <h4 className="font-black text-slate-900 text-sm group-hover:text-blue-600 transition-colors">{exp.title}</h4>
-                              <p className="text-xs text-slate-500 font-semibold">{exp.category || 'সাধারণ খরচ'}</p>
+                              <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                                <p className="text-xs text-slate-500 font-semibold">{exp.category || 'সাধারণ খরচ'}</p>
+                                {exp.note && (
+                                  <span className="text-[11px] text-slate-600 bg-slate-100 border border-slate-200/70 px-2 py-0.5 rounded-md font-medium max-w-[280px] sm:max-w-md truncate" title={exp.note}>
+                                    📝 {exp.note}
+                                  </span>
+                                )}
+                              </div>
                             </div>
 
                             {/* AMOUNT & STATUS BADGE */}
@@ -1046,6 +1058,18 @@ export default function ExpensePage() {
               </div>
             )}
 
+            {/* Notes / Description */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700">নোট / খরচের বিবরণ (ঐচ্ছিক)</Label>
+              <textarea
+                value={newExpense.notes}
+                onChange={e => setNewExpense({ ...newExpense, notes: e.target.value })}
+                placeholder="খরচের অতিরিক্ত বিবরণ বা নোট লিখুন..."
+                rows={2}
+                className="w-full rounded-xl p-3 bg-white border border-slate-200 text-xs font-semibold placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all resize-none"
+              />
+            </div>
+
             <DialogFooter className="grid grid-cols-2 gap-3 pt-3">
               <Button type="button" variant="outline" onClick={() => { setIsAddExpenseOpen(false); setEditingExpenseId(null); }} className="h-11 rounded-xl font-bold text-slate-600 cursor-pointer">
                 বাতিল
@@ -1160,6 +1184,12 @@ export default function ExpensePage() {
                   {selectedExpenseForView.status}
                 </span>
               </div>
+              {selectedExpenseForView.note && (
+                <div className="pt-2 border-t border-slate-200/60">
+                  <span className="text-slate-500 block mb-1">নোট / বিবরণ:</span>
+                  <p className="font-semibold text-slate-800 bg-white p-2.5 rounded-xl border border-slate-200/70 whitespace-pre-wrap">{selectedExpenseForView.note}</p>
+                </div>
+              )}
             </div>
 
             <DialogFooter className="grid grid-cols-3 gap-2">

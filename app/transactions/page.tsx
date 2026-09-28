@@ -357,6 +357,9 @@ function TransactionsContent() {
                            (t.transaction_type as string) === 'contra');
 
         const isLoanIn = t.transaction_type === 'loan_in' || meta.isLoanIn === true || rawNoteStr.includes('[লোন গ্রহণ');
+        const isHawlat = meta.isHawlat === true || rawNoteStr.includes('[হাওলাত');
+        const isHawlatGiven = isHawlat && (meta.hawlatType === 'given' || rawNoteStr.includes('[হাওলাত প্রদান') || t.transaction_type === 'payment_out');
+        const isHawlatSettled = isHawlat && (meta.hawlatType === 'settled' || rawNoteStr.includes('[হাওলাত আদায়') || rawNoteStr.includes('[হাওলাত পরিশোধ') || t.transaction_type === 'payment_in');
 
         let txnType: 'income' | 'expense' | 'contra' = 'income';
         let categoryName = 'পেমেন্ট গ্রহণ';
@@ -370,6 +373,12 @@ function TransactionsContent() {
         } else if (isLoanIn) {
           txnType = 'income';
           categoryName = 'লোন গ্রহণ';
+        } else if (isHawlatGiven) {
+          txnType = 'expense';
+          categoryName = 'হাওলাত প্রদান';
+        } else if (isHawlatSettled) {
+          txnType = 'income';
+          categoryName = 'হাওলাত আদায়';
         } else if (t.transaction_type === 'payment_out') {
           txnType = 'expense';
           categoryName = 'পেমেন্ট প্রদান';

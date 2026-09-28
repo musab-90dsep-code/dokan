@@ -69,6 +69,8 @@ export interface HawlatItem {
   isSettled?: boolean;
   settledAt?: string;
   createdAt: string;
+  outflowTxId?: string | number;
+  inflowTxId?: string | number;
 }
 
 export interface ShippingChargeItem {
@@ -128,6 +130,8 @@ export function Shell({ children }: { children: ReactNode }) {
   });
   const [showAddHawlatForm, setShowAddHawlatForm] = useState(false);
   const [settlingHawlat, setSettlingHawlat] = useState<HawlatItem | null>(null);
+  const [isAddingHawlat, setIsAddingHawlat] = useState(false);
+  const [isSettlingHawlat, setIsSettlingHawlat] = useState(false);
   const [hawlatFilterTab, setHawlatFilterTab] = useState<'all' | 'pending' | 'settled'>('all');
 
   // Hawlat Form State
@@ -162,17 +166,41 @@ export function Shell({ children }: { children: ReactNode }) {
   const loadHawlats = useCallback(async () => {
     try {
       const apiHawlats = await api.hawlats.list();
-      if (apiHawlats && apiHawlats.length > 0) {
-        const formatted: HawlatItem[] = apiHawlats.map(h => ({
-          id: String(h.id),
-          personName: h.person_name || 'সাধারণ হাওলাত',
-          amount: Number(h.amount || 0),
-          note: h.note || '',
-          date: h.date || format(new Date(), 'yyyy-MM-dd'),
-          isSettled: !!h.is_settled,
-          settledAt: h.settled_at || undefined,
-          createdAt: h.created_at || new Date().toISOString()
-        }));
+      if (Array.isArray(apiHawlats)) {
+        const formatted: HawlatItem[] = apiHawlats.map(h => {
+          const rawNote = h.note || '';
+          let userNote = rawNote;
+          let outflowTxId: string | number | undefined;
+          let inflowTxId: string | number | undefined;
+
+          if (rawNote.trim().startsWith('{')) {
+            try {
+              const lines = rawNote.split('\n');
+              const meta = JSON.parse(lines[0]);
+              outflowTxId = meta.outflowTxId;
+              inflowTxId = meta.inflowTxId;
+              userNote = lines.slice(1).join('\n').trim();
+              if (!userNote && meta.userNote) {
+                userNote = meta.userNote;
+              }
+            } catch (err) {
+              console.error('Error parsing hawlat metadata:', err);
+            }
+          }
+
+          return {
+            id: String(h.id),
+            personName: h.person_name || 'সাধারণ হাওলাত',
+            amount: Number(h.amount || 0),
+            note: userNote,
+            date: h.date || format(new Date(), 'yyyy-MM-dd'),
+            isSettled: !!h.is_settled,
+            settledAt: h.settled_at || undefined,
+            createdAt: h.created_at || new Date().toISOString(),
+            outflowTxId,
+            inflowTxId,
+          };
+        });
         setHawlatItems(formatted);
         try {
           localStorage.setItem('dokan_hawlat_items', JSON.stringify(formatted));
@@ -185,27 +213,73 @@ export function Shell({ children }: { children: ReactNode }) {
 
   const handleAddHawlat = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isAddingHawlat) return;
+
     const numAmount = parseFloat(hawlatAmount);
     if (isNaN(numAmount) || numAmount <= 0) {
       toast.error('সঠিক টাকার পরিমাণ লিখুন');
       return;
     }
 
+    const pName = hawlatPersonName.trim() || 'সাধারণ ব্যক্তি';
+    const uNote = hawlatNote.trim();
+
+    setIsAddingHawlat(true);
+
+    // 1. Record payment_out transaction so Cash balance is immediately deducted (- cash)
+    let outflowTxId: string | number | undefined;
+    try {
+      const tx = await api.transactions.create({
+        party_name: `হাওলাত প্রদান (${pName})`,
+        transaction_type: 'payment_out',
+        total_amount: numAmount,
+        paid_amount: numAmount,
+        due_amount: 0,
+        payment_method: 'cash',
+        notes: JSON.stringify({
+          isHawlat: true,
+          hawlatType: 'given',
+          personName: pName,
+          hawlatDate: hawlatDate,
+          userNote: uNote,
+        }) + (uNote ? `\n[হাওলাত প্রদান] ${uNote}` : '\n[হাওলাত প্রদান]')
+      });
+      if (tx && tx.id) {
+        outflowTxId = tx.id;
+      }
+    } catch (err: any) {
+      console.error('Error creating hawlat outflow transaction:', err);
+      const errMsg = err?.message || (typeof err === 'object' ? JSON.stringify(err) : '');
+      if (errMsg.includes('পর্যাপ্ত নগদ ক্যাশ ব্যালেন্স নেই') || errMsg.includes('paid_amount')) {
+        toast.error('পর্যাপ্ত নগদ ক্যাশ ব্যালেন্স নেই! হাওলাত প্রদান করা সম্ভব নয়।');
+      } else {
+        toast.error('ক্যাশ থেকে টাকা কর্তন লেনদেন তৈরি করতে সমস্যা হয়েছে');
+      }
+      setIsAddingHawlat(false);
+      return;
+    }
+
     const newHawlat: HawlatItem = {
       id: `hw_${Date.now()}`,
-      personName: hawlatPersonName.trim() || 'সাধারণ ব্যক্তি',
+      personName: pName,
       amount: numAmount,
-      note: hawlatNote.trim(),
+      note: uNote,
       date: hawlatDate,
       isSettled: false,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      outflowTxId,
     };
 
     try {
+      const notePayload = JSON.stringify({
+        outflowTxId,
+        userNote: uNote,
+      }) + (uNote ? `\n${uNote}` : '');
+
       const created = await api.hawlats.create({
         person_name: newHawlat.personName,
         amount: newHawlat.amount,
-        note: newHawlat.note,
+        note: notePayload,
         date: newHawlat.date,
         is_settled: false
       });
@@ -218,47 +292,112 @@ export function Shell({ children }: { children: ReactNode }) {
 
     const updated = [newHawlat, ...hawlatItems];
     saveHawlatItems(updated);
-    toast.success('হাওলাত এন্ট্রি সফলভাবে সংরক্ষণ করা হয়েছে!');
+    toast.success(`৳ ${numAmount.toLocaleString('bn-BD')} টাকা হাওলাত প্রদান ও ক্যাশ থেকে কর্তন করা হয়েছে!`);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('orderUpdated'));
+    }
 
     setHawlatPersonName('');
     setHawlatAmount('');
     setHawlatNote('');
     setShowAddHawlatForm(false);
+    setIsAddingHawlat(false);
   };
 
   const handleSettleHawlat = async (item: HawlatItem) => {
-    try {
-      if (!item.id.startsWith('hw_')) {
-        await api.hawlats.update(item.id, {
-          is_settled: true,
-          settled_at: new Date().toISOString()
-        });
-      }
-    } catch (err) {
-      console.error('Error settling hawlat via API:', err);
-    }
+    if (isSettlingHawlat) return;
+    setIsSettlingHawlat(true);
 
-    const updated = hawlatItems.map(h => 
-      h.id === item.id 
-        ? { ...h, isSettled: true, settledAt: new Date().toISOString() } 
-        : h
-    );
-    saveHawlatItems(updated);
-    toast.success(`৳ ${item.amount.toLocaleString('bn-BD')} টাকা হাওলাত পরিশোধ চিহ্নিত হয়েছে`);
-    setSettlingHawlat(null);
+    try {
+      // 1. Record payment_in transaction so Cash balance is immediately credited (+ cash)
+      let inflowTxId: string | number | undefined;
+      try {
+        const inTx = await api.transactions.create({
+          party_name: `হাওলাত আদায় / ফেরত (${item.personName})`,
+          transaction_type: 'payment_in',
+          total_amount: item.amount,
+          paid_amount: item.amount,
+          due_amount: 0,
+          payment_method: 'cash',
+          notes: JSON.stringify({
+            isHawlat: true,
+            hawlatType: 'settled',
+            hawlatId: item.id,
+            personName: item.personName,
+            outflowTxId: item.outflowTxId,
+            userNote: item.note,
+          }) + (item.note ? `\n[হাওলাত আদায়/পরিশোধ] ${item.note}` : '\n[হাওলাত আদায়/পরিশোধ]')
+        });
+        if (inTx && inTx.id) {
+          inflowTxId = inTx.id;
+        }
+      } catch (err) {
+        console.error('Error creating hawlat inflow transaction:', err);
+        toast.error('হাওলাত আদায় ক্যাশে জমা করতে সমস্যা হয়েছে');
+        return;
+      }
+
+      // 2. Update Hawlat item via API
+      try {
+        const notePayload = JSON.stringify({
+          outflowTxId: item.outflowTxId,
+          inflowTxId,
+          userNote: item.note,
+        }) + (item.note ? `\n${item.note}` : '');
+
+        if (!item.id.startsWith('hw_')) {
+          await api.hawlats.update(item.id, {
+            is_settled: true,
+            settled_at: new Date().toISOString(),
+            note: notePayload
+          });
+        }
+      } catch (err) {
+        console.error('Error settling hawlat via API:', err);
+      }
+
+      const updated = hawlatItems.map(h => 
+        h.id === item.id 
+          ? { ...h, isSettled: true, settledAt: new Date().toISOString(), inflowTxId } 
+          : h
+      );
+      saveHawlatItems(updated);
+      toast.success(`৳ ${item.amount.toLocaleString('bn-BD')} টাকা হাওলাত পরিশোধ সম্পন্ন এবং ক্যাশে জমা হয়েছে!`);
+      setSettlingHawlat(null);
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('orderUpdated'));
+      }
+    } finally {
+      setIsSettlingHawlat(false);
+    }
   };
 
-  const handleDeleteHawlat = async (id: string) => {
+  const handleDeleteHawlat = async (itemOrId: string | HawlatItem) => {
+    const item = typeof itemOrId === 'string' ? hawlatItems.find(h => h.id === itemOrId) : itemOrId;
+    const id = typeof itemOrId === 'string' ? itemOrId : itemOrId.id;
+
     try {
+      if (item?.outflowTxId) {
+        await api.transactions.delete(item.outflowTxId).catch(err => console.warn('Could not delete outflow tx:', err));
+      }
+      if (item?.inflowTxId) {
+        await api.transactions.delete(item.inflowTxId).catch(err => console.warn('Could not delete inflow tx:', err));
+      }
       if (!id.startsWith('hw_')) {
         await api.hawlats.delete(id);
       }
     } catch (err) {
       console.error('API Hawlat delete error:', err);
     }
-    const updated = hawlatItems.filter(item => item.id !== id);
+    const updated = hawlatItems.filter(h => h.id !== id);
     saveHawlatItems(updated);
     toast.info('হাওলাত এন্ট্রি মুছে ফেলা হয়েছে');
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('orderUpdated'));
+    }
   };
 
   const pendingHawlatItems = hawlatItems.filter(h => !h.isSettled);
@@ -1153,7 +1292,7 @@ export function Shell({ children }: { children: ReactNode }) {
               <div className="mt-4 p-3 bg-slate-800/80 border border-emerald-500/30 rounded-xl flex items-start gap-2.5">
                 <Info className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  এটি শুধুমাত্র একটি সাধারণ <span className="text-emerald-300 font-bold">হাওলাত নোট খাতা</span>। এখান থেকে টাকার কোনো হিসাব আপনার মূল ক্যাশ বা হিসাব খাতা (Cash / Accounting) থেকে ইন বা আউট হবে না।
+                  এখানে কাউকে <span className="text-amber-400 font-bold">হাওলাত দিলে সরাসরি ক্যাশ ব্যালেন্স থেকে কর্তন (-) হবে</span> এবং পরবর্তীতে <span className="text-emerald-400 font-bold">পরিশোধে ক্লিক করলে ক্যাশে জমা (+ ইন)</span> হবে।
                 </p>
               </div>
 
@@ -1228,6 +1367,9 @@ export function Shell({ children }: { children: ReactNode }) {
                       <h4 className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
                         <Plus className="w-4 h-4" /> নতুন হাওলাত তথ্য লিখুন
                       </h4>
+                      <span className="text-[11px] text-amber-400/90 font-medium">
+                        * হাওলাত দিলে ক্যাশ থেকে কর্তন (-) হবে
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1282,6 +1424,7 @@ export function Shell({ children }: { children: ReactNode }) {
                         type="button"
                         variant="ghost"
                         size="sm"
+                        disabled={isAddingHawlat}
                         onClick={() => setShowAddHawlatForm(false)}
                         className="text-xs text-slate-400 hover:text-white"
                       >
@@ -1290,9 +1433,17 @@ export function Shell({ children }: { children: ReactNode }) {
                       <Button
                         type="submit"
                         size="sm"
-                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4"
+                        disabled={isAddingHawlat}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 flex items-center gap-1.5"
                       >
-                        সংরক্ষণ করুন
+                        {isAddingHawlat ? (
+                          <>
+                            <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            সংরক্ষণ হচ্ছে...
+                          </>
+                        ) : (
+                          'সংরক্ষণ করুন (ক্যাশ কর্তন)'
+                        )}
                       </Button>
                     </div>
                   </motion.form>
@@ -1360,7 +1511,7 @@ export function Shell({ children }: { children: ReactNode }) {
                               </td>
                               <td className="py-3 px-1 align-top text-center">
                                 <button
-                                  onClick={() => handleDeleteHawlat(item.id)}
+                                  onClick={() => handleDeleteHawlat(item)}
                                   title="মুছে ফেলুন"
                                   className="p-1 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
                                 >
@@ -1388,7 +1539,9 @@ export function Shell({ children }: { children: ReactNode }) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setSettlingHawlat(null)}
+              onClick={() => {
+                if (!isSettlingHawlat) setSettlingHawlat(null);
+              }}
               className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 font-bengali"
             >
               <motion.div
@@ -1404,7 +1557,7 @@ export function Shell({ children }: { children: ReactNode }) {
                   </div>
                   <div>
                     <h3 className="font-bold text-base text-white">হাওলাত পরিশোধ নিশ্চিতকরণ</h3>
-                    <p className="text-xs text-slate-400">এই হাওলাতটি কি পরিশোধ করা হয়েছে?</p>
+                    <p className="text-xs text-slate-400">এই হাওলাতের টাকা কি আদায়/ফেরত পাওয়া গেছে?</p>
                   </div>
                 </div>
 
@@ -1426,13 +1579,14 @@ export function Shell({ children }: { children: ReactNode }) {
                 </div>
 
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  নিশ্চিত করলে এই এন্ট্রিটি &quot;<span className="text-emerald-400 font-bold">পরিশোধিত</span>&quot; হিসেবে চিহ্নিত হবে এবং পরবর্তীতে আর পরিশোধ বাটনটি আসবে না।
+                  নিশ্চিত করলে এই এন্ট্রিটি &quot;<span className="text-emerald-400 font-bold">পরিশোধিত</span>&quot; চিহ্নিত হবে এবং <span className="text-emerald-400 font-bold">৳ {settlingHawlat.amount.toLocaleString('bn-BD')} টাকা সরাসরি ক্যাশ ব্যালেন্সে যোগ (+ ইন)</span> হবে।
                 </p>
 
                 <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
                   <Button
                     variant="ghost"
                     size="sm"
+                    disabled={isSettlingHawlat}
                     onClick={() => setSettlingHawlat(null)}
                     className="text-xs text-slate-400 hover:text-white"
                   >
@@ -1440,10 +1594,18 @@ export function Shell({ children }: { children: ReactNode }) {
                   </Button>
                   <Button
                     size="sm"
+                    disabled={isSettlingHawlat}
                     onClick={() => handleSettleHawlat(settlingHawlat)}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 rounded-xl"
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 rounded-xl flex items-center gap-1.5"
                   >
-                    হ্যাঁ, পরিশোধিত নিশ্চিত করুন
+                    {isSettlingHawlat ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        সংরক্ষণ হচ্ছে...
+                      </>
+                    ) : (
+                      'হ্যাঁ, পরিশোধিত নিশ্চিত করুন'
+                    )}
                   </Button>
                 </div>
               </motion.div>
