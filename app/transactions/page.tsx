@@ -1303,7 +1303,7 @@ function TransactionsContent() {
   const grandTotalIncomeCount = incomeTransactions.length;
 
   const totalDuesReceivable = customers.reduce((a, c) => a + (Number((c as any).totalDue) || 0), 0);
-  const dueCustomersCount = customers.filter(c => Number((c as any).totalDue || 0) > 0).length;
+  const dueCustomersCount = customers.filter(c => Math.round(Number((c as any).totalDue || 0)) > 0).length;
 
   // Today's Collection Breakdown Cards (Real Data)
   const todayCashAmount = todayIncomes.filter(t => t.paymentMethod === 'Cash' || t.accountType === 'cash').reduce((a, t) => a + (t.amount || 0), 0);

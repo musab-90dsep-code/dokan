@@ -129,14 +129,19 @@ export default function CustomerDuesPage() {
           finalBalance = Number(c.total_due !== undefined && c.total_due !== null ? c.total_due : (c.opening_balance || 0));
         }
 
+        // Clean floating-point precision residues and fractional paisa (< 0.5 Taka)
+        if (Math.abs(finalBalance) < 0.5) {
+          finalBalance = 0;
+        }
+
         let dueAmount = 0;
         let advanceAmount = 0;
 
-        if (finalBalance > 0) {
+        if (finalBalance >= 0.5) {
           dueAmount = finalBalance;
-        } else if (finalBalance < 0) {
+        } else if (finalBalance <= -0.5) {
           advanceAmount = Math.abs(finalBalance);
-        } else if (Number(c.advance_balance || 0) > 0) {
+        } else if (Number(c.advance_balance || 0) >= 0.5) {
           advanceAmount = Number(c.advance_balance);
         }
 
@@ -187,21 +192,21 @@ export default function CustomerDuesPage() {
     };
   }, []);
 
-  // Separate due list and advance deposit list
+  // Separate due list and advance deposit list (strictly customers with >= 1 Taka due/advance)
   const dueCustomers = useMemo(() => {
-    return customers.filter(c => c.dueAmount > 0);
+    return customers.filter(c => Math.round(c.dueAmount) > 0);
   }, [customers]);
 
   const advanceCustomers = useMemo(() => {
-    return customers.filter(c => c.advanceAmount > 0);
+    return customers.filter(c => Math.round(c.advanceAmount) > 0);
   }, [customers]);
 
   const totalDueSum = useMemo(() => {
-    return dueCustomers.reduce((acc, c) => acc + c.dueAmount, 0);
+    return dueCustomers.reduce((acc, c) => acc + Math.round(c.dueAmount), 0);
   }, [dueCustomers]);
 
   const totalAdvanceSum = useMemo(() => {
-    return advanceCustomers.reduce((acc, c) => acc + c.advanceAmount, 0);
+    return advanceCustomers.reduce((acc, c) => acc + Math.round(c.advanceAmount), 0);
   }, [advanceCustomers]);
 
   // Filtered & Sorted list for Screen Display

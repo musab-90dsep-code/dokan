@@ -56,6 +56,19 @@ export const printElement = (elementId: string) => {
     return;
   }
 
+  // iOS Safari blocks printing from hidden or 0x0 iframes.
+  // On iOS, the main document print media classes (print:hidden and print:block) are already configured,
+  // so invoking window.print() directly displays the native iOS AirPrint & PDF dialog perfectly.
+  const isIOS = typeof navigator !== 'undefined' && (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+
+  if (isIOS) {
+    window.print();
+    return;
+  }
+
   const promo = getSoftwarePromoInfo();
   const hasLocalFooter = elem.querySelector('[data-has-dev-footer="true"]') !== null || elem.getAttribute('data-has-dev-footer') === 'true';
 

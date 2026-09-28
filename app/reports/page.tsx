@@ -492,9 +492,11 @@ function MasterReportsContent() {
         return {
           id: String(p.id),
           name: p.name,
+          phone: p.phone || '',
+          address: p.address || '',
           businessName: p.business_name || '',
-          totalDue: effectiveDue,
-          advanceBalance: effectiveAdv
+          totalDue: Math.round(effectiveDue) > 0 ? effectiveDue : 0,
+          advanceBalance: Math.round(effectiveAdv) > 0 ? effectiveAdv : 0
         };
       }));
       setSuppliers(safePartyList.filter(p => p.party_type === 'supplier' || p.party_type === 'both').map(p => {
@@ -1163,11 +1165,11 @@ function MasterReportsContent() {
 
             {/* 1. বাকী কাস্টমারের তালিকা */}
             {activeTab === 'due_customers' && (() => {
-              const dueCustomers = customers.filter(c => (c.totalDue || 0) > 0);
-              const advanceCustomers = customers.filter(c => (c.advanceBalance || 0) > 0);
+              const dueCustomers = customers.filter(c => Math.round(c.totalDue || 0) > 0);
+              const advanceCustomers = customers.filter(c => Math.round(c.advanceBalance || 0) > 0);
               const totalCustCount = customers.length;
-              const totalCustDue = customers.reduce((sum, c) => sum + (c.totalDue || 0), 0);
-              const totalCustAdvance = customers.reduce((sum, c) => sum + (c.advanceBalance || 0), 0);
+              const totalCustDue = dueCustomers.reduce((sum, c) => sum + Math.round(c.totalDue || 0), 0);
+              const totalCustAdvance = advanceCustomers.reduce((sum, c) => sum + Math.round(c.advanceBalance || 0), 0);
 
               const displayedCustomers = dueReportTab === 'due'
                 ? dueCustomers
