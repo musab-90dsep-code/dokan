@@ -25,8 +25,6 @@ import { format } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { generateLedgerEntries } from '@/components/PartyProfilePage';
-import { DEVELOPER_LOGO_BASE64 } from '@/lib/developerLogo';
 
 interface CustomerDueItem {
   id: string;
@@ -918,7 +916,7 @@ export default function CustomerDuesPage() {
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={DEVELOPER_LOGO_BASE64} alt="" style={{ height: '14px', width: '14px', objectFit: 'contain', opacity: 0.65, filter: 'grayscale(100%)', borderRadius: '2px' }} />
+            <img src="/developer-logo.png" alt="" style={{ height: '14px', width: '14px', objectFit: 'contain', opacity: 0.65, filter: 'grayscale(100%)', borderRadius: '2px' }} />
             <span style={{ border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#64748b', fontSize: '7px', fontWeight: 700, padding: '0.5px 3px', borderRadius: '2px', textTransform: 'uppercase' }}>SYS</span>
             <span>সফটওয়্যার পরিচালনায়: <strong style={{ color: '#475569', fontWeight: 600 }}>Hasanah Tech Solution</strong></span>
           </div>
