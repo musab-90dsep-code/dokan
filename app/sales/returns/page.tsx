@@ -20,7 +20,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { toBengaliDigits } from '@/lib/bengaliUtils';
+import { toBengaliDigits, formatProductName } from '@/lib/bengaliUtils';
 import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
 import { ReturnInvoiceMemo } from '@/components/ReturnInvoiceMemo';
@@ -229,7 +229,7 @@ export default function SalesReturnsPage() {
       } else {
         mapped.push({
           id: String(item.product || item.id || `ret-${idx}`),
-          name: item.product_name || item.name,
+          name: formatProductName(item.product_name || item.name),
           quantity: remainingReturnable,
           maxQuantity: remainingReturnable,
           soldQuantity: soldQty,
@@ -366,7 +366,7 @@ export default function SalesReturnsPage() {
 
         const newItems: ReturnItem[] = (meta.newTakenItems || []).map((i: any) => ({
           id: String(i.id || i.product || ''),
-          name: i.name || i.product_name,
+          name: formatProductName(i.name || i.product_name),
           quantity: Number(i.quantity || 1),
           price: Number(i.price || 0),
           unit: i.unit || 'পিস'
@@ -434,7 +434,7 @@ export default function SalesReturnsPage() {
       const prodList = await api.inventory.list();
       setProducts(prodList.map(p => ({
         id: String(p.id),
-        name: p.name,
+        name: formatProductName(p.name, p.category_name),
         sellPrice: Number(p.sell_price || 0),
         stock: Number(p.stock || 0),
         unit: p.unit || 'পিস'

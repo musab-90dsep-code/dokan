@@ -258,10 +258,8 @@ export default function Dashboard() {
     Promise.all([
       api.dashboard.getStats(),
       api.inventory.list(),
-      api.transactions.list({ transaction_type: 'sale' }),
-      api.transactions.list({ transaction_type: 'purchase' }),
       api.transactions.list()
-    ]).then(([statsData, prodList, saleList, purchaseList, txList]) => {
+    ]).then(([statsData, prodList, txList]) => {
       setStats(statsData);
       const safeProdList = Array.isArray(prodList) ? prodList : [];
       setProducts(safeProdList.map(p => ({
@@ -274,7 +272,11 @@ export default function Dashboard() {
         unit: p.unit || 'পিস',
         sellPrice: Number(p.sell_price || 0)
       })));
-      const safeSaleList = Array.isArray(saleList) ? saleList : [];
+
+      const safeTxList = Array.isArray(txList) ? txList : [];
+      const safeSaleList = safeTxList.filter(t => t.transaction_type === 'sale' || !t.transaction_type);
+      const safePurchaseList = safeTxList.filter(t => t.transaction_type === 'purchase');
+
       setOrders(safeSaleList.filter(t => t.status !== 'pending' && t.status !== 'draft' && t.status !== 'cancelled' && t.status !== 'rejected').map(t => ({
         id: String(t.id),
         orderId: t.invoice_no,
@@ -293,7 +295,7 @@ export default function Dashboard() {
         notes: t.notes,
         createdAt: t.created_at
       })));
-      const safePurchaseList = Array.isArray(purchaseList) ? purchaseList : [];
+
       setPurchases(safePurchaseList.filter(t => t.status !== 'pending' && t.status !== 'draft' && t.status !== 'cancelled' && t.status !== 'rejected').map(t => ({
         id: String(t.id),
         supplierName: t.party_name || 'সরবরাহকারী',
@@ -310,7 +312,8 @@ export default function Dashboard() {
         notes: t.notes,
         createdAt: t.created_at
       })));
-      setAllTransactions(Array.isArray(txList) ? txList : []);
+
+      setAllTransactions(safeTxList);
       setLoading(false);
     }).catch(err => {
       console.error('Error fetching dashboard data:', err);

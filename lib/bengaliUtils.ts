@@ -158,13 +158,16 @@ export function parseProductDetails(item: {
     ];
     for (const b of knownBrands) {
       if (name.includes(b)) {
-        brandName = b.endsWith('সিমেন্ট') ? b : (categoryName === 'সিমেন্ট' ? `${b} সিমেন্ট` : b);
+        brandName = categoryName === 'সিমেন্ট' ? b.replace(/\s*সিমেন্ট$/, '').trim() : b;
         break;
       }
     }
     if (!brandName && categoryName === 'সিমেন্ট') {
-      const cleaned = name.replace(/\((?:OPC|PCC|ওপিসি|পিসিসি)\)/gi, '').replace(/\b(?:OPC|PCC|ওপিসি|পিসিসি)\b/gi, '').trim();
-      if (cleaned) brandName = cleaned;
+      const cleaned = name.replace(/\((?:OPC|PCC|ওপিসি|পিসিসি)\)/gi, '').replace(/\b(?:OPC|PCC|ওপিসি|পিসিসি)\b/gi, '').replace(/\s*সিমেন্ট$/gi, '').trim();
+      if (cleaned) brandName = formatCementNameToEnglish(cleaned);
+    }
+    if (categoryName === 'সিমেন্ট' && brandName) {
+      brandName = formatCementNameToEnglish(brandName).replace(/\s*-\s*(?:PCC|OPC)$/i, '').replace(/\s*\((?:PCC|OPC)\)$/i, '').trim();
     }
   }
 
@@ -203,13 +206,130 @@ export function parseProductDetails(item: {
 }
 
 /**
+ * Formats any cement product name into clean, standardized English name.
+ * e.g. "হোলসিম স্ট্রং স্ট্রাকচার (Holcim Strong Structure - PCC)" -> "Holcim Strong Structure - PCC"
+ *      "হোলসিম সুপারক্রিট (Holcim Supercrete - PCC)" -> "Holcim Supercrete - PCC"
+ *      "হোলসিম কোস্টাল গার্ড (Holcim Coastal Guard - PCC)" -> "Holcim Coastal Guard - PCC"
+ *      "কিং ব্র্যান্ড সিমেন্ট (King Brand - PCC)" -> "King Brand - PCC"
+ *      "Holcim Waterprotect সিমেন্ট" -> "Holcim Waterprotect"
+ *      "হোলসিম সুপারক্রিট প্লাস (Holcim Supercrete Plus)" -> "Holcim Supercrete Plus"
+ *      "Aman (OPC) সিমেন্ট" -> "Aman (OPC)"
+ */
+export function formatCementNameToEnglish(name: string | undefined | null): string {
+  if (!name) return '';
+  let str = String(name).trim();
+
+  // Preserve any invoice tag like (ইনভ:INV-2026-4240)
+  let invTag = '';
+  const invMatch = str.match(/\s*(\((?:ইনভ|inv)?:?\s*[a-zA-Z0-9-]+\))/i);
+  if (invMatch) {
+    invTag = ' ' + invMatch[1];
+    str = str.replace(invMatch[0], '').trim();
+  }
+
+  // If already contains English in parentheses e.g. (Holcim Strong Structure - PCC)
+  const engParenMatch = str.match(/\((Holcim[^)]+|King Brand[^)]+|Aman[^)]+)\)/i);
+  if (engParenMatch) {
+    str = engParenMatch[1].trim();
+  }
+
+  const lower = str.toLowerCase();
+  const isOpc = /\bopc\b|\(opc\)|ওপিসি|ও\s*পি\s*সি/i.test(lower);
+
+  let brand = '';
+  if (lower.includes('strong structure') || lower.includes('স্ট্রং স্ট্রাকচার')) {
+    brand = 'Holcim Strong Structure';
+  } else if (lower.includes('supercrete plus') || lower.includes('সুপারক্রিট প্লাস') || lower.includes('সুপার ক্রিট প্লাস')) {
+    brand = 'Holcim Supercrete Plus';
+  } else if (lower.includes('supercrete') || lower.includes('সুপারক্রিট') || lower.includes('সুপার ক্রিট')) {
+    brand = 'Holcim Supercrete';
+  } else if (lower.includes('coastal guard') || lower.includes('কোস্টাল গার্ড') || lower.includes('কোস্টাল')) {
+    brand = 'Holcim Coastal Guard';
+  } else if (lower.includes('waterprotect') || lower.includes('ওয়াটারপ্রটেক্ট') || lower.includes('ওয়াটার প্রটেক্ট') || lower.includes('ওয়াটার প্রোটেক্ট')) {
+    brand = 'Holcim Waterprotect';
+  } else if (lower.includes('king brand') || lower.includes('কিং ব্র্যান্ড') || lower.includes('কিং-ব্র্যান্ড') || lower.includes('কিংব্র্যান্ড')) {
+    brand = 'King Brand';
+  } else if (lower.includes('aman') || lower.includes('আমান')) {
+    brand = 'Aman';
+  } else if (lower.includes('anchor up') || lower.includes('অ্যাংকর আপ') || lower.includes('এ্যাংকর আপ') || lower.includes('এ্যাংকার আপ')) {
+    brand = 'Anchor Up Cement';
+  } else if (lower.includes('anchor') || lower.includes('অ্যাংকর') || lower.includes('এ্যাংকর') || lower.includes('এ্যাংকার')) {
+    brand = 'Anchor Cement';
+  } else if (lower.includes('fresh') || lower.includes('ফ্রেশ')) brand = 'Fresh Cement';
+  else if (lower.includes('crown') || lower.includes('ক্রাউন')) brand = 'Crown Cement';
+  else if (lower.includes('seven ring') || lower.includes('সেভেন রিংস') || lower.includes('সেভেন রিং')) brand = 'Seven Rings Cement';
+  else if (lower.includes('premier') || lower.includes('প্রিমিয়ার')) brand = 'Premier Cement';
+  else if (lower.includes('akij') || lower.includes('আকিজ')) brand = 'Akij Cement';
+  else if (lower.includes('shah') || lower.includes('শাহ')) brand = 'Shah Cement';
+  else if (lower.includes('bashundhara') || lower.includes('বসুন্ধরা')) brand = 'Bashundhara Cement';
+  else if (lower.includes('asha') || lower.includes('আশা')) brand = 'Asha Cement';
+  else if (lower.includes('holcim') || lower.includes('হোলসিম')) brand = 'Holcim Cement';
+  else {
+    brand = str;
+  }
+
+  // Strip PCC completely (as requested: "pcc eta show korte hobe na ... opc chara naki sob cement pcc eta display kora lagbe na")
+  let cleanBrand = brand
+    .replace(/\s*[-/|]\s*PCC\b/gi, '')
+    .replace(/\s*\(\s*PCC\s*\)/gi, '')
+    .replace(/\bPCC\b/gi, '')
+    .replace(/\s*-\s*OPC\b/gi, '')
+    .replace(/\s*\(\s*OPC\s*\)/gi, '')
+    .trim();
+
+  // If OPC, append (OPC)
+  if (isOpc) {
+    return `${cleanBrand} (OPC)${invTag}`;
+  }
+
+  return `${cleanBrand}${invTag}`;
+}
+
+/**
+ * Universal product name formatter:
+ * - Cement: Strictly English (as requested: "just cement er namegulo shudhu english ei thakbe sob jagay")
+ * - Rod: Retains Bangla digits & rod formatting (as requested: "rod jevabe ache sevabei thakbe")
+ * - Ring / Other: Retains standard formatting
+ */
+export function formatProductName(name: string | undefined | null, category?: string): string {
+  if (!name) return '';
+  const str = String(name).trim();
+  const lower = str.toLowerCase();
+  const cat = (category || '').toLowerCase();
+
+  // If Rod: Leave intact as requested
+  if (cat === 'রড' || cat.includes('rod') || (!cat && (lower.includes('রড') || lower.includes('bsrm') || lower.includes('scrm') || lower.includes('ksml') || lower.includes('hkg') || lower.includes('dsrm')))) {
+    return str;
+  }
+
+  // If Ring: Leave intact
+  if (cat === 'রিং' || cat.includes('ring') || (!cat && (lower.includes('রিং') || lower.includes('ring')))) {
+    return str;
+  }
+
+  // If Cement: Convert strictly to English
+  if (cat === 'সিমেন্ট' || cat.includes('cement') || isCementProduct({ name: str })) {
+    return formatCementNameToEnglish(str);
+  }
+
+  return str;
+}
+
+/**
  * Universal cleaner for legacy Bijoy 52 / SutonnyMJ text remnants in product names and ledger descriptions.
  * Converts strings like "10 মি.মি Gm wm Avi Gg রড" to "10 মি.মি এসসিআরএম রড".
+ * For Cement: Returns clean English name.
+ * For Rod & Ring: Preserves standard format.
  */
 export function cleanLegacyBengaliText(input: any): string {
   if (input === null || input === undefined) return '';
   let str = String(input).trim();
   if (!str) return '';
+
+  // If it's a cement product, strictly return the English name!
+  if (isCementProduct({ name: str })) {
+    return formatCementNameToEnglish(str);
+  }
 
   // 1. Specific brand phrases (longest phrase first)
   const PHRASES: [RegExp, string | ((m: string) => string)][] = [
@@ -244,19 +364,6 @@ export function cleanLegacyBengaliText(input: any): string {
     [/(?:10|12|16)\s*wg[:.]\s*wj\s+Av‡bvqvi\s+iW/gi, (m: string) => m.replace(/wg[:.]\s*wj/gi, 'মি.মি').replace(/Av‡bvqvi/g, 'আনোয়ার').replace(/iW/g, 'রড')],
     [/(?:10|12|16)\s*wg[:.]\s*wj\s+G‡KGm\s+iW/gi, (m: string) => m.replace(/wg[:.]\s*wj/gi, 'মি.মি').replace(/G‡KGm/g, 'একেএস').replace(/iW/g, 'রড')],
 
-    // Cements & Brands
-    [/G¨vsKi\s+wm‡g›U/gi, 'অ্যাংকর সিমেন্ট'],
-    [/wm‡g›U\s+G¨vsKi\s+Avc/gi, 'অ্যাংকর সিমেন্ট'],
-    [/wm‡g›U\s+G¨vsKi/gi, 'অ্যাংকর সিমেন্ট'],
-    [/G¨vsKi\s+Avc/gi, 'অ্যাংকর সিমেন্ট'],
-    [/†nvjwmg\s+wm‡g›U/gi, 'হোলসিম সিমেন্ট'],
-    [/wm‡g›U\s+†nvjwmg/gi, 'হোলসিম সিমেন্ট'],
-    [/‡kL\s+wm‡g›U/gi, 'শেখ সিমেন্ট'],
-    [/kvn\s+wm‡g›U/gi, 'শাহ সিমেন্ট'],
-    [/AvwKR\s+wm‡g›U/gi, 'আকিজ সিমেন্ট'],
-    [/µvDb\s+wm‡g›U/gi, 'ক্রাউন সিমেন্ট'],
-    [/†m‡fb\s+wis\s+wm‡g›U/gi, 'সেভেন রিংস সিমেন্ট'],
-
     // Charges
     [/‡jevwi|‡jevix/gi, 'লেবার বিল'],
     [/fvov/gi, 'ভাড়া']
@@ -277,74 +384,9 @@ export function cleanLegacyBengaliText(input: any): string {
   str = str.replace(/‡K\s+Gm\s+Gg\s+Gj/gi, 'কেএসএমএল');
   str = str.replace(/Av‡bvqvi/gi, 'আনোয়ার');
   str = str.replace(/G‡KGm/gi, 'একেএস');
-  str = str.replace(/G¨vsKi/gi, 'অ্যাংকর');
-  str = str.replace(/†nvjwmg/gi, 'হোলসিম');
-  str = str.replace(/wm‡g›U/gi, 'সিমেন্ট');
   str = str.replace(/†d«m/gi, 'ফ্রেশ');
   str = str.replace(/iW/g, 'রড');
   str = str.replace(/wg[:.]\s*wj/gi, 'মি.মি');
-
-  // 3. Remove extra English in parentheses or brackets (e.g. "(Holcim Supercrete - PCC)", "(King Brand - PCC)", "(OPC)")
-  // when Bengali text is present, so ledger shows clean Bengali product name without redundant English subtitles
-  const hasBengali = /[\u0980-\u09FF]/.test(str);
-  if (hasBengali) {
-    str = str.replace(/\s*[\(\[][^)\]]*[A-Za-z]+[^)\]]*[\)\]]/g, '');
-    str = str.replace(/\s*[-/|]\s*[A-Za-z0-9\s-]+$/g, '');
-  } else {
-    str = str.replace(/\(([^)]+)\)/g, '$1').replace(/\[([^\]]+)\]/g, '$1');
-  }
-
-  // 4. Comprehensive English to Bengali product & brand transliterations
-  const BRAND_TRANSLATIONS: [RegExp, string | ((...args: any[]) => string)][] = [
-    [/Holcim\s*Waterprotect/gi, 'হোলসিম ওয়াটারপ্রোটেক্ট'],
-    [/Holcim\s*Supercrete\s*Plus/gi, 'হোলসিম সুপারক্রিট প্লাস'],
-    [/Holcim\s*Supercrete/gi, 'হোলসিম সুপারক্রিট'],
-    [/Holcim\s*Strong\s*Structure/gi, 'হোলসিম স্ট্রং স্ট্রাকচার'],
-    [/Holcim\s*Coastal\s*Guard/gi, 'হোলসিম কোস্টাল গার্ড'],
-    [/Holcim/gi, 'হোলসিম'],
-    [/King\s*Brand/gi, 'কিং ব্র্যান্ড'],
-    [/SCRM\s*TMX/gi, 'এসসিআরএম টিএমএক্স'],
-    [/SCRM/gi, 'এসসিআরএম'],
-    [/BSRM/gi, 'বিএসআরএম'],
-    [/KSML/gi, 'কেএসএমএল'],
-    [/HKG/gi, 'এইচকেজি'],
-    [/DSRM/gi, 'ডিএসআরএম'],
-    [/KSRM/gi, 'কেএসআরএম'],
-    [/AKS/gi, 'একেএস'],
-    [/GPH\s*Ispat/gi, 'জিপিএইচ ইস্পাত'],
-    [/GPH/gi, 'জিপিএইচ'],
-    [/Anwar\s*Ispat/gi, 'আনোয়ার ইস্পাত'],
-    [/Anwar/gi, 'আনোয়ার'],
-    [/RSRM/gi, 'আরএসআরএম'],
-    [/SSRM/gi, 'এসএসআরএম'],
-    [/Aman/gi, 'আমান'],
-    [/Anchor/gi, 'অ্যাংকর'],
-    [/Fresh/gi, 'ফ্রেশ'],
-    [/Crown/gi, 'ক্রাউন'],
-    [/Seven\s*Rings?/gi, 'সেভেন রিংস'],
-    [/Premier/gi, 'প্রিমিয়ার'],
-    [/Akij/gi, 'আকিজ'],
-    [/Bashundhara/gi, 'বসুন্ধরা'],
-    [/Pistol\s*Ring/gi, 'পিস্তল রিং'],
-    [/Pistol/gi, 'পিস্তল'],
-    [/\bRing\b/gi, 'রিং'],
-    [/\bRod\b/gi, 'রড'],
-    [/\bCement\b/gi, 'সিমেন্ট'],
-    [/\bPCC\b/gi, 'পিসিসি'],
-    [/\bOPC\b/gi, 'ওপিসি'],
-    [/\bTMX\b/gi, 'টিএমএক্স'],
-    [/(\d+(?:\.\d+)?)\s*(?:mm|milli)\b/gi, (_: string, n: string) => `${toBengaliDigits(n)} মিলি`],
-    [/\bmm\b/gi, 'মিলি'],
-  ];
-
-  for (const [re, bnText] of BRAND_TRANSLATIONS) {
-    str = str.replace(re, bnText as any);
-  }
-
-  // If Bengali is present and there are still isolated stray English letters remaining, clean them up
-  if (/[\u0980-\u09FF]/.test(str)) {
-    str = str.replace(/\s*\b[A-Za-z]+\b\s*/g, ' ');
-  }
 
   // Normalize multi-spaces
   return str.replace(/\s+/g, ' ').trim();

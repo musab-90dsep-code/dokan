@@ -1059,8 +1059,8 @@ function TransactionsContent() {
       toast.error(paymentType === 'income' ? 'কাস্টমার নির্বাচন করুন' : (expensePartyType === 'engineer' ? 'ইঞ্জিনিয়ার নির্বাচন করুন' : 'সাপ্লায়ার নির্বাচন করুন'));
       return;
     }
-    if (paidAmount <= 0) {
-      toast.error('পরিশোধিত পরিমাণ সঠিকভাবে ইনপুট দিন');
+    if (paidAmount <= 0 && (!discountAmount || discountAmount <= 0)) {
+      toast.error('পরিশোধিত পরিমাণ অথবা ছাড়/মওকুফ সঠিকভাবে ইনপুট দিন');
       return;
     }
 

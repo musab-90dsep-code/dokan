@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, X, ChevronDown, Check, Package, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatProductName } from '@/lib/bengaliUtils';
 
 export interface ProductOption {
   id: string;
@@ -196,7 +197,7 @@ export function ProductSearchSelect({
         {selectedProduct && !isOpen ? (
           <div className="flex items-center justify-between w-full py-2 px-3 text-xs font-bold text-slate-800">
             <div className="flex items-center gap-2 truncate">
-              <span className="font-black text-slate-900">{selectedProduct.name}</span>
+              <span className="font-black text-slate-900">{formatProductName(selectedProduct.name, selectedProduct.category)}</span>
               <span className="text-orange-600 font-black">৳{selectedProduct.sellPrice.toLocaleString()}</span>
               {selectedProduct.unit && (
                 <span className="text-slate-400 text-[11px]">/{selectedProduct.unit}</span>
@@ -231,7 +232,7 @@ export function ProductSearchSelect({
             onFocus={openDropdown}
             placeholder={
               selectedProduct
-                ? `${selectedProduct.name} — ৳${selectedProduct.sellPrice}`
+                ? `${formatProductName(selectedProduct.name, selectedProduct.category)} — ৳${selectedProduct.sellPrice}`
                 : `${activeTab === 'সব' ? 'সকল' : activeTab} পণ্য সার্চ করতে লিখুন...`
             }
             className="w-full py-2 pl-2.5 pr-8 bg-transparent text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none"
@@ -301,7 +302,7 @@ export function ProductSearchSelect({
                     >
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2 font-black text-slate-900 text-xs">
-                          <span>{prod.name}</span>
+                          <span>{formatProductName(prod.name, prod.category)}</span>
                           {prod.category && (
                             <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
                               {prod.category}

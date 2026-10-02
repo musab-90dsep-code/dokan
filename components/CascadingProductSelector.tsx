@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
 import { toast } from 'sonner';
-import { toBengaliDigits, toEnglishDigits } from '@/lib/bengaliUtils';
+import { toBengaliDigits, toEnglishDigits, formatProductName } from '@/lib/bengaliUtils';
 
 export interface ProductInventoryItem {
   id: string;
@@ -519,14 +519,12 @@ export function CascadingProductSelector({
       defaultUnit = 'কেজি';
     } else if (category === 'সিমেন্ট') {
       if (activeBrand) {
-        if (activeBrand.endsWith('সিমেন্ট')) {
-          constructedName = effectiveEnableCementType && effectiveCementType
-            ? `${activeBrand.replace(/\s*সিমেন্ট$/, '')} (${effectiveCementType}) সিমেন্ট`
-            : activeBrand;
+        const brandClean = activeBrand.replace(/\s*সিমেন্ট$/, '').trim();
+        if (effectiveEnableCementType && effectiveCementType === 'OPC') {
+          constructedName = `${brandClean} (OPC)`;
         } else {
-          constructedName = effectiveEnableCementType && effectiveCementType
-            ? `${activeBrand} (${effectiveCementType}) সিমেন্ট`
-            : `${activeBrand} সিমেন্ট`;
+          // PCC is default, do not display PCC as requested: "opc chara naki sob cement pcc eta display kora lagbe na"
+          constructedName = brandClean;
         }
       } else {
         constructedName = '';
@@ -568,15 +566,10 @@ export function CascadingProductSelector({
         });
         if (longerOption) return false;
 
-        if (effectiveEnableCementType && effectiveCementType) {
-          const typeLower = effectiveCementType.toLowerCase();
-          const otherType = effectiveCementType === 'OPC' ? 'pcc' : 'opc';
-          if (pName.includes(bCore) && pName.includes(typeLower) && !pName.includes(otherType)) {
-            return true;
-          }
-          if (pName.includes(bCore) && !pName.includes('opc') && !pName.includes('pcc')) {
-            return true;
-          }
+        if (effectiveEnableCementType && effectiveCementType === 'OPC') {
+          return pName.includes(bCore) && pName.includes('opc');
+        } else {
+          return pName.includes(bCore) && !pName.includes('opc');
         }
       }
       if (category === 'রিং' && activeMm) {
@@ -589,7 +582,7 @@ export function CascadingProductSelector({
       const sellP = Number(exact.sellPrice || 0);
       return {
         productId: exact.id,
-        name: exact.name,
+        name: formatProductName(exact.name, exact.category),
         price: isPurchaseMode ? (buyP || sellP) : (sellP || buyP),
         sellPrice: sellP,
         unit: category === 'রিং' ? 'কেজি' : (exact.unit || defaultUnit),
@@ -611,17 +604,11 @@ export function CascadingProductSelector({
         });
         if (longerOption) return false;
 
-        if (effectiveEnableCementType && effectiveCementType) {
-          const typeLower = effectiveCementType.toLowerCase();
-          const otherType = effectiveCementType === 'OPC' ? 'pcc' : 'opc';
-          if (activeBrand && pName.includes(bCore) && pName.includes(typeLower) && !pName.includes(otherType)) {
-            return true;
-          }
-          if (activeBrand && pName.includes(bCore) && !pName.includes('opc') && !pName.includes('pcc')) {
-            return true;
-          }
+        if (effectiveEnableCementType && effectiveCementType === 'OPC') {
+          return activeBrand && pName.includes(bCore) && pName.includes('opc');
+        } else {
+          return activeBrand && pName.includes(bCore) && !pName.includes('opc');
         }
-        return activeBrand && pName.includes(bCore);
       }
       if (category === 'রিং') {
         return activeMm && pName.includes(activeMm.toLowerCase());
@@ -634,7 +621,7 @@ export function CascadingProductSelector({
       const sellP = Number(partial.sellPrice || 0);
       return {
         productId: partial.id,
-        name: partial.name,
+        name: formatProductName(partial.name, partial.category),
         price: isPurchaseMode ? (buyP || sellP) : (sellP || buyP),
         sellPrice: sellP,
         unit: category === 'রিং' ? 'কেজি' : (partial.unit || defaultUnit),
@@ -644,7 +631,7 @@ export function CascadingProductSelector({
 
     return {
       productId: undefined,
-      name: constructedName,
+      name: formatProductName(constructedName, category),
       price: 0,
       sellPrice: 0,
       unit: defaultUnit,

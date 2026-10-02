@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { InvoiceMemo } from '@/components/InvoiceMemo';
 import { printElement } from '@/lib/printUtils';
-import { toBengaliDigits, toEnglishDigits } from '@/lib/bengaliUtils';
+import { toBengaliDigits, toEnglishDigits, formatProductName } from '@/lib/bengaliUtils';
 import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
 import { ProductSearchSelect } from '@/components/ProductSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
@@ -266,7 +266,7 @@ export default function OrdersPage() {
           paymentStatus: s.due_amount <= 0 ? 'paid' : 'unpaid',
           items: (s.items || []).map(i => ({
             id: String(i.product || i.id || ''),
-            name: fixMiliName(i.product_name),
+            name: formatProductName(fixMiliName(i.product_name)),
             price: i.price,
             quantity: i.quantity,
             unit: i.unit || 'পিস',
@@ -279,7 +279,7 @@ export default function OrdersPage() {
       const prodList = await api.inventory.list();
       setProducts(prodList.map(p => ({
         id: String(p.id),
-        name: p.name,
+        name: formatProductName(p.name, p.category_name),
         sellPrice: Number(p.sell_price || 0),
         stock: Number(p.stock || 0),
         unit: p.unit || 'পিস',

@@ -277,9 +277,11 @@ export default function PartyManagementPage({ type }: PartyManagementPageProps) 
       const data = await api.parties.list({ party_type: type });
       const safeData = Array.isArray(data) ? data : [];
       let transactions: any[] = [];
-      try {
-        transactions = await api.transactions.list();
-      } catch {}
+      if (isEngineer) {
+        try {
+          transactions = await api.transactions.list();
+        } catch {}
+      }
 
       const partyList: Party[] = safeData.map((p) => {
         let rodCommissionRate = 0;

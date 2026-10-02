@@ -28,7 +28,7 @@ import { PurchaseInvoiceDetailsView } from '@/components/PurchaseInvoiceDetailsV
 import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { BengaliDatePicker } from '@/components/ui/BengaliDatePicker';
 import { printElement } from '@/lib/printUtils';
-import { parseProductDetails, toEnglishDigits } from '@/lib/bengaliUtils';
+import { parseProductDetails, toEnglishDigits, formatProductName } from '@/lib/bengaliUtils';
 import { TableRowActionMenu } from '@/components/TableRowActionMenu';
 import { useAuth } from '@/lib/authContext';
 
@@ -289,7 +289,7 @@ export default function PurchasesPage() {
           supplierAddress: pAny.party_address || meta.supplierAddress || '',
           supplierId: String(p.party || ''),
           items: (p.items || []).map((i: any) => ({
-            name: i.product_name,
+            name: formatProductName(i.product_name),
             price: i.price,
             quantity: i.quantity,
             unit: i.unit || 'পিস',
@@ -343,7 +343,7 @@ export default function PurchasesPage() {
       const prodList = await api.inventory.list();
       setProducts(prodList.map(p => ({
         id: String(p.id),
-        name: p.name,
+        name: formatProductName(p.name, p.category_name),
         category: p.category_name || 'অন্যান্য',
         brand: p.brand || '',
         buyPrice: Number(p.purchase_price || 0),

@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { CustomerSearchSelect } from '@/components/CustomerSearchSelect';
 import { EngineerSearchSelect, EngineerOption } from '@/components/EngineerSearchSelect';
-import { toBengaliDigits, toEnglishDigits, parseProductDetails } from '@/lib/bengaliUtils';
+import { toBengaliDigits, toEnglishDigits, parseProductDetails, formatProductName } from '@/lib/bengaliUtils';
 import { ProductSearchSelect } from '@/components/ProductSearchSelect';
 import { CascadingProductSelector, SelectedProductDetails } from '@/components/CascadingProductSelector';
 import { CartItemQtyInput } from '@/components/CartItemQtyInput';
@@ -425,7 +425,7 @@ function InvoicesContent() {
           engineerPhone: meta.engineerPhone || meta.engineer_phone || '',
           items: (s.items || []).map(i => ({
             id: String(i.product || ''),
-            name: i.product_name,
+            name: formatProductName(i.product_name),
             price: i.price,
             quantity: i.quantity,
             unit: i.unit || 'পিস',
@@ -491,7 +491,7 @@ function InvoicesContent() {
       const prodList = await api.inventory.list();
       setProducts(prodList.map(p => ({
         id: String(p.id),
-        name: p.name,
+        name: formatProductName(p.name, p.category_name),
         sellPrice: Number(p.sell_price || 0),
         stock: Number(p.stock || 0),
         unit: p.unit || 'পিস',
@@ -639,7 +639,7 @@ function InvoicesContent() {
         // Map order items to invoice cart items
         const rawItems: OrderItem[] = (raw.items || []).map(i => ({
           id: String(i.product || i.id || ''),
-          name: i.product_name,
+          name: formatProductName(i.product_name),
           price: Number(i.price || 0),
           quantity: Number(i.quantity || 1),
           unit: i.unit || 'পিস',

@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn, formatDualStock, toBnNum, formatBnCurrency } from '@/lib/utils';
-import { toBengaliDigits } from '@/lib/bengaliUtils';
+import { toBengaliDigits, formatProductName } from '@/lib/bengaliUtils';
 import { printElement } from '@/lib/printUtils';
 import { format } from 'date-fns';
 import { bn } from 'date-fns/locale';
@@ -242,7 +242,7 @@ export default function InventoryPage() {
       const safeData = Array.isArray(data) ? data : [];
       const mapped = safeData.map(p => ({
         id: String(p.id),
-        name: p.name,
+        name: formatProductName(p.name, p.category_name),
         category: p.category_name || 'অন্যান্য',
         brand: p.brand || '',
         buyPrice: Number(p.purchase_price || 0),

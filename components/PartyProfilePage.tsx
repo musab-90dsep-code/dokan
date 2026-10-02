@@ -8,7 +8,7 @@ import {
   CreditCard, ChevronLeft, ChevronRight, Filter, Calendar, RotateCcw,
   MoreVertical, ChevronFirst, ChevronLast, Mail, FileText,
   FilePlus, Edit3, UserCheck, MessageSquare, X, Truck, Users, Trash2,
-  Plus, CheckCircle2, Clock, AlertCircle, Search, HandCoins
+  Plus, CheckCircle2, Clock, AlertCircle, Search, HandCoins, DollarSign
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -266,8 +266,10 @@ export function generateLedgerEntries(
     } else {
       // --- CUSTOMER / SUPPLIER NORMAL LEDGER LOGIC ---
       if (txType === 'payment_in' || txType === 'payment_out') {
-        const creditVal = Number(tx.paidAmount || tx.totalAmount || 0);
+        const paidVal = Number(tx.paidAmount || 0);
         const discountVal = Number(tx.discount || 0);
+        // If paidAmount is 0 and totalAmount was set to discount, use paidAmount + discount
+        const creditVal = (paidVal > 0) ? paidVal : (Number(tx.totalAmount || 0) === discountVal ? 0 : Number(tx.totalAmount || 0));
         const totalCredit = creditVal + discountVal;
         cumulativeBalance -= totalCredit;
 
@@ -566,6 +568,62 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
   const [newSiteAddress, setNewSiteAddress] = useState('');
   const [newSiteContact, setNewSiteContact] = useState('');
   const [isSavingSite, setIsSavingSite] = useState(false);
+
+  // Waive / Write-off state
+  const [isWaiveOpen, setIsWaiveOpen] = useState(false);
+  const [waiveAmount, setWaiveAmount] = useState(0);
+  const [waiveReason, setWaiveReason] = useState('খুচরা বকেয়া মওকুফ');
+  const [isWaiving, setIsWaiving] = useState(false);
+
+  const handleConfirmWaive = async () => {
+    if (!party || waiveAmount <= 0) {
+      toast.error('মওকুফের পরিমাণ সঠিক নয়');
+      return;
+    }
+    try {
+      setIsWaiving(true);
+      // Clean precision: if user waives close to full totalDue, waive exact remaining due
+      const finalWaiveAmount = Math.abs(totalDue - waiveAmount) < 0.5 ? totalDue : waiveAmount;
+
+      const metaJson = JSON.stringify({
+        partyId: party.id,
+        partyName: party.name,
+        partyPhone: party.phone || '',
+        partyAddress: party.address || '',
+        partyType: 'customer',
+        businessName: party.businessName || '',
+        discountAmount: finalWaiveAmount,
+        previousBalance: totalDue,
+        isWaiveOff: true,
+        userNote: waiveReason || 'খুচরা বকেয়া মওকুফ'
+      });
+
+      const payload: any = {
+        party: Number(party.id),
+        party_name: party.name,
+        party_phone: party.phone || '',
+        party_address: party.address || '',
+        transaction_type: 'payment_in' as const,
+        total_amount: 0,
+        paid_amount: 0,
+        discount: finalWaiveAmount,
+        due_amount: 0,
+        payment_method: 'cash',
+        status: 'completed',
+        notes: metaJson + '\n' + (waiveReason || 'বকেয়া মওকুফ')
+      };
+
+      await api.transactions.create(payload);
+      toast.success(`${party.name}-এর ৳${toBnDigits(Number(finalWaiveAmount).toFixed(2))} টাকা সফলভাবে মওকুফ করা হয়েছে`);
+      setIsWaiveOpen(false);
+      await loadData();
+    } catch (err: any) {
+      console.error(err);
+      toast.error('মওকুফ করতে সমস্যা হয়েছে: ' + (err.message || 'Error'));
+    } finally {
+      setIsWaiving(false);
+    }
+  };
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -878,6 +936,20 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
     printElement('printable-memo-wrapper');
   };
 
+  // Generate Chronological Ledger Entries
+  const ledgerParty = (selectedSite !== 'all' && selectedSite !== '__no_site__') ? { ...party!, openingBalance: 0 } : party;
+  const ledgerEntries = generateLedgerEntries(ledgerParty, siteTransactions, isCustomer, isEngineer);
+
+  const rawClosingBalance = ledgerEntries.length > 0
+    ? ledgerEntries[ledgerEntries.length - 1].runningBalance
+    : (Number(party?.openingBalance || 0));
+
+  // Clean floating-point precision residues and fractional paisa (< 0.5 Taka)
+  const finalClosingBalance = Math.abs(rawClosingBalance) < 0.5 ? 0 : rawClosingBalance;
+
+  const totalDue = (selectedSite !== 'all') ? siteTotalDue : (finalClosingBalance > 0 ? finalClosingBalance : 0);
+  const advanceBalance = (selectedSite !== 'all') ? 0 : (finalClosingBalance < 0 ? Math.abs(finalClosingBalance) : 0);
+
   const handleDownloadCSV = () => {
     if (!party) return;
     let csvContent = "\uFEFFতারিখ,রেফারেন্স/আইডি,ধরণ,বিবরণ,চালান নং,ডেবিট/বিল (৳),ক্রেডিট/জমা (৳),অবশিষ্ট জের (৳),পেমেন্ট পদ্ধতি\n";
@@ -923,23 +995,12 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
     if (!confirm(isEngineer ? 'আপনি কি নিশ্চিত যে এই ইঞ্জিনিয়ারের তথ্য মুছে ফেলতে চান?' : isCustomer ? 'আপনি কি নিশ্চিত যে এই গ্রাহককে মুছে ফেলতে চান?' : 'আপনি কি নিশ্চিত যে এই সরবরাহকারীকে মুছে ফেলতে চান?')) return;
     try {
       await api.parties.delete(id);
-      toast.success(isEngineer ? 'ইঞ্জিনিয়ারের তথ্য সফলভাবে মুছে ফেলা হয়েছে' : isCustomer ? 'গ্রাহক সফলভাবে মুছে ফেলা হয়েছে' : 'সরবরাহকারী সফলভাবে মুছে ফেলা হয়েছে');
+      toast.success(isEngineer ? 'ইঞ্জিনিয়ার সফলভাবে মুছে ফেলা হয়েছে' : isCustomer ? 'গ্রাহক সফলভাবে মুছে ফেলা হয়েছে' : 'সরবরাহকারী সফলভাবে মুছে ফেলা হয়েছে');
       router.push(isEngineer ? '/engineers' : isCustomer ? '/customers' : '/suppliers');
     } catch {
       toast.error('তথ্য মুছতে সমস্যা হয়েছে');
     }
   };
-
-  // Generate Chronological Ledger Entries
-  const ledgerParty = (selectedSite !== 'all' && selectedSite !== '__no_site__') ? { ...party!, openingBalance: 0 } : party;
-  const ledgerEntries = generateLedgerEntries(ledgerParty, siteTransactions, isCustomer, isEngineer);
-
-  const finalClosingBalance = ledgerEntries.length > 0
-    ? ledgerEntries[ledgerEntries.length - 1].runningBalance
-    : (Number(party?.openingBalance || 0));
-
-  const totalDue = (selectedSite !== 'all') ? siteTotalDue : (finalClosingBalance > 0 ? finalClosingBalance : 0);
-  const advanceBalance = (selectedSite !== 'all') ? 0 : (finalClosingBalance < 0 ? Math.abs(finalClosingBalance) : 0);
 
 
   const filteredLedgerEntries = ledgerEntries.filter(entry => {
@@ -1137,7 +1198,7 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                             : `৳ ${toBnDigits(Math.abs(finalClosingBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 }))} (অগ্রিম পরিশোধিত)`
                           )
                         : (advanceBalance > 0 
-                            ? `-৳ ${toBnDigits(advanceBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}` 
+                            ? `৳ ${toBnDigits(advanceBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}` 
                             : `৳ ${toBnDigits(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}`
                           )
                       }
@@ -1159,6 +1220,22 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   >
                     <Edit3 className="w-3 h-3" />সম্পাদনা
                   </Button>
+                  {isCustomer && totalDue > 0 ? (
+                    <Button 
+                      onClick={() => {
+                        setWaiveAmount(Number(Number(totalDue).toFixed(2)));
+                        setWaiveReason('খুচরা বকেয়া মওকুফ');
+                        setIsWaiveOpen(true);
+                      }}
+                      className="w-full h-7 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[10px] rounded-lg shadow-2xs flex items-center justify-center gap-1 px-2 cursor-pointer"
+                    >
+                      <DollarSign className="w-3 h-3 text-rose-600" />বকেয়া মওকুফ
+                    </Button>
+                  ) : (
+                    <Button onClick={handlePrintLedger} variant="outline" className="w-full h-7 border-slate-200 text-slate-700 font-bold text-[10px] rounded-lg hover:bg-slate-50 flex items-center justify-center gap-1 px-2 cursor-pointer">
+                      <Printer className="w-3 h-3 text-slate-500" />লেজার প্রিন্ট
+                    </Button>
+                  )}
                   <Button onClick={handlePrintLedger} variant="outline" className="w-full h-7 border-slate-200 text-slate-700 font-bold text-[10px] rounded-lg hover:bg-slate-50 flex items-center justify-center gap-1 px-2 cursor-pointer">
                     <Printer className="w-3 h-3 text-slate-500" />লেজার প্রিন্ট
                   </Button>
@@ -2672,6 +2749,120 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
               className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold"
             >
               {isSavingSite ? 'সংরক্ষণ হচ্ছে...' : 'সাইট যুক্ত করুন'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* WAIVE MODAL DIALOG */}
+      <Dialog open={isWaiveOpen} onOpenChange={(open) => { if (!open) setIsWaiveOpen(false); }}>
+        <DialogContent className="max-w-md bg-white rounded-2xl p-6 font-bengali">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black text-slate-900 flex items-center gap-2">
+              <span className="w-8 h-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                <DollarSign className="w-4 h-4" />
+              </span>
+              <span>বকেয়া মওকুফ / রাইট-অফ (Waive-off)</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          {party && (
+            <div className="space-y-4 py-2">
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-500 font-bold">গ্রাহকের নাম:</span>
+                  <span className="text-sm font-black text-slate-900">{party.name}</span>
+                </div>
+                {party.businessName && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-slate-500 font-bold">প্রতিষ্ঠান:</span>
+                    <span className="text-xs font-bold text-slate-700">{party.businessName}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-500 font-bold">বর্তমান বকেয়া:</span>
+                  <span className="text-sm font-black text-rose-600">৳ {toBnDigits(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">মওকুফের পরিমাণ (টাকা):</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">৳</span>
+                  <Input
+                    type="number"
+                    value={waiveAmount || ''}
+                    onChange={(e) => setWaiveAmount(Number(e.target.value) || 0)}
+                    className="pl-8 rounded-xl font-mono font-black text-sm h-10 border-slate-200"
+                    placeholder="০"
+                    max={totalDue}
+                  />
+                </div>
+                <div className="flex items-center gap-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setWaiveAmount(Number(Number(totalDue).toFixed(2)))}
+                    className="text-[11px] font-bold text-blue-600 hover:underline bg-blue-50 px-2 py-0.5 rounded cursor-pointer"
+                  >
+                    সম্পূর্ণ বকেয়া (৳{toBnDigits(Number(totalDue).toFixed(2))})
+                  </button>
+                  {Math.round(totalDue) > 20 && (
+                    <button
+                      type="button"
+                      onClick={() => setWaiveAmount(20)}
+                      className="text-[11px] font-bold text-slate-600 hover:underline bg-slate-100 px-2 py-0.5 rounded cursor-pointer"
+                    >
+                      ২০ টাকা
+                    </button>
+                  )}
+                  {Math.round(totalDue) > 10 && (
+                    <button
+                      type="button"
+                      onClick={() => setWaiveAmount(10)}
+                      className="text-[11px] font-bold text-slate-600 hover:underline bg-slate-100 px-2 py-0.5 rounded cursor-pointer"
+                    >
+                      ১০ টাকা
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">মওকুফের কারণ / বিবরণ:</Label>
+                <Input
+                  value={waiveReason}
+                  onChange={(e) => setWaiveReason(e.target.value)}
+                  className="rounded-xl text-xs font-bold h-10 border-slate-200"
+                  placeholder="যেমন: খুচরা বকেয়া মওকুফ"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200/80 text-[11.5px] font-bold text-amber-900 flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  এই ৳{toBnDigits(waiveAmount)} টাকা ডিসকাউন্ট হিসেবে লেজারে জমা হবে এবং অবশিষ্ট বকেয়া থাকবে: <strong>৳{toBnDigits(Math.max(0, Math.round(totalDue - waiveAmount)))}</strong>।
+                </span>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsWaiveOpen(false)}
+              disabled={isWaiving}
+              className="rounded-xl text-xs font-bold h-9"
+            >
+              বাতিল
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmWaive}
+              disabled={isWaiving || waiveAmount <= 0}
+              className="rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-700 text-white h-9 shadow-xs"
+            >
+              {isWaiving ? 'মওকুফ হচ্ছে...' : 'মওকুফ নিশ্চিত করুন'}
             </Button>
           </DialogFooter>
         </DialogContent>
