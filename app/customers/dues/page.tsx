@@ -9,7 +9,7 @@ import {
   Receipt, Phone, MapPin, Search, Printer, FileDown, 
   FileSpreadsheet, ArrowUpRight, ArrowDownRight, Users, 
   Wallet, ChevronRight, Eye, RefreshCw, Filter, Building2,
-  CheckCircle2, DollarSign, X
+  CheckCircle2, DollarSign, X, Lock, EyeOff
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -72,17 +72,33 @@ export default function CustomerDuesPage() {
   const [waiveCustomer, setWaiveCustomer] = useState<CustomerDueItem | null>(null);
   const [waiveAmount, setWaiveAmount] = useState<number>(0);
   const [waiveReason, setWaiveReason] = useState<string>('খুচরা বকেয়া মওকুফ');
+  const [waivePassword, setWaivePassword] = useState<string>('');
+  const [showWaivePassword, setShowWaivePassword] = useState<boolean>(false);
   const [isWaiving, setIsWaiving] = useState(false);
+
+  const getWaivePin = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('waive_pin') || localStorage.getItem('commission_pin') || '1234').trim();
+    }
+    return '1234';
+  };
 
   const handleOpenWaive = (c: CustomerDueItem) => {
     setWaiveCustomer(c);
     setWaiveAmount(Number(Number(c.dueAmount).toFixed(2)));
     setWaiveReason('খুচরা বকেয়া মওকুফ');
+    setWaivePassword('');
+    setShowWaivePassword(false);
   };
 
   const handleConfirmWaive = async () => {
     if (!waiveCustomer || waiveAmount <= 0) {
       toast.error('মওকুফের পরিমাণ সঠিক নয়');
+      return;
+    }
+    const currentPin = getWaivePin();
+    if (!waivePassword.trim() || waivePassword.trim() !== currentPin) {
+      toast.error('ভুল পাসওয়ার্ড! সঠিক মওকুফ সিকিউরিটি পাসওয়ার্ড প্রদান করুন');
       return;
     }
     try {
@@ -1018,6 +1034,43 @@ export default function CustomerDuesPage() {
                 />
               </div>
 
+              {/* Security PIN input */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-rose-600" />
+                    মওকুফ সিকিউরিটি পাসওয়ার্ড:
+                  </Label>
+                  <span className="text-[10px] text-slate-400 font-semibold">(সেটিংস থেকে পরিবর্তনযোগ্য)</span>
+                </div>
+                <div className="relative">
+                  <Input
+                    type={showWaivePassword ? "text" : "password"}
+                    value={waivePassword}
+                    onChange={(e) => setWaivePassword(e.target.value)}
+                    placeholder="পাসওয়ার্ড লিখুন (যেমন: 1234)"
+                    className="rounded-xl text-xs font-bold h-10 border-slate-200 pr-10 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowWaivePassword(!showWaivePassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    title={showWaivePassword ? "পাসওয়ার্ড লুকান" : "পাসওয়ার্ড দেখুন"}
+                  >
+                    {showWaivePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {waivePassword && waivePassword.trim() !== getWaivePin() ? (
+                  <p className="text-[11px] font-bold text-rose-600 flex items-center gap-1 mt-1">
+                    ⚠️ ভুল পাসওয়ার্ড! সঠিক মওকুফ সিকিউরিটি পাসওয়ার্ড প্রদান করুন
+                  </p>
+                ) : waivePassword ? (
+                  <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1 mt-1">
+                    ✓ পাসওয়ার্ড সঠিক হয়েছে, মওকুফ নিশ্চিত করতে পারেন
+                  </p>
+                ) : null}
+              </div>
+
               {/* Result explanation */}
               <div className="p-3 rounded-xl bg-amber-50 border border-amber-200/80 text-[11.5px] font-bold text-amber-900 flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -1041,8 +1094,8 @@ export default function CustomerDuesPage() {
             <Button
               type="button"
               onClick={handleConfirmWaive}
-              disabled={isWaiving || waiveAmount <= 0}
-              className="rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-700 text-white h-9 shadow-xs"
+              disabled={isWaiving || waiveAmount <= 0 || !waivePassword.trim() || waivePassword.trim() !== getWaivePin()}
+              className="rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-700 text-white h-9 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isWaiving ? 'মওকুফ হচ্ছে...' : 'মওকুফ নিশ্চিত করুন'}
             </Button>

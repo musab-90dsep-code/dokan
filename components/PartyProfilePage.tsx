@@ -8,7 +8,8 @@ import {
   CreditCard, ChevronLeft, ChevronRight, Filter, Calendar, RotateCcw,
   MoreVertical, ChevronFirst, ChevronLast, Mail, FileText,
   FilePlus, Edit3, UserCheck, MessageSquare, X, Truck, Users, Trash2,
-  Plus, CheckCircle2, Clock, AlertCircle, Search, HandCoins, DollarSign
+  Plus, CheckCircle2, Clock, AlertCircle, Search, HandCoins, DollarSign,
+  Lock, Eye, EyeOff
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,8 @@ import { PaymentVoucherMemo } from '@/components/PaymentVoucherMemo';
 import { SalesInvoiceDetailsView } from '@/components/SalesInvoiceDetailsView';
 import { PurchaseInvoiceDetailsView } from '@/components/PurchaseInvoiceDetailsView';
 import { PaymentVoucherDetailsView } from '@/components/PaymentVoucherDetailsView';
+import { SalesReturnDetailsView } from '@/components/SalesReturnDetailsView';
+import { ReturnInvoiceMemo } from '@/components/ReturnInvoiceMemo';
 import { BengaliDateRangePicker } from '@/components/ui/BengaliDateRangePicker';
 import { printElement } from '@/lib/printUtils';
 import { useAuth } from '@/lib/authContext';
@@ -338,12 +341,30 @@ export function generateLedgerEntries(
         const retPrefix = isCustomer ? 'RET-2026-' : 'PRET-2026-';
         const retNo = tx.invoiceNo || `${retPrefix}${tx.id.slice(0, 5).toUpperCase()}`;
 
+        // Format detailed items for return
+        let returnDesc = '';
+        if (tx.items && tx.items.length > 0) {
+          const itemSummary = tx.items.map((it: any) => {
+            const name = cleanLegacyBengaliText(it.product_name || it.name || 'পণ্য');
+            const qty = toBnDigits(it.quantity || 1);
+            const unit = it.unit || 'টি';
+            const price = it.price ? `@ ৳${toBnDigits(Number(it.price).toLocaleString('en-IN'))}` : '';
+            return `${name} (${qty} ${unit} ${price})`.trim();
+          }).join(', ');
+          returnDesc = `${isCustomer ? 'পণ্য ফেরত (বিক্রয় ফেরত)' : 'পণ্য ফেরত (ক্রয় ফেরত)'}: ${itemSummary}`;
+          if (tx.note && !tx.note.includes('পণ্য ফেরত ও বকেয়া এডজাস্ট') && tx.note !== 'পণ্য ফেরত' && tx.note !== 'খুচরা বকেয়া মওকুফ') {
+            returnDesc += ` [বিবরণ: ${tx.note}]`;
+          }
+        } else {
+          returnDesc = `${isCustomer ? 'পণ্য ফেরত (বিক্রয় ফেরত)' : 'পণ্য ফেরত (ক্রয় ফেরত)'} (${tx.note || 'পণ্য ফেরত জমা'})`;
+        }
+
         entries.push({
           id: `${tx.id}-return`,
           date: txDate,
           refNo: retNo,
           type: 'RETURN',
-          description: `${isCustomer ? 'বিক্রয় ফেরত' : 'ক্রয় ফেরত'} (${tx.note || 'পণ্য ফেরত জমা'})`,
+          description: returnDesc,
           invoiceNo: retNo,
           debit: 0,
           credit: returnAmount,
@@ -573,11 +594,25 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
   const [isWaiveOpen, setIsWaiveOpen] = useState(false);
   const [waiveAmount, setWaiveAmount] = useState(0);
   const [waiveReason, setWaiveReason] = useState('খুচরা বকেয়া মওকুফ');
+  const [waivePassword, setWaivePassword] = useState('');
+  const [showWaivePassword, setShowWaivePassword] = useState(false);
   const [isWaiving, setIsWaiving] = useState(false);
+
+  const getWaivePin = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('waive_pin') || localStorage.getItem('commission_pin') || '1234').trim();
+    }
+    return '1234';
+  };
 
   const handleConfirmWaive = async () => {
     if (!party || waiveAmount <= 0) {
       toast.error('মওকুফের পরিমাণ সঠিক নয়');
+      return;
+    }
+    const currentPin = getWaivePin();
+    if (!waivePassword.trim() || waivePassword.trim() !== currentPin) {
+      toast.error('ভুল পাসওয়ার্ড! সঠিক মওকুফ সিকিউরিটি পাসওয়ার্ড প্রদান করুন');
       return;
     }
     try {
@@ -1225,6 +1260,8 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                       onClick={() => {
                         setWaiveAmount(Number(Number(totalDue).toFixed(2)));
                         setWaiveReason('খুচরা বকেয়া মওকুফ');
+                        setWaivePassword('');
+                        setShowWaivePassword(false);
                         setIsWaiveOpen(true);
                       }}
                       className="w-full h-7 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[10px] rounded-lg shadow-2xs flex items-center justify-center gap-1 px-2 cursor-pointer"
@@ -2589,6 +2626,48 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   );
                 }
 
+                if (selectedInvoiceTx.transactionType === 'sale_return' || selectedInvoiceTx.transactionType === 'purchase_return') {
+                  const returnData = {
+                    id: selectedInvoiceTx.id,
+                    invoiceNo: selectedInvoiceTx.orderId || selectedInvoiceTx.invoiceNo || `RET-${String(selectedInvoiceTx.id).slice(0, 6).toUpperCase()}`,
+                    customerName: selectedInvoiceTx.customerName || (isCustomer ? (party?.name || 'সম্মানিত গ্রাহক') : 'সম্মানিত গ্রাহক'),
+                    customerPhone: selectedInvoiceTx.customerPhone || (isCustomer ? (party?.phone || '') : ''),
+                    customerAddress: selectedInvoiceTx.customerAddress || (isCustomer ? (party?.address || '') : ''),
+                    totalReturnValue: selectedInvoiceTx.totalAmount,
+                    totalAmount: selectedInvoiceTx.totalAmount,
+                    paidAmount: selectedInvoiceTx.paidAmount,
+                    cashRefundPaid: selectedInvoiceTx.paidAmount,
+                    dueAdjusted: selectedInvoiceTx.dueAmount,
+                    dueAmount: selectedInvoiceTx.dueAmount,
+                    items: selectedInvoiceTx.items || [],
+                    returnedItems: (selectedInvoiceTx.items || []).map((it: any) => ({
+                      name: cleanLegacyBengaliText(it.name || it.product_name || 'পণ্য'),
+                      quantity: Number(it.quantity || 1),
+                      price: Number(it.price || it.rate || 0),
+                      unit: it.unit || 'টি',
+                      total: Number(it.total || (it.quantity * (it.price || it.rate)) || 0)
+                    })),
+                    reason: selectedInvoiceTx.note || selectedInvoiceTx.notes || 'পণ্য ফেরত',
+                    createdAt: selectedInvoiceTx.createdAt,
+                    paymentMethod: selectedInvoiceTx.paymentMethod || 'cash'
+                  };
+
+                  return (
+                    <>
+                      <SalesReturnDetailsView
+                        returnEntry={returnData}
+                        onBack={() => setSelectedInvoiceTx(null)}
+                        onPrint={() => printElement('party-printable-return-memo')}
+                      />
+                      <div id="party-printable-return-memo" className="hidden print:block">
+                        <ReturnInvoiceMemo
+                          returnEntry={returnData as any}
+                        />
+                      </div>
+                    </>
+                  );
+                }
+
                 if (isCustomer || isEngineer || selectedInvoiceTx.transactionType === 'sale') {
                   let meta: any = {};
                   const rawNote = selectedInvoiceTx.note || selectedInvoiceTx.notes || '';
@@ -2837,6 +2916,43 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                 />
               </div>
 
+              {/* Security PIN input */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-rose-600" />
+                    মওকুফ সিকিউরিটি পাসওয়ার্ড:
+                  </Label>
+                  <span className="text-[10px] text-slate-400 font-semibold">(সেটিংস থেকে পরিবর্তনযোগ্য)</span>
+                </div>
+                <div className="relative">
+                  <Input
+                    type={showWaivePassword ? "text" : "password"}
+                    value={waivePassword}
+                    onChange={(e) => setWaivePassword(e.target.value)}
+                    placeholder="পাসওয়ার্ড লিখুন (যেমন: 1234)"
+                    className="rounded-xl text-xs font-bold h-10 border-slate-200 pr-10 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowWaivePassword(!showWaivePassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    title={showWaivePassword ? "পাসওয়ার্ড লুকান" : "পাসওয়ার্ড দেখুন"}
+                  >
+                    {showWaivePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {waivePassword && waivePassword.trim() !== getWaivePin() ? (
+                  <p className="text-[11px] font-bold text-rose-600 flex items-center gap-1 mt-1">
+                    ⚠️ ভুল পাসওয়ার্ড! সঠিক মওকুফ সিকিউরিটি পাসওয়ার্ড প্রদান করুন
+                  </p>
+                ) : waivePassword ? (
+                  <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1 mt-1">
+                    ✓ পাসওয়ার্ড সঠিক হয়েছে, মওকুফ নিশ্চিত করতে পারেন
+                  </p>
+                ) : null}
+              </div>
+
               <div className="p-3 rounded-xl bg-amber-50 border border-amber-200/80 text-[11.5px] font-bold text-amber-900 flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <span>
@@ -2859,8 +2975,8 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
             <Button
               type="button"
               onClick={handleConfirmWaive}
-              disabled={isWaiving || waiveAmount <= 0}
-              className="rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-700 text-white h-9 shadow-xs"
+              disabled={isWaiving || waiveAmount <= 0 || !waivePassword.trim() || waivePassword.trim() !== getWaivePin()}
+              className="rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-700 text-white h-9 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isWaiving ? 'মওকুফ হচ্ছে...' : 'মওকুফ নিশ্চিত করুন'}
             </Button>

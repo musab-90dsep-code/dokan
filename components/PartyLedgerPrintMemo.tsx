@@ -239,11 +239,32 @@ export function buildLedgerPrintRows(
     } else if (txType === 'sale_return' || txType === 'purchase_return') {
       const retAmt = Number(tx.totalAmount || 0);
       const refundPaid = Number(tx.paidAmount || 0);
-      if (retAmt > 0) {
+      const items = tx.items || [];
+
+      if (items.length > 0) {
+        items.forEach((it: any) => {
+          let name = cleanLegacyBengaliText(it.product_name || it.name || 'পণ্য ফেরত');
+          const qty = Number(it.quantity || 1);
+          const price = Number(it.price || 0);
+          const itemTotal = Number(it.total) || (qty * price);
+
+          totalDeposit += itemTotal;
+          rows.push({
+            date: txDateStr,
+            description: `পণ্য ফেরত: ${name}`,
+            quantity: formatLedgerNum(qty),
+            rate: formatLedgerNum(price),
+            deposit: formatLedgerNum(itemTotal),
+            amount: '-',
+            rawDeposit: itemTotal,
+            rawAmount: 0,
+          });
+        });
+      } else if (retAmt > 0) {
         totalDeposit += retAmt;
         rows.push({
           date: txDateStr,
-          description: 'পণ্য ফেরত',
+          description: tx.note ? `পণ্য ফেরত (${tx.note})` : 'পণ্য ফেরত',
           quantity: '-',
           rate: '-',
           deposit: formatLedgerNum(retAmt),

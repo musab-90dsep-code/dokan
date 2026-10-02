@@ -13,7 +13,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Building2, Phone, Settings as SettingsIcon, Users, UserPlus, 
   Shield, ShieldCheck, KeyRound, Edit2, Trash2, CheckCircle2, 
-  Lock, Eye, EyeOff, User, Camera, Upload, Mail, Sparkles, Image as ImageIcon
+  Lock, Eye, EyeOff, User, Camera, Upload, Mail, Sparkles, Image as ImageIcon, ShieldAlert
 } from 'lucide-react';
 import { api, UserData } from '@/lib/api';
 import { useAuth } from '@/lib/authContext';
@@ -127,6 +127,16 @@ export default function SettingsPage() {
   const [showCommissionPin, setShowCommissionPin] = useState(false);
   const [isSavingPin, setIsSavingPin] = useState(false);
 
+  // 2.1 Waive Approval Password State (for Admin)
+  const [waivePin, setWaivePin] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('waive_pin') || '1234';
+    }
+    return '1234';
+  });
+  const [showWaivePin, setShowWaivePin] = useState(false);
+  const [isSavingWaivePin, setIsSavingWaivePin] = useState(false);
+
   useEffect(() => {
     api.settings.get().then(data => {
       const localPin = typeof window !== 'undefined' ? localStorage.getItem('commission_pin') : null;
@@ -136,6 +146,22 @@ export default function SettingsPage() {
       if (localPin) setCommissionPin(localPin);
     });
   }, []);
+
+  const handleSaveWaivePin = () => {
+    try {
+      setIsSavingWaivePin(true);
+      const pinVal = (waivePin || '1234').trim();
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('waive_pin', pinVal);
+        window.dispatchEvent(new CustomEvent('waivePinUpdated', { detail: pinVal }));
+      }
+      toast.success('বাকি মওকুফ সিকিউরিটি পাসওয়ার্ড সফলভাবে সংরক্ষিত হয়েছে!');
+    } catch (err) {
+      toast.error('মওকুফ পাসওয়ার্ড সংরক্ষণ করা সম্ভব হয়নি');
+    } finally {
+      setIsSavingWaivePin(false);
+    }
+  };
 
   const handleSaveCommissionPin = async () => {
     try {
@@ -665,6 +691,61 @@ export default function SettingsPage() {
                   className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-6 h-10 rounded-xl shadow-xs cursor-pointer"
                 >
                   {isSavingPin ? 'সংরক্ষণ হচ্ছে...' : 'কমিশন পাসওয়ার্ড সেভ করুন'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 2.1 WAIVE APPROVAL PIN CARD (ADMIN ONLY) */}
+        {isAdmin && (
+          <Card className="border-slate-200 shadow-sm rounded-3xl overflow-hidden bg-white">
+            <CardHeader className="bg-rose-50/60 border-b border-rose-100 py-4 px-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                <CardTitle className="flex items-center gap-2 text-base font-black text-slate-900">
+                  <ShieldAlert className="w-5 h-5 text-rose-600" />
+                  বাকি মওকুফ অনুমোদন পাসওয়ার্ড (Dues Waive Password)
+                </CardTitle>
+                <span className="text-[10px] font-mono font-bold bg-white text-rose-900 px-2.5 py-0.5 rounded-full border border-rose-300 self-start sm:self-auto">
+                  বাকি মওকুফ সিকিউরিটি
+                </span>
+              </div>
+              <CardDescription className="text-xs text-slate-500 font-semibold mt-0.5">
+                বাকি কাস্টমার তালিকা বা গ্রাহক প্রোফাইল থেকে বকেয়া মওকুফ / রাইট-অফ করার সময় এই সিকিউরিটি পিনটি আবশ্যক হবে (ডিফল্ট: 1234)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+              <div className="max-w-md space-y-2">
+                <Label className="font-bold text-xs text-slate-700">মওকুফ সিকিউরিটি পাসওয়ার্ড / পিন কোড</Label>
+                <div className="relative">
+                  <Input
+                    type={showWaivePin ? "text" : "password"}
+                    value={waivePin}
+                    onChange={(e) => setWaivePin(e.target.value)}
+                    placeholder="পাসওয়ার্ড লিখুন (যেমন: 1234)"
+                    className="font-mono font-bold rounded-xl bg-white border-rose-300 pr-10 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowWaivePin(!showWaivePin)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showWaivePin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  পাসওয়ার্ড পরিবর্তন করার পর নিচের বাটনে চাপ দিয়ে সংরক্ষণ করুন।
+                </p>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <Button 
+                  type="button"
+                  onClick={handleSaveWaivePin} 
+                  disabled={isSavingWaivePin}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-6 h-10 rounded-xl shadow-xs cursor-pointer"
+                >
+                  {isSavingWaivePin ? 'সংরক্ষণ হচ্ছে...' : 'মওকুফ পাসওয়ার্ড সেভ করুন'}
                 </Button>
               </div>
             </CardContent>
