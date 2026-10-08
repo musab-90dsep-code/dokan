@@ -251,18 +251,23 @@ export default function LoadingChargesPage() {
         }) + `\n[লেবার খরচ পরিশোধ - বিক্রয় সিমেন্ট লোডিং] চালান: #${selectedEntryForPay.invoiceNo}`
       }).catch(err => console.warn('Transaction record fallback:', err));
 
-      // 2. Record expense transaction
-      await api.expenses.create({
-        title: `বিক্রয় চালান লোডিং চার্জ (চালান #${selectedEntryForPay.invoiceNo})`,
-        category_name: 'লোডিং ও খালাস খরচ',
-        amount: Number(payAmount),
-        date: payDate,
-        payment_method: payMethod,
-        bank_account: payMethod === 'Bank' && selBank ? Number(selBank.id) : undefined,
-        notes: `চালান নং: ${selectedEntryForPay.invoiceNo} | গ্রাহক: ${selectedEntryForPay.customerName} | সিমেন্ট: ${selectedEntryForPay.cementBags} বস্তা | সর্দার: ${sardarName || 'লেবার কর্মী'}${payNote ? ` | নোট: ${payNote}` : ''}`
-      }).catch(err => {
-        console.warn('Expense record created with fallback:', err);
-      });
+      // 2. Record expense transaction (with duplicate check)
+      const targetTitle = `বিক্রয় চালান লোডিং চার্জ (চালান #${selectedEntryForPay.invoiceNo})`;
+      const existingExpenses = await api.expenses.list({ search: selectedEntryForPay.invoiceNo }).catch(() => []);
+      const isAlreadyRecorded = Array.isArray(existingExpenses) && existingExpenses.some((e: any) => e.title?.includes(selectedEntryForPay.invoiceNo));
+      if (!isAlreadyRecorded) {
+        await api.expenses.create({
+          title: targetTitle,
+          category_name: 'লোডিং ও খালাস খরচ',
+          amount: Number(payAmount),
+          date: payDate,
+          payment_method: payMethod,
+          bank_account: payMethod === 'Bank' && selBank ? Number(selBank.id) : undefined,
+          notes: `চালান নং: ${selectedEntryForPay.invoiceNo} | গ্রাহক: ${selectedEntryForPay.customerName} | সিমেন্ট: ${selectedEntryForPay.cementBags} বস্তা | সর্দার: ${sardarName || 'লেবার কর্মী'}${payNote ? ` | নোট: ${payNote}` : ''}`
+        }).catch(err => {
+          console.warn('Expense record created with fallback:', err);
+        });
+      }
 
       // 2. Update Invoice Transaction Notes Metadata
       const rawNotes = selectedEntryForPay.rawTx.notes || '';

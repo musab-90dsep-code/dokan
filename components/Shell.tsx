@@ -717,7 +717,15 @@ export function Shell({ children }: { children: ReactNode }) {
 
   const handleSettleShipping = async (item: ShippingChargeItem) => {
     if (isSettlingPayment) return;
+    if (item.status === 'paid' || (item.dueAmount !== undefined && item.dueAmount <= 0)) {
+      setSettlingShipping(null);
+      return;
+    }
     setIsSettlingPayment(true);
+    // Optimistically update drawer state immediately
+    setShippingItems(prev => prev.map(s => s.id === item.id ? { ...s, status: 'paid', dueAmount: 0, paidAmount: item.amount } : s));
+    setSettlingShipping(null);
+
     try {
       const payAmount = item.dueAmount !== undefined ? item.dueAmount : item.amount;
       const t = item.rawTx;
@@ -750,21 +758,25 @@ export function Shell({ children }: { children: ReactNode }) {
         }) + `\n[গাড়ি ভাড়া পরিশোধ] চালান: #${item.invoiceId}`
       }).catch(err => console.warn('Transaction record fallback:', err));
 
-      // 2. Record in expenses table
-      await api.expenses.create({
-        title: `পরিবহন / গাড়ি ভাড়া (চালান #${item.invoiceId})`,
-        category_name: 'পরিবহন খরচ',
-        amount: Number(payAmount),
-        date: format(new Date(), 'yyyy-MM-dd'),
-        payment_method: 'Cash',
-        notes: `চালান নং: ${item.invoiceId} | গাড়ি: ${item.vehicleNo || ''} | ড্রাইভার: ${item.driverName || ''}`
-      }).catch(err => console.warn('Expense record fallback:', err));
+      // 2. Record in expenses table (with duplicate check)
+      const targetTitle = `পরিবহন / গাড়ি ভাড়া (চালান #${item.invoiceId})`;
+      const existingExpenses = await api.expenses.list({ search: item.invoiceId }).catch(() => []);
+      const isAlreadyRecorded = Array.isArray(existingExpenses) && existingExpenses.some((e: any) => e.title?.includes(item.invoiceId));
+      if (!isAlreadyRecorded) {
+        await api.expenses.create({
+          title: targetTitle,
+          category_name: 'পরিবহন খরচ',
+          amount: Number(payAmount),
+          date: format(new Date(), 'yyyy-MM-dd'),
+          payment_method: 'Cash',
+          notes: `চালান নং: ${item.invoiceId} | গাড়ি: ${item.vehicleNo || ''} | ড্রাইভার: ${item.driverName || ''}`
+        }).catch(err => console.warn('Expense record fallback:', err));
+      }
 
       const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
       await api.transactions.update(item.id, { notes: newNotes });
 
       toast.success(`গাড়ি ভাড়া ৳ ${payAmount.toLocaleString('bn-BD')} ক্যাশ থেকে পরিশোধ করা হয়েছে!`);
-      setSettlingShipping(null);
       void loadChequesAndOrders();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('orderUpdated'));
@@ -810,7 +822,15 @@ export function Shell({ children }: { children: ReactNode }) {
 
   const handleSettleLabor = async (item: LaborChargeItem) => {
     if (isSettlingPayment) return;
+    if (item.status === 'paid' || (item.dueAmount !== undefined && item.dueAmount <= 0)) {
+      setSettlingLabor(null);
+      return;
+    }
     setIsSettlingPayment(true);
+    // Optimistically update drawer state immediately
+    setLaborItems(prev => prev.map(l => l.id === item.id ? { ...l, status: 'paid', dueAmount: 0, paidAmount: item.amount } : l));
+    setSettlingLabor(null);
+
     try {
       const payAmount = item.dueAmount !== undefined ? item.dueAmount : item.amount;
       const t = item.rawTx;
@@ -856,23 +876,27 @@ export function Shell({ children }: { children: ReactNode }) {
         }) + `\n[লেবার খরচ পরিশোধ - ${item.type === 'loading' ? 'বিক্রয় সিমেন্ট লোডিং' : 'ক্রয় আনলোডিং'}] চালান: #${item.invoiceId}`
       }).catch(err => console.warn('Transaction record fallback:', err));
 
-      // 2. Also record in expenses table
-      await api.expenses.create({
-        title: item.type === 'loading' ? `বিক্রয় চালান লোডিং চার্জ (চালান #${item.invoiceId})` : `ক্রয় চালান আনলোডিং চার্জ (চালান #${item.invoiceId})`,
-        category_name: 'লোডিং ও খালাস খরচ',
-        amount: Number(payAmount),
-        date: format(new Date(), 'yyyy-MM-dd'),
-        payment_method: 'Cash',
-        notes: item.type === 'loading' 
-          ? `বিক্রয় চালান নং: ${item.invoiceId} | গ্রাহক: ${item.partyName || ''} | সিমেন্ট: ${item.cementBags || 0} বস্তা`
-          : `ক্রয় চালান নং: ${item.invoiceId} | সাপ্লায়ার: ${item.partyName || ''} | স্থান: ${item.unloadingSite || 'প্রধান গুদাম'}`
-      }).catch(err => console.warn('Expense record fallback:', err));
+      // 2. Also record in expenses table (with duplicate check)
+      const targetTitle = item.type === 'loading' ? `বিক্রয় চালান লোডিং চার্জ (চালান #${item.invoiceId})` : `ক্রয় চালান আনলোডিং চার্জ (চালান #${item.invoiceId})`;
+      const existingExpenses = await api.expenses.list({ search: item.invoiceId }).catch(() => []);
+      const isAlreadyRecorded = Array.isArray(existingExpenses) && existingExpenses.some((e: any) => e.title?.includes(item.invoiceId));
+      if (!isAlreadyRecorded) {
+        await api.expenses.create({
+          title: targetTitle,
+          category_name: 'লোডিং ও খালাস খরচ',
+          amount: Number(payAmount),
+          date: format(new Date(), 'yyyy-MM-dd'),
+          payment_method: 'Cash',
+          notes: item.type === 'loading' 
+            ? `বিক্রয় চালান নং: ${item.invoiceId} | গ্রাহক: ${item.partyName || ''} | সিমেন্ট: ${item.cementBags || 0} বস্তা`
+            : `ক্রয় চালান নং: ${item.invoiceId} | সাপ্লায়ার: ${item.partyName || ''} | স্থান: ${item.unloadingSite || 'প্রধান গুদাম'}`
+        }).catch(err => console.warn('Expense record fallback:', err));
+      }
 
       const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
       await api.transactions.update(item.id, { notes: newNotes });
 
       toast.success(`${item.type === 'loading' ? 'সিমেন্ট লোডিং' : 'লেবার'} খরচ ৳ ${payAmount.toLocaleString('bn-BD')} ক্যাশ থেকে পরিশোধ করা হয়েছে!`);
-      setSettlingLabor(null);
       void loadChequesAndOrders();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('orderUpdated'));
