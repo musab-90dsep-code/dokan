@@ -598,21 +598,41 @@ export const SalesInvoiceDetailsView: React.FC<SalesInvoiceDetailsViewProps> = (
                     </span>
                   )}
                 </div>
-                <span className="font-mono font-bold text-slate-900">+ ৳ {toBengaliDigits(shippingCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+                <div className="text-right space-y-0.5">
+                  <span className="font-mono font-bold text-slate-900 block">+ ৳ {toBengaliDigits(shippingCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+                  <span className={cn(
+                    "text-[9px] font-black px-1.5 py-0.2 rounded inline-block",
+                    (meta.salesShippingPaid || meta.shippingPaid) 
+                      ? "bg-emerald-100 text-emerald-800 border border-emerald-200" 
+                      : "bg-blue-100 text-blue-800 border border-blue-200"
+                  )}>
+                    {(meta.salesShippingPaid || meta.shippingPaid) ? 'ড্রয়ার থেকে পরিশোধিত' : 'ড্রয়ারে প্রদেয়'}
+                  </span>
+                </div>
               </div>
             )}
 
             {laborCost > 0 && (
               <div className="flex justify-between items-center">
                 <div className="flex flex-col">
-                  <span className="text-slate-500">আনলোডিং / লেবার চার্জ (রড)</span>
+                  <span className="text-slate-500">লেবার চার্জ (রড লোডিং)</span>
                   {rodLaborRate > 0 && (
                     <span className="text-[10px] text-slate-400 font-normal">
-                      রড: ৳{toBengaliDigits(rodLaborRate)}/কেজি
+                      রড: ৳${toBengaliDigits(rodLaborRate)}/কেজি
                     </span>
                   )}
                 </div>
-                <span className="font-mono font-bold text-slate-900">+ ৳ {toBengaliDigits(laborCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+                <div className="text-right space-y-0.5">
+                  <span className="font-mono font-bold text-slate-900 block">+ ৳ {toBengaliDigits(laborCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
+                  <span className={cn(
+                    "text-[9px] font-black px-1.5 py-0.2 rounded inline-block",
+                    meta.rodLaborPaid 
+                      ? "bg-emerald-100 text-emerald-800 border border-emerald-200" 
+                      : "bg-amber-100 text-amber-800 border border-amber-200"
+                  )}>
+                    {meta.rodLaborPaid ? 'ড্রয়ার থেকে পরিশোধিত' : 'ড্রয়ারে প্রদেয়'}
+                  </span>
+                </div>
               </div>
             )}
 

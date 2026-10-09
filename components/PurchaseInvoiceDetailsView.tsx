@@ -75,6 +75,14 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
   const shippingPayer = (invoice as any).shippingPayer || meta.shippingPayer || 'shop';
   const laborPayer = (invoice as any).laborPayer || meta.laborPayer || 'shop';
 
+  const shippingStatus = meta.shippingStatus || ((invoice as any).shippingStatus) || 'pending';
+  const shippingPaidAmount = Number(meta.shippingPaidAmount !== undefined ? meta.shippingPaidAmount : (shippingStatus === 'paid' ? shippingCost : 0));
+  const isShippingPaid = shippingCost > 0 && (shippingStatus === 'paid' || shippingPaidAmount >= shippingCost);
+
+  const laborStatus = meta.laborStatus || ((invoice as any).laborStatus) || 'pending';
+  const laborPaidAmount = Number(meta.laborPaidAmount !== undefined ? meta.laborPaidAmount : (laborStatus === 'paid' ? laborCost : 0));
+  const isLaborPaid = laborCost > 0 && (laborStatus === 'paid' || laborPaidAmount >= laborCost);
+
   // Freight & Labor Charges Per Unit
   const totalExtra = shippingCost + laborCost;
   const totalQtySum = items.reduce((a: number, i: any) => a + Number(i.quantity || 0), 0);
@@ -562,9 +570,17 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
                   🚚 পরিবহন / গাড়ি ভাড়া{' '}
                   <span className={cn(
                     "text-[10px] px-1 py-0.5 rounded",
-                    shippingPayer === 'supplier' ? "bg-orange-100 text-orange-800 font-bold" : "text-blue-600 font-normal"
+                    shippingPayer === 'supplier' 
+                      ? "bg-orange-100 text-orange-800 font-bold" 
+                      : isShippingPaid
+                        ? "bg-emerald-100 text-emerald-800 font-bold"
+                        : "bg-blue-100 text-blue-800 font-normal"
                   )}>
-                    {shippingPayer === 'supplier' ? '(সাপ্লায়ারের লেজারে যুক্ত)' : '(ট্রাক ভাড়া খাতায় যুক্ত)'}
+                    {shippingPayer === 'supplier' 
+                      ? '(সাপ্লায়ারের লেজারে যুক্ত)' 
+                      : isShippingPaid 
+                        ? '(ড্রয়ার থেকে পরিশোধিত)' 
+                        : '(ট্রাক ভাড়া খাতায় যুক্ত)'}
                   </span>
                 </span>
                 <span className="font-mono font-bold">+ ৳ {toBengaliDigits(shippingCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
@@ -577,9 +593,17 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
                   🏗️ আনলোডিং / লেবার চার্জ{' '}
                   <span className={cn(
                     "text-[10px] px-1 py-0.5 rounded",
-                    laborPayer === 'supplier' ? "bg-orange-100 text-orange-800 font-bold" : "text-amber-600 font-normal"
+                    laborPayer === 'supplier' 
+                      ? "bg-orange-100 text-orange-800 font-bold" 
+                      : isLaborPaid
+                        ? "bg-emerald-100 text-emerald-800 font-bold"
+                        : "bg-amber-100 text-amber-800 font-normal"
                   )}>
-                    {laborPayer === 'supplier' ? '(সাপ্লায়ারের লেজারে যুক্ত)' : '(লেবার খরচ খাতায় যুক্ত)'}
+                    {laborPayer === 'supplier' 
+                      ? '(সাপ্লায়ারের লেজারে যুক্ত)' 
+                      : isLaborPaid 
+                        ? '(ড্রয়ার থেকে পরিশোধিত)' 
+                        : '(লেবার খরচ খাতায় যুক্ত)'}
                   </span>
                 </span>
                 <span className="font-mono font-bold">+ ৳ {toBengaliDigits(laborCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
@@ -633,9 +657,41 @@ export const PurchaseInvoiceDetailsView: React.FC<PurchaseInvoiceDetailsViewProp
             </div>
 
             <div className="flex justify-between items-center">
-              <span className="text-slate-500">পরিশোধিত জমা</span>
+              <span className="text-slate-500">কোম্পানির পণ্যের পরিশোধ</span>
               <span className="font-mono font-bold text-emerald-600">৳ {toBengaliDigits(paidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }))}</span>
             </div>
+
+            {(shippingCost > 0 || laborCost > 0) && (
+              <div className="p-2 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-600 block border-b border-slate-200/60 pb-1">পরিবহন ও লেবার পরিশোধের বিবরণ:</span>
+                {shippingCost > 0 && (
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-slate-600">• গাড়ি ভাড়া (৳ {toBengaliDigits(shippingCost.toLocaleString('en-IN'))}):</span>
+                    <span className={cn(
+                      "font-bold px-1.5 py-0.5 rounded text-[10px]",
+                      shippingPayer === 'supplier' ? "bg-orange-100 text-orange-800" :
+                      isShippingPaid ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                    )}>
+                      {shippingPayer === 'supplier' ? 'সাপ্লায়ার বহন করবে' :
+                       isShippingPaid ? 'পরিশোধিত (ক্যাশ)' : 'ড্রয়ারে প্রদেয় / অপেক্ষমান'}
+                    </span>
+                  </div>
+                )}
+                {laborCost > 0 && (
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-slate-600">• লেবার চার্জ (৳ {toBengaliDigits(laborCost.toLocaleString('en-IN'))}):</span>
+                    <span className={cn(
+                      "font-bold px-1.5 py-0.5 rounded text-[10px]",
+                      laborPayer === 'supplier' ? "bg-orange-100 text-orange-800" :
+                      isLaborPaid ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                    )}>
+                      {laborPayer === 'supplier' ? 'সাপ্লায়ার বহন করবে' :
+                       isLaborPaid ? 'পরিশোধিত (ক্যাশ)' : 'ড্রয়ারে প্রদেয় / অপেক্ষমান'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* SPLIT PAYMENT BREAKDOWN */}
             {isSplit && (

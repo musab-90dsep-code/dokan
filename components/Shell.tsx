@@ -77,9 +77,12 @@ export interface ShippingChargeItem {
   id: string;
   invoiceId: string;
   date: string;
+  type?: 'sale' | 'purchase';
+  partyName?: string;
   vehicleNo?: string;
   driverName?: string;
   driverPhone?: string;
+  deliveryAddress?: string;
   amount: number;
   status: 'pending' | 'paid' | 'partial' | 'overpaid';
   paidAmount?: number;
@@ -92,10 +95,12 @@ export interface LaborChargeItem {
   id: string;
   invoiceId: string;
   date: string;
-  type?: 'loading' | 'unloading';
+  type?: 'loading' | 'unloading' | 'rod_loading';
   partyName?: string;
   cementBags?: number;
   loadingRate?: number;
+  rodKg?: number;
+  rodRate?: number;
   unloadingSite?: string;
   operatorName?: string;
   amount: number;
@@ -606,20 +611,58 @@ export function Shell({ children }: { children: ReactNode }) {
           }
         }
 
-        // 2. SALES TRANSACTIONS (Cement Loading Charges - Shop Payable)
+        // 2. SALES TRANSACTIONS (Shipping, Cement Loading, and Rod Labor)
         // Strictly exclude pending/draft/unapproved invoices
         if (t.transaction_type === 'sale') {
           const rawStatus = String(t.status || meta.status || '').toLowerCase().trim();
           const isPending = rawStatus === 'pending' || rawStatus === 'draft' || rawStatus === 'cancelled' || rawStatus === 'rejected' || rawStatus === 'অপেক্ষমান' || rawStatus === 'বাতিল';
           if (isPending) return;
 
+          const invNo = t.invoice_no || (t.id ? `INV-${t.id}` : 'INV-0001');
+
+          // 2A. Sales Shipping Charges (গাড়ি ভাড়া - ড্রয়ারে যুক্ত হবে)
+          const salesShipCost = Number(tAny.shipping_cost !== undefined ? tAny.shipping_cost : (meta.shippingCost || meta.transportCost || 0));
+          if (salesShipCost > 0) {
+            const isShipPaid = Boolean(meta.salesShippingPaid || meta.shippingPaid || tAny.salesShippingPaid);
+            const shipPaidAmt = Number(meta.salesShippingPaidAmount !== undefined ? meta.salesShippingPaidAmount : (isShipPaid ? salesShipCost : 0));
+
+            const shipDue = Math.max(0, Math.round((salesShipCost - shipPaidAmt) * 100) / 100);
+            const shipOver = Math.max(0, Math.round((shipPaidAmt - salesShipCost) * 100) / 100);
+            let shipStatus: 'pending' | 'paid' | 'partial' | 'overpaid' = 'pending';
+            if (shipDue > 0) {
+              shipStatus = shipPaidAmt > 0 ? 'partial' : 'pending';
+            } else if (shipOver > 0) {
+              shipStatus = 'overpaid';
+            } else {
+              shipStatus = 'paid';
+            }
+
+            sItems.push({
+              id: `sale-ship-${t.id}`,
+              invoiceId: invNo,
+              date: txDate,
+              type: 'sale',
+              partyName: t.party_name || meta.customerName || 'খুচরা গ্রাহক',
+              vehicleNo: tAny.vehicle_no || meta.vehicleNo || '',
+              driverName: tAny.driver_name || meta.driverName || '',
+              driverPhone: tAny.driver_phone || meta.driverPhone || '',
+              deliveryAddress: tAny.delivery_address || meta.deliveryAddress || meta.siteAddress || '',
+              amount: salesShipCost,
+              status: shipStatus,
+              paidAmount: shipPaidAmt,
+              dueAmount: shipDue,
+              overpaidAmount: shipOver,
+              rawTx: t
+            });
+          }
+
+          // 2B. Sales Cement Loading Charges (সিমেন্ট লোডিং খরচ - দোকান প্রদেয়)
           const cementRate = Number(meta.cementLaborRate || tAny.cementLaborRate || 0);
           const cementCost = Number(meta.cementLaborCost || meta.cementLoadingCharge || tAny.cementLaborCost || 0);
           const cementBags = Number(meta.cementTotalBags || tAny.cementTotalBags || 0);
           const totalLoadingCost = cementCost > 0 ? cementCost : (cementRate > 0 && cementBags > 0 ? cementRate * cementBags : 0);
 
           if (totalLoadingCost > 0 || (cementBags > 0 && cementRate > 0)) {
-            const invNo = t.invoice_no || (t.id ? `INV-${t.id}` : 'INV-0001');
             const isPaid = Boolean(meta.cementLoadingPaid || tAny.cementLoadingPaid);
             const loadingPaidAmt = Number(meta.cementLoadingPaidAmount !== undefined ? meta.cementLoadingPaidAmount : (isPaid ? totalLoadingCost : 0));
 
@@ -635,7 +678,7 @@ export function Shell({ children }: { children: ReactNode }) {
             }
 
             lItems.push({
-              id: String(t.id),
+              id: `sale-cement-${t.id}`,
               invoiceId: invNo,
               date: txDate,
               type: 'loading',
@@ -647,6 +690,46 @@ export function Shell({ children }: { children: ReactNode }) {
               amount: totalLoadingCost,
               status: labStatus,
               paidAmount: loadingPaidAmt,
+              dueAmount: labDue,
+              overpaidAmount: labOver,
+              rawTx: t
+            });
+          }
+
+          // 2C. Sales Rod & Ring Labor Charges (রড ও রিং লোডিং খরচ - ড্রয়ারে যুক্ত হবে)
+          const rodRate = Number(meta.rodLaborRate || tAny.rodLaborRate || 0);
+          const rodKg = Number(meta.rodRingTotalKg || tAny.rodRingTotalKg || 0);
+          const rodLaborCost = Number(meta.rodLaborCost !== undefined ? meta.rodLaborCost : (meta.chargeCalcMode === 'rate' ? rodRate * rodKg : (meta.laborCost || 0)));
+          const totalRodCost = rodLaborCost > 0 ? rodLaborCost : (rodRate * rodKg);
+
+          if (totalRodCost > 0 || (rodRate > 0 && rodKg > 0)) {
+            const isRodPaid = Boolean(meta.rodLaborPaid || tAny.rodLaborPaid);
+            const rodPaidAmt = Number(meta.rodLaborPaidAmount !== undefined ? meta.rodLaborPaidAmount : (isRodPaid ? totalRodCost : 0));
+
+            const labDue = Math.max(0, Math.round((totalRodCost - rodPaidAmt) * 100) / 100);
+            const labOver = Math.max(0, Math.round((rodPaidAmt - totalRodCost) * 100) / 100);
+            let labStatus: 'pending' | 'paid' | 'partial' | 'overpaid' = 'pending';
+            if (labDue > 0) {
+              labStatus = rodPaidAmt > 0 ? 'partial' : 'pending';
+            } else if (labOver > 0) {
+              labStatus = 'overpaid';
+            } else {
+              labStatus = 'paid';
+            }
+
+            lItems.push({
+              id: `sale-rod-${t.id}`,
+              invoiceId: invNo,
+              date: txDate,
+              type: 'rod_loading',
+              partyName: t.party_name || meta.customerName || 'খুচরা গ্রাহক',
+              rodKg: rodKg > 0 ? rodKg : undefined,
+              rodRate: rodRate > 0 ? rodRate : undefined,
+              unloadingSite: tAny.delivery_address || meta.deliveryAddress || meta.siteAddress || 'গ্রাহকের সাইট / ডেলিভারি',
+              operatorName: meta.rodLaborSardar || meta.preparedBy || meta.operatorName || '',
+              amount: totalRodCost,
+              status: labStatus,
+              paidAmount: rodPaidAmt,
               dueAmount: labDue,
               overpaidAmount: labOver,
               rawTx: t
@@ -738,12 +821,25 @@ export function Shell({ children }: { children: ReactNode }) {
           userNote = userNote.substring(firstLine.length).trim();
         } catch {}
       }
-      meta.shippingStatus = 'paid';
-      meta.shippingPaidAmount = item.amount;
+
+      const isSale = item.type === 'sale' || t?.transaction_type === 'sale';
+
+      if (isSale) {
+        meta.salesShippingPaid = true;
+        meta.salesShippingPaidAmount = item.amount;
+        meta.salesShippingPaidAt = new Date().toISOString();
+        meta.salesShippingPaidMethod = 'নগদ';
+        meta.shippingPaid = true;
+        meta.shippingPaidAmount = item.amount;
+        meta.shippingStatus = 'paid';
+      } else {
+        meta.shippingStatus = 'paid';
+        meta.shippingPaidAmount = item.amount;
+      }
 
       // 1. Record payment_out transaction so Cash balance and Transactions list are debited
       await api.transactions.create({
-        party_name: `গাড়ি ভাড়া (${item.driverName || item.vehicleNo || 'পরিবহন'})`,
+        party_name: `গাড়ি ভাড়া (${item.driverName || item.vehicleNo || (isSale ? 'বিক্রয় পরিবহন' : 'ক্রয় পরিবহন')})`,
         transaction_type: 'payment_out',
         total_amount: Number(payAmount),
         paid_amount: Number(payAmount),
@@ -754,14 +850,19 @@ export function Shell({ children }: { children: ReactNode }) {
           expenseCategory: 'পরিবহন খরচ',
           invoiceId: item.invoiceId,
           invoiceNo: item.invoiceId,
-          isShippingExpense: true
-        }) + `\n[গাড়ি ভাড়া পরিশোধ] চালান: #${item.invoiceId}`
+          isShippingExpense: true,
+          isSalesShipping: isSale
+        }) + `\n[${isSale ? 'বিক্রয়' : 'ক্রয়'} গাড়ি ভাড়া পরিশোধ] চালান: #${item.invoiceId}`
       }).catch(err => console.warn('Transaction record fallback:', err));
 
-      // 2. Record in expenses table (with duplicate check)
-      const targetTitle = `পরিবহন / গাড়ি ভাড়া (চালান #${item.invoiceId})`;
+      // 2. Record in expenses table (with duplicate check specifically for transport/shipping)
+      const targetTitle = isSale
+        ? `বিক্রয় চালান পরিবহন / গাড়ি ভাড়া (চালান #${item.invoiceId})`
+        : `পরিবহন / গাড়ি ভাড়া (চালান #${item.invoiceId})`;
       const existingExpenses = await api.expenses.list({ search: item.invoiceId }).catch(() => []);
-      const isAlreadyRecorded = Array.isArray(existingExpenses) && existingExpenses.some((e: any) => e.title?.includes(item.invoiceId));
+      const isAlreadyRecorded = Array.isArray(existingExpenses) && existingExpenses.some((e: any) => 
+        e.title?.includes(item.invoiceId) && (e.title?.includes('পরিবহন') || e.title?.includes('গাড়ি ভাড়া') || e.title?.includes('ভাড়া'))
+      );
       if (!isAlreadyRecorded) {
         await api.expenses.create({
           title: targetTitle,
@@ -769,12 +870,15 @@ export function Shell({ children }: { children: ReactNode }) {
           amount: Number(payAmount),
           date: format(new Date(), 'yyyy-MM-dd'),
           payment_method: 'Cash',
-          notes: `চালান নং: ${item.invoiceId} | গাড়ি: ${item.vehicleNo || ''} | ড্রাইভার: ${item.driverName || ''}`
+          notes: isSale
+            ? `বিক্রয় চালান নং: ${item.invoiceId} | গ্রাহক: ${item.partyName || ''} | গাড়ি: ${item.vehicleNo || ''} | ড্রাইভার: ${item.driverName || ''}`
+            : `চালান নং: ${item.invoiceId} | গাড়ি: ${item.vehicleNo || ''} | ড্রাইভার: ${item.driverName || ''}`
         }).catch(err => console.warn('Expense record fallback:', err));
       }
 
       const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
-      await api.transactions.update(item.id, { notes: newNotes });
+      const txId = item.rawTx?.id || item.id;
+      await api.transactions.update(txId, { notes: newNotes });
 
       toast.success(`গাড়ি ভাড়া ৳ ${payAmount.toLocaleString('bn-BD')} ক্যাশ থেকে পরিশোধ করা হয়েছে!`);
       void loadChequesAndOrders();
@@ -802,11 +906,22 @@ export function Shell({ children }: { children: ReactNode }) {
           userNote = userNote.substring(firstLine.length).trim();
         } catch {}
       }
-      meta.shippingStatus = 'paid';
-      meta.shippingPaidAmount = item.amount;
+
+      const isSale = item.type === 'sale' || t?.transaction_type === 'sale';
+      if (isSale) {
+        meta.salesShippingPaid = true;
+        meta.salesShippingPaidAmount = item.amount;
+        meta.shippingPaid = true;
+        meta.shippingPaidAmount = item.amount;
+        meta.shippingStatus = 'paid';
+      } else {
+        meta.shippingStatus = 'paid';
+        meta.shippingPaidAmount = item.amount;
+      }
 
       const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
-      await api.transactions.update(item.id, { notes: newNotes });
+      const txId = item.rawTx?.id || item.id;
+      await api.transactions.update(txId, { notes: newNotes });
 
       toast.success(`অতিরিক্ত গাড়ি ভাড়া ৳ ${refundAmount.toLocaleString('bn-BD')} সফলভাবে ERP-তে সমন্বয় করা হয়েছে!`);
       setSettlingShipping(null);
@@ -849,16 +964,31 @@ export function Shell({ children }: { children: ReactNode }) {
         meta.cementLoadingPaidAmount = item.amount;
         meta.cementLoadingPaidAt = new Date().toISOString();
         meta.cementLoadingPaidMethod = 'নগদ';
+      } else if (item.type === 'rod_loading') {
+        meta.rodLaborPaid = true;
+        meta.rodLaborPaidAmount = item.amount;
+        meta.rodLaborPaidAt = new Date().toISOString();
+        meta.rodLaborPaidMethod = 'নগদ';
       } else {
         meta.laborStatus = 'paid';
         meta.laborPaidAmount = item.amount;
       }
 
+      const partyLabel = item.type === 'loading'
+        ? `লোডিং লেবার বিল (${item.partyName || 'বিক্রয় সিমেন্ট'})`
+        : item.type === 'rod_loading'
+        ? `রড লোডিং লেবার বিল (${item.partyName || 'বিক্রয় রড'})`
+        : `আনলোডিং লেবার বিল (${item.partyName || 'ক্রয়'})`;
+
+      const typeLabel = item.type === 'loading'
+        ? 'বিক্রয় সিমেন্ট লোডিং'
+        : item.type === 'rod_loading'
+        ? 'বিক্রয় রড লোডিং'
+        : 'ক্রয় আনলোডিং';
+
       // 1. Record payment_out transaction so Cash balance and Transactions list immediately deduct cash (ক্যাশ থেকে আউট)
       await api.transactions.create({
-        party_name: item.type === 'loading' 
-          ? `লোডিং লেবার বিল (${item.partyName || 'বিক্রয়'})` 
-          : `আনলোডিং লেবার বিল (${item.partyName || 'ক্রয়'})`,
+        party_name: partyLabel,
         transaction_type: 'payment_out',
         total_amount: Number(payAmount),
         paid_amount: Number(payAmount),
@@ -872,14 +1002,29 @@ export function Shell({ children }: { children: ReactNode }) {
           type: item.type,
           cementBags: item.cementBags,
           loadingRate: item.loadingRate,
+          rodKg: item.rodKg,
+          rodRate: item.rodRate,
           isLaborExpense: true
-        }) + `\n[লেবার খরচ পরিশোধ - ${item.type === 'loading' ? 'বিক্রয় সিমেন্ট লোডিং' : 'ক্রয় আনলোডিং'}] চালান: #${item.invoiceId}`
+        }) + `\n[লেবার খরচ পরিশোধ - ${typeLabel}] চালান: #${item.invoiceId}`
       }).catch(err => console.warn('Transaction record fallback:', err));
 
-      // 2. Also record in expenses table (with duplicate check)
-      const targetTitle = item.type === 'loading' ? `বিক্রয় চালান লোডিং চার্জ (চালান #${item.invoiceId})` : `ক্রয় চালান আনলোডিং চার্জ (চালান #${item.invoiceId})`;
+      // 2. Also record in expenses table (with duplicate check specifically for labor/loading/unloading)
+      const targetTitle = item.type === 'loading' 
+        ? `বিক্রয় চালান লোডিং চার্জ (চালান #${item.invoiceId})`
+        : item.type === 'rod_loading'
+        ? `বিক্রয় চালান রড লোডিং চার্জ (চালান #${item.invoiceId})`
+        : `ক্রয় চালান আনলোডিং চার্জ (চালান #${item.invoiceId})`;
+
       const existingExpenses = await api.expenses.list({ search: item.invoiceId }).catch(() => []);
-      const isAlreadyRecorded = Array.isArray(existingExpenses) && existingExpenses.some((e: any) => e.title?.includes(item.invoiceId));
+      const isAlreadyRecorded = Array.isArray(existingExpenses) && existingExpenses.some((e: any) => 
+        e.title?.includes(item.invoiceId) && (
+          item.type === 'loading' 
+            ? (e.title?.includes('লোডিং') && (e.title?.includes('সিমেন্ট') || !e.title?.includes('রড')))
+            : item.type === 'rod_loading'
+            ? (e.title?.includes('রড') || (e.title?.includes('লোডিং') && e.title?.includes('রড')))
+            : (e.title?.includes('আনলোডিং') || e.title?.includes('ক্রয় চালান') || e.title?.includes('লেবার'))
+        )
+      );
       if (!isAlreadyRecorded) {
         await api.expenses.create({
           title: targetTitle,
@@ -889,14 +1034,17 @@ export function Shell({ children }: { children: ReactNode }) {
           payment_method: 'Cash',
           notes: item.type === 'loading' 
             ? `বিক্রয় চালান নং: ${item.invoiceId} | গ্রাহক: ${item.partyName || ''} | সিমেন্ট: ${item.cementBags || 0} বস্তা`
+            : item.type === 'rod_loading'
+            ? `বিক্রয় চালান নং: ${item.invoiceId} | গ্রাহক: ${item.partyName || ''} | রড ও রিং: ${item.rodKg || 0} কেজি (@ ৳${item.rodRate || 0}/কেজি)`
             : `ক্রয় চালান নং: ${item.invoiceId} | সাপ্লায়ার: ${item.partyName || ''} | স্থান: ${item.unloadingSite || 'প্রধান গুদাম'}`
         }).catch(err => console.warn('Expense record fallback:', err));
       }
 
       const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
-      await api.transactions.update(item.id, { notes: newNotes });
+      const txId = item.rawTx?.id || item.id;
+      await api.transactions.update(txId, { notes: newNotes });
 
-      toast.success(`${item.type === 'loading' ? 'সিমেন্ট লোডিং' : 'লেবার'} খরচ ৳ ${payAmount.toLocaleString('bn-BD')} ক্যাশ থেকে পরিশোধ করা হয়েছে!`);
+      toast.success(`${item.type === 'loading' ? 'সিমেন্ট লোডিং' : item.type === 'rod_loading' ? 'রড লোডিং' : 'লেবার'} খরচ ৳ ${payAmount.toLocaleString('bn-BD')} ক্যাশ থেকে পরিশোধ করা হয়েছে!`);
       void loadChequesAndOrders();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('orderUpdated'));
@@ -926,13 +1074,17 @@ export function Shell({ children }: { children: ReactNode }) {
       if (item.type === 'loading') {
         meta.cementLoadingPaid = true;
         meta.cementLoadingPaidAmount = item.amount;
+      } else if (item.type === 'rod_loading') {
+        meta.rodLaborPaid = true;
+        meta.rodLaborPaidAmount = item.amount;
       } else {
         meta.laborStatus = 'paid';
         meta.laborPaidAmount = item.amount;
       }
 
       const newNotes = JSON.stringify(meta) + (userNote ? `\n${userNote}` : '');
-      await api.transactions.update(item.id, { notes: newNotes });
+      const txId = item.rawTx?.id || item.id;
+      await api.transactions.update(txId, { notes: newNotes });
 
       toast.success(`অতিরিক্ত লেবার খরচ ৳ ${refundAmount.toLocaleString('bn-BD')} সফলভাবে ERP-তে সমন্বয় করা হয়েছে!`);
       setSettlingLabor(null);
@@ -1665,7 +1817,7 @@ export function Shell({ children }: { children: ReactNode }) {
                     <h3 className="font-bold text-lg text-white flex items-center gap-2">
                       গাড়ি ভাড়া খাতা <span className="text-xs font-normal text-blue-400">(পরিবহন খরচ)</span>
                     </h3>
-                    <p className="text-xs text-slate-400">ক্রয় ইনভয়েসের ড্রাইভার ও গাড়ি ভাড়ার হিসাব</p>
+                    <p className="text-xs text-slate-400">ক্রয় ও বিক্রয় চালানের ড্রাইভার ও গাড়ি ভাড়ার হিসাব</p>
                   </div>
                 </div>
                 <button
@@ -1732,13 +1884,32 @@ export function Shell({ children }: { children: ReactNode }) {
                             <span className="font-mono text-xs font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-md border border-blue-500/20">
                               #{item.invoiceId}
                             </span>
+                            {item.type === 'sale' ? (
+                              <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-md border border-emerald-500/30">
+                                🚚 বিক্রয় চালান
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-md border border-blue-500/30">
+                                🏗️ ক্রয় চালান
+                              </span>
+                            )}
                             <span className="text-xs text-slate-400 font-sans">
                               {formatBnDate(item.date, 'dd/MM/yyyy')}
                             </span>
                           </div>
-                          <p className="font-bold text-slate-200 text-sm mt-1">
+                          {item.type === 'sale' && item.partyName && (
+                            <p className="text-xs text-slate-300 mt-1">
+                              গ্রাহক: <strong className="text-white">{item.partyName}</strong>
+                            </p>
+                          )}
+                          <p className="font-bold text-slate-200 text-sm mt-0.5">
                             গাড়ি নং: <span className="text-white">{item.vehicleNo || '—'}</span>
                           </p>
+                          {item.deliveryAddress && (
+                            <p className="text-[11px] text-slate-400 truncate max-w-[280px]">
+                              স্থান: {item.deliveryAddress}
+                            </p>
+                          )}
                         </div>
                         <div className="text-right">
                           <p className="text-base font-black text-amber-400">
@@ -1833,7 +2004,7 @@ export function Shell({ children }: { children: ReactNode }) {
                     <h3 className="font-bold text-lg text-white flex items-center gap-2">
                       লেবার খরচ খাতা <span className="text-xs font-normal text-amber-400">(লোডিং ও আনলোডিং মজুরি)</span>
                     </h3>
-                    <p className="text-xs text-slate-400">ক্রয় আনলোডিং ও বিক্রয় সিমেন্ট লোডিং লেবার মজুরির হিসাব</p>
+                    <p className="text-xs text-slate-400">ক্রয় আনলোডিং ও বিক্রয় লোডিং (সিমেন্ট ও রড) লেবার মজুরির হিসাব</p>
                   </div>
                 </div>
                 <button
@@ -1904,6 +2075,10 @@ export function Shell({ children }: { children: ReactNode }) {
                               <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-md border border-amber-500/30">
                                 🚚 বিক্রয় লোডিং (সিমেন্ট)
                               </span>
+                            ) : item.type === 'rod_loading' ? (
+                              <span className="text-[10px] font-bold bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-md border border-sky-500/30">
+                                🔹 বিক্রয় লোডিং (রড)
+                              </span>
                             ) : (
                               <span className="text-[10px] font-bold bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-md border border-blue-500/30">
                                 🏗️ ক্রয় আনলোডিং
@@ -1922,6 +2097,20 @@ export function Shell({ children }: { children: ReactNode }) {
                               {item.cementBags ? (
                                 <p className="text-slate-300">
                                   সিমেন্ট পরিমাণ: <strong className="text-amber-300 font-mono">{toBnDigits(item.cementBags)} বস্তা</strong> {item.loadingRate ? `(@ ৳${toBnDigits(item.loadingRate)}/বস্তা)` : ''}
+                                </p>
+                              ) : null}
+                              {item.unloadingSite && (
+                                <p className="text-slate-400 text-[11px]">ডেলিভারি ঠিকানা: {item.unloadingSite}</p>
+                              )}
+                            </div>
+                          ) : item.type === 'rod_loading' ? (
+                            <div className="text-xs space-y-0.5 mt-1.5">
+                              <p className="text-slate-300">
+                                গ্রাহক: <strong className="text-white">{item.partyName || 'খুচরা গ্রাহক'}</strong>
+                              </p>
+                              {item.rodKg ? (
+                                <p className="text-slate-300">
+                                  রড ও রিং ওজন: <strong className="text-sky-300 font-mono">{toBnDigits(item.rodKg)} কেজি</strong> {item.rodRate ? `(@ ৳${toBnDigits(item.rodRate)}/কেজি)` : ''}
                                 </p>
                               ) : null}
                               {item.unloadingSite && (
@@ -1973,7 +2162,7 @@ export function Shell({ children }: { children: ReactNode }) {
                             onClick={() => setSettlingLabor(item)}
                             className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-4 rounded-xl shadow-md cursor-pointer"
                           >
-                            বাকি ৳ {(item.dueAmount || 0).toLocaleString('bn-BD')} {item.type === 'loading' ? 'লোডিং' : 'লেবার'} খরচ পরিশোধ করুন
+                            বাকি ৳ {(item.dueAmount || 0).toLocaleString('bn-BD')} {item.type === 'loading' ? 'লোডিং' : item.type === 'rod_loading' ? 'রড লেবার' : 'লেবার'} খরচ পরিশোধ করুন
                           </Button>
                         </div>
                       )}
@@ -2012,10 +2201,18 @@ export function Shell({ children }: { children: ReactNode }) {
                 </div>
                 <div>
                   <h3 className="font-bold text-base text-white">
-                    {(settlingShipping.overpaidAmount || 0) > 0 ? 'অতিরিক্ত গাড়ি ভাড়া সমন্বয়' : 'গাড়ি ভাড়া পরিশোধ নিশ্চিতকরণ'}
+                    {(settlingShipping.overpaidAmount || 0) > 0 
+                      ? 'অতিরিক্ত গাড়ি ভাড়া সমন্বয়' 
+                      : settlingShipping.type === 'sale'
+                      ? 'বিক্রয় গাড়ি ভাড়া পরিশোধ নিশ্চিতকরণ'
+                      : 'গাড়ি ভাড়া পরিশোধ নিশ্চিতকরণ'}
                   </h3>
                   <p className="text-xs text-slate-400">
-                    {(settlingShipping.overpaidAmount || 0) > 0 ? 'খরচ কমানোর ফলে অতিরিক্ত টাকা ERP-তে সমন্বয় করুন' : 'বকেয়া গাড়ি ভাড়া পরিশোধ সম্পন্ন করুন'}
+                    {(settlingShipping.overpaidAmount || 0) > 0 
+                      ? 'খরচ কমানোর ফলে অতিরিক্ত টাকা ERP-তে সমন্বয় করুন' 
+                      : settlingShipping.type === 'sale'
+                      ? 'বিক্রয় চালানের ড্রাইভার ও গাড়ি ভাড়া ক্যাশ থেকে পরিশোধ সম্পন্ন করুন'
+                      : 'বকেয়া গাড়ি ভাড়া পরিশোধ সম্পন্ন করুন'}
                   </p>
                 </div>
               </div>
@@ -2025,6 +2222,12 @@ export function Shell({ children }: { children: ReactNode }) {
                   <span className="text-slate-400">ইনভয়েস নং:</span>
                   <span className="font-bold text-white">#{settlingShipping.invoiceId}</span>
                 </div>
+                {settlingShipping.type === 'sale' && settlingShipping.partyName && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">গ্রাহক:</span>
+                    <span className="font-bold text-slate-200">{settlingShipping.partyName}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-slate-400">গাড়ি / ড্রাইভার:</span>
                   <span className="font-bold text-slate-200">{settlingShipping.vehicleNo || settlingShipping.driverName || '—'}</span>
@@ -2099,11 +2302,15 @@ export function Shell({ children }: { children: ReactNode }) {
                   <h3 className="font-bold text-base text-white">
                     {(settlingLabor.overpaidAmount || 0) > 0 
                       ? 'অতিরিক্ত খরচ সমন্বয়' 
+                      : settlingLabor.type === 'rod_loading'
+                      ? 'বিক্রয় রড লোডিং খরচ পরিশোধ'
                       : (settlingLabor.type === 'loading' ? 'বিক্রয় লোডিং খরচ পরিশোধ' : 'ক্রয় লেবার খরচ পরিশোধ')}
                   </h3>
                   <p className="text-xs text-slate-400">
                     {(settlingLabor.overpaidAmount || 0) > 0 
                       ? 'খরচ কমানোর ফলে অতিরিক্ত টাকা ERP-তে সমন্বয় করুন' 
+                      : settlingLabor.type === 'rod_loading'
+                      ? 'বিক্রয় চালানের রড ও রিং লোডিং লেবার মজুরি ক্যাশ থেকে পরিশোধ করুন'
                       : (settlingLabor.type === 'loading' ? 'বিক্রয় চালানের সিমেন্ট লোডিং খরচ পরিশোধ করুন' : 'বকেয়া আনলোডিং লেবার মজুরি পরিশোধ করুন')}
                   </p>
                 </div>
@@ -2124,6 +2331,19 @@ export function Shell({ children }: { children: ReactNode }) {
                       <div className="flex justify-between">
                         <span className="text-slate-400">সিমেন্ট পরিমাণ:</span>
                         <span className="font-bold text-amber-300 font-mono">{toBnDigits(settlingLabor.cementBags)} বস্তা</span>
+                      </div>
+                    )}
+                  </>
+                ) : settlingLabor.type === 'rod_loading' ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">গ্রাহকের নাম:</span>
+                      <span className="font-bold text-slate-200">{settlingLabor.partyName || 'খুচরা গ্রাহক'}</span>
+                    </div>
+                    {settlingLabor.rodKg && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">রড ও রিং ওজন:</span>
+                        <span className="font-bold text-sky-300 font-mono">{toBnDigits(settlingLabor.rodKg)} কেজি {settlingLabor.rodRate ? `(@ ৳${toBnDigits(settlingLabor.rodRate)}/কেজি)` : ''}</span>
                       </div>
                     )}
                   </>
