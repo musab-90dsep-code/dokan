@@ -264,6 +264,7 @@ function MasterReportsContent() {
   const [banks, setBanks] = useState<Bank[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [commissions, setCommissions] = useState<Commission[]>([]);
+  const [hawlats, setHawlats] = useState<{ id: string; personName: string; amount: number; note?: string; date?: string }[]>([]);
   const [totalCash, setTotalCash] = useState<number>(0);
   const [initialCapital, setInitialCapital] = useState<number>(10000000);
   const [isEditingCapital, setIsEditingCapital] = useState<boolean>(false);
@@ -559,6 +560,21 @@ function MasterReportsContent() {
         status: 'পরিশোধিত',
         createdAt: e.date
       })));
+
+      // Fetch active Hawlats for Balance Sheet assets
+      try {
+        const hawlatList = await api.hawlats.list();
+        const safeHawlatList = Array.isArray(hawlatList) ? hawlatList : [];
+        setHawlats(safeHawlatList.filter(h => !h.is_settled).map(h => ({
+          id: String(h.id),
+          personName: h.person_name || 'সাধারণ ব্যক্তি',
+          amount: Number(h.amount || 0),
+          note: h.note || '',
+          date: h.date || ''
+        })));
+      } catch (err) {
+        console.error('Error fetching hawlats in reports:', err);
+      }
 
       // Real Cash Balance from dashboard or transactions
       try {
@@ -4164,7 +4180,8 @@ ${cementBlockLines.join('\n')}
               const customersWithAdvance = customers.filter(c => (c.advanceBalance || 0) > 0);
               const totalCustAdvance = customersWithAdvance.reduce((sum, c) => sum + (c.advanceBalance || 0), 0);
 
-              const totalAssets = rodStockVal + cementStockVal + ringStockVal + otherStockVal + totalCash + totalBankBal + totalCustDue;
+              const totalHawlatVal = hawlats.reduce((sum, h) => sum + (h.amount || 0), 0);
+              const totalAssets = rodStockVal + cementStockVal + ringStockVal + otherStockVal + totalCash + totalBankBal + totalCustDue + totalHawlatVal;
 
               const suppliersWithDue = suppliers.filter(s => (s.totalDue || 0) > 0);
               const totalSuppDue = suppliersWithDue.reduce((sum, s) => sum + (s.totalDue || 0), 0);
@@ -4246,7 +4263,7 @@ ${cementBlockLines.join('\n')}
                     <Card className="p-4 border-emerald-200 bg-gradient-to-br from-emerald-50/90 to-teal-50/40 rounded-2xl shadow-xs">
                       <p className="text-xs font-bold text-emerald-800">মোট সম্পদ (Total Assets)</p>
                       <p className="text-2xl font-black text-emerald-700 mt-1">{formatBnCurrency(totalAssets)}</p>
-                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">স্টক + ক্যাশ + ব্যাংক + বাকী</p>
+                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">স্টক + ক্যাশ + ব্যাংক + বাকী + হাওলাত</p>
                     </Card>
 
                     <Card className="p-4 border-rose-200 bg-gradient-to-br from-rose-50/90 to-red-50/40 rounded-2xl shadow-xs">
@@ -4462,6 +4479,18 @@ ${cementBlockLines.join('\n')}
                               {formatBnNumber(totalCustDue)}
                             </td>
                           </tr>
+
+                          {/* 8. হাওলাত সমূহ */}
+                          {hawlats.map((h) => (
+                            <tr key={h.id} style={{ pageBreakInside: 'avoid' }}>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                                {h.personName} -
+                              </td>
+                              <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                                {formatBnNumber(h.amount)}
+                              </td>
+                            </tr>
+                          ))}
 
                           {/* 9. মোট সম্পদ সাবটোটাল */}
                           <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>
@@ -4839,6 +4868,18 @@ ${cementBlockLines.join('\n')}
                             {formatBnNumber(totalCustDue)}
                           </td>
                         </tr>
+
+                        {/* 8. হাওলাত সমূহ */}
+                        {hawlats.map((h) => (
+                          <tr key={`print_${h.id}`} style={{ pageBreakInside: 'avoid' }}>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'left', fontWeight: 700, fontSize: '14px' }}>
+                              {h.personName} -
+                            </td>
+                            <td style={{ border: '1.5px solid #000000', padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
+                              {formatBnNumber(h.amount)}
+                            </td>
+                          </tr>
+                        ))}
 
                         {/* 9. মোট সম্পদ সাবটোটাল */}
                         <tr style={{ pageBreakInside: 'avoid', fontWeight: 900 }}>

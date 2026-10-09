@@ -892,9 +892,12 @@ function InvoicesContent() {
   const cartTotalAmount = round2(Math.max(0, cartSubtotal - cartTotalDiscount + (shippingCost || 0) + (laborCost || 0)));
 
   // Total Paid considering Split payment or single payment
-  const totalReceivedPayment = round2((cashPaidAmount > 0 || chequePaidAmount > 0)
-    ? ((cashPaidAmount || 0) + (chequePaidAmount || 0))
-    : (invoicePaidAmount || 0));
+  const isSplitPayment = invoicePaymentMethod === 'Split';
+  const totalReceivedPayment = round2(paymentOption === 'later'
+    ? 0
+    : (isSplitPayment
+      ? ((cashPaidAmount || 0) + (chequePaidAmount || 0))
+      : (invoicePaidAmount || 0)));
 
   const cartDueAmount = round2(paymentOption === 'now' ? Math.max(0, cartTotalAmount - totalReceivedPayment) : cartTotalAmount);
 
@@ -1017,21 +1020,30 @@ function InvoicesContent() {
     }
     setEditingInvoiceMeta(rawMeta);
 
+    const currentMethod = inv.paymentMethod || rawMeta.paymentMethodName || 'Cash';
+    setInvoicePaymentMethod(currentMethod);
+
     const paidAmt = Number(inv.paidAmount || 0);
     if (paidAmt > 0) {
       setPaymentOption('now');
       setInvoicePaidAmountInput(formatDecimalInput(String(paidAmt)));
+      if (currentMethod === 'Split') {
+        setCashPaidAmountInput((inv as any).cashAmount || (inv as any).cashPaidAmount || rawMeta.cashPaidAmount ? formatDecimalInput(String((inv as any).cashAmount || (inv as any).cashPaidAmount || rawMeta.cashPaidAmount)) : '');
+        setChequePaidAmountInput((inv as any).chequeAmount || (inv as any).chequePaidAmount || rawMeta.chequePaidAmount ? formatDecimalInput(String((inv as any).chequeAmount || (inv as any).chequePaidAmount || rawMeta.chequePaidAmount)) : '');
+      } else {
+        setCashPaidAmountInput('');
+        setChequePaidAmountInput('');
+      }
     } else {
       setPaymentOption('later');
       setInvoicePaidAmountInput('');
+      setCashPaidAmountInput('');
+      setChequePaidAmountInput('');
     }
 
-    setCashPaidAmountInput((inv as any).cashAmount || (inv as any).cashPaidAmount || rawMeta.cashPaidAmount ? formatDecimalInput(String((inv as any).cashAmount || (inv as any).cashPaidAmount || rawMeta.cashPaidAmount)) : '');
-    setChequePaidAmountInput((inv as any).chequeAmount || (inv as any).chequePaidAmount || rawMeta.chequePaidAmount ? formatDecimalInput(String((inv as any).chequeAmount || (inv as any).chequePaidAmount || rawMeta.chequePaidAmount)) : '');
     setBankName((inv as any).bankName || rawMeta.bankName || '');
     setChequeNo((inv as any).chequeNo || rawMeta.chequeNo || '');
     setChequeDate((inv as any).chequeDate || rawMeta.chequeDate || '');
-    setInvoicePaymentMethod(inv.paymentMethod || rawMeta.paymentMethodName || 'Cash');
     setInvoiceNote(inv.note || rawMeta.userNote || '');
     
     // Vehicle Fare (Flat carriage) & Labor
@@ -1131,12 +1143,13 @@ function InvoicesContent() {
         finalCustId = String(createdParty.id);
       }
 
+      const isSplitPayment = invoicePaymentMethod === 'Split';
       const finalPaidAmount = paymentOption === 'now' 
-        ? ((cashPaidAmount || 0) + (chequePaidAmount || 0) > 0 ? ((cashPaidAmount || 0) + (chequePaidAmount || 0)) : (invoicePaidAmount || 0))
+        ? (isSplitPayment ? round2((cashPaidAmount || 0) + (chequePaidAmount || 0)) : round2(invoicePaidAmount || 0))
         : 0;
 
       let effectivePaymentMethod = 'cash';
-      if ((cashPaidAmount || 0) > 0 && (chequePaidAmount || 0) > 0) {
+      if (isSplitPayment) {
         effectivePaymentMethod = 'split';
       } else {
         const pmLower = (invoicePaymentMethod || 'cash').toLowerCase();
@@ -1222,8 +1235,8 @@ function InvoicesContent() {
         senderTxnRef: senderTxnRef || '',
         chequeNo: chequeNo || '',
         chequeDate: chequeDate || '',
-        cashPaidAmount: finalPaidAmount > 0 ? Number(cashPaidAmount || 0) : 0,
-        chequePaidAmount: finalPaidAmount > 0 ? Number(chequePaidAmount || 0) : 0,
+        cashPaidAmount: finalPaidAmount > 0 ? (isSplitPayment ? Number(cashPaidAmount || 0) : (invoicePaymentMethod === 'Cash' ? Number(finalPaidAmount || 0) : 0)) : 0,
+        chequePaidAmount: finalPaidAmount > 0 ? (isSplitPayment ? Number(chequePaidAmount || 0) : (invoicePaymentMethod === 'Cheque' ? Number(finalPaidAmount || 0) : 0)) : 0,
         previousBalance: selectedCustomer ? Number((selectedCustomer as any).totalDue || (selectedCustomer as any).due || (selectedCustomer as any).balance || (selectedCustomer as any).previousDue || (selectedCustomer as any).openingBalance || 0) : 0,
         engineerId: selectedEngineer ? String(selectedEngineer.id) : '',
         engineerName: selectedEngineer ? selectedEngineer.name : '',
@@ -2775,7 +2788,12 @@ function InvoicesContent() {
                             type="radio" 
                             name="paymentOption" 
                             checked={paymentOption === 'later'}
-                            onChange={() => setPaymentOption('later')}
+                            onChange={() => {
+                              setPaymentOption('later');
+                              setInvoicePaidAmountInput('');
+                              setCashPaidAmountInput('');
+                              setChequePaidAmountInput('');
+                            }}
                             className="accent-emerald-600"
                           />
                           <span>○ পরে পেমেন্ট রেকর্ড করবেন</span>
@@ -2788,7 +2806,14 @@ function InvoicesContent() {
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                               <div className="space-y-1 sm:col-span-1 min-w-0">
                                 <Label className="text-[11px] font-bold text-slate-600">পেমেন্ট মাধ্যম</Label>
-                                <Select value={invoicePaymentMethod} onValueChange={(val: string | null) => setInvoicePaymentMethod(val || 'Cash')}>
+                                <Select value={invoicePaymentMethod} onValueChange={(val: string | null) => {
+                                  const method = val || 'Cash';
+                                  setInvoicePaymentMethod(method);
+                                  if (method !== 'Split') {
+                                    setCashPaidAmountInput('');
+                                    setChequePaidAmountInput('');
+                                  }
+                                }}>
                                   <SelectTrigger className="rounded-md h-10 bg-slate-50 border-slate-200 text-xs font-bold font-bengali w-full overflow-hidden">
                                     <SelectValue>
                                       {invoicePaymentMethod === 'Cash' ? '💵 নগদ (Cash)' :
