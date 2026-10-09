@@ -217,6 +217,7 @@ function InvoicesContent() {
   const [convertedOrderId, setConvertedOrderId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
+  const [editingInvoiceMeta, setEditingInvoiceMeta] = useState<any>(null);
   const [deletingInvoice, setDeletingInvoice] = useState<Invoice | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
@@ -958,6 +959,8 @@ function InvoicesContent() {
     setManualLaborCostInput('');
     setEngineerRodRateInput('');
     setEngineerCementRateInput('');
+    setEditingInvoiceId(null);
+    setEditingInvoiceMeta(null);
 
     if (fromOrderId) {
       router.replace('/invoices');
@@ -1003,14 +1006,33 @@ function InvoicesContent() {
     }
 
     setCart(inv.items ? inv.items.map(i => ({ ...i })) : []);
-    setInvoicePaidAmountInput(inv.paidAmount ? formatDecimalInput(String(inv.paidAmount)) : '');
-    setCashPaidAmountInput((inv as any).cashAmount || (inv as any).cashPaidAmount ? formatDecimalInput(String((inv as any).cashAmount || (inv as any).cashPaidAmount)) : '');
-    setChequePaidAmountInput((inv as any).chequeAmount || (inv as any).chequePaidAmount ? formatDecimalInput(String((inv as any).chequeAmount || (inv as any).chequePaidAmount)) : '');
-    setBankName((inv as any).bankName || '');
-    setChequeNo((inv as any).chequeNo || '');
-    setChequeDate((inv as any).chequeDate || '');
-    setInvoicePaymentMethod(inv.paymentMethod || 'Cash');
-    setInvoiceNote(inv.note || '');
+    
+    // Parse existing invoice metadata to preserve across edits
+    let rawMeta: any = {};
+    const rawNoteStr = (inv as any).notes || inv.note || '';
+    if (rawNoteStr && typeof rawNoteStr === 'string' && rawNoteStr.trim().startsWith('{')) {
+      try {
+        rawMeta = JSON.parse(rawNoteStr.split('\n')[0]);
+      } catch {}
+    }
+    setEditingInvoiceMeta(rawMeta);
+
+    const paidAmt = Number(inv.paidAmount || 0);
+    if (paidAmt > 0) {
+      setPaymentOption('now');
+      setInvoicePaidAmountInput(formatDecimalInput(String(paidAmt)));
+    } else {
+      setPaymentOption('later');
+      setInvoicePaidAmountInput('');
+    }
+
+    setCashPaidAmountInput((inv as any).cashAmount || (inv as any).cashPaidAmount || rawMeta.cashPaidAmount ? formatDecimalInput(String((inv as any).cashAmount || (inv as any).cashPaidAmount || rawMeta.cashPaidAmount)) : '');
+    setChequePaidAmountInput((inv as any).chequeAmount || (inv as any).chequePaidAmount || rawMeta.chequePaidAmount ? formatDecimalInput(String((inv as any).chequeAmount || (inv as any).chequePaidAmount || rawMeta.chequePaidAmount)) : '');
+    setBankName((inv as any).bankName || rawMeta.bankName || '');
+    setChequeNo((inv as any).chequeNo || rawMeta.chequeNo || '');
+    setChequeDate((inv as any).chequeDate || rawMeta.chequeDate || '');
+    setInvoicePaymentMethod(inv.paymentMethod || rawMeta.paymentMethodName || 'Cash');
+    setInvoiceNote(inv.note || rawMeta.userNote || '');
     
     // Vehicle Fare (Flat carriage) & Labor
     const invAny = inv as any;
@@ -1171,7 +1193,11 @@ function InvoicesContent() {
         cementShippingRate: Number(cementShippingRate || 0),
         cementLaborCost: Number(cementLaborTotal || 0),
         cementLoadingCharge: Number(cementLaborTotal || 0),
-        cementLoadingPaid: false,
+        cementLoadingPaid: editingInvoiceMeta ? Boolean(editingInvoiceMeta.cementLoadingPaid) : false,
+        cementLoadingPaidAmount: editingInvoiceMeta ? Number(editingInvoiceMeta.cementLoadingPaidAmount || 0) : 0,
+        cementLoadingPaidAt: editingInvoiceMeta ? (editingInvoiceMeta.cementLoadingPaidAt || '') : '',
+        cementLoadingPaidMethod: editingInvoiceMeta ? (editingInvoiceMeta.cementLoadingPaidMethod || '') : '',
+        cementLoadingSardar: editingInvoiceMeta ? (editingInvoiceMeta.cementLoadingSardar || '') : '',
         isShopLoadingExpense: true,
         cementShippingCost: Number(cementShippingTotal || 0),
         cementTotalBags: Number(cementTotalBags || 0),
@@ -1196,8 +1222,8 @@ function InvoicesContent() {
         senderTxnRef: senderTxnRef || '',
         chequeNo: chequeNo || '',
         chequeDate: chequeDate || '',
-        cashPaidAmount: Number(cashPaidAmount || 0),
-        chequePaidAmount: Number(chequePaidAmount || 0),
+        cashPaidAmount: finalPaidAmount > 0 ? Number(cashPaidAmount || 0) : 0,
+        chequePaidAmount: finalPaidAmount > 0 ? Number(chequePaidAmount || 0) : 0,
         previousBalance: selectedCustomer ? Number((selectedCustomer as any).totalDue || (selectedCustomer as any).due || (selectedCustomer as any).balance || (selectedCustomer as any).previousDue || (selectedCustomer as any).openingBalance || 0) : 0,
         engineerId: selectedEngineer ? String(selectedEngineer.id) : '',
         engineerName: selectedEngineer ? selectedEngineer.name : '',
