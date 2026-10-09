@@ -682,7 +682,7 @@ export function Shell({ children }: { children: ReactNode }) {
       window.addEventListener('focus', handleReload);
     }
 
-    const interval = setInterval(handleReload, 5000);
+    const interval = setInterval(handleReload, 20000);
 
     return () => {
       clearTimeout(timer);
