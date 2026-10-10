@@ -115,6 +115,10 @@ export interface TransactionDoc {
   laborCost?: number;
   shippingPayer?: 'shop' | 'supplier';
   laborPayer?: 'shop' | 'supplier';
+  shippingStatus?: 'pending' | 'paid' | 'partial' | 'overpaid';
+  laborStatus?: 'pending' | 'paid' | 'partial' | 'overpaid';
+  shippingPaidAmount?: number;
+  laborPaidAmount?: number;
   previousBalance?: number;
   description?: string;
   createdAt: any;
@@ -793,6 +797,10 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
           laborCost: Number(meta.laborCost || (t as any).labor_cost || 0),
           shippingPayer: meta.shippingPayer || 'shop',
           laborPayer: meta.laborPayer || 'shop',
+          shippingStatus: meta.shippingStatus || (meta.shippingCost ? 'paid' : 'pending'),
+          laborStatus: meta.laborStatus || (meta.laborCost ? 'paid' : 'pending'),
+          shippingPaidAmount: Number(meta.shippingPaidAmount !== undefined ? meta.shippingPaidAmount : (meta.shippingStatus === 'paid' || !meta.shippingStatus ? (meta.shippingCost || (t as any).shipping_cost || 0) : 0)),
+          laborPaidAmount: Number(meta.laborPaidAmount !== undefined ? meta.laborPaidAmount : (meta.laborStatus === 'paid' || !meta.laborStatus ? (meta.laborCost || (t as any).labor_cost || 0) : 0)),
           siteName: t.site_name || meta.siteName || meta.site_name || '',
           siteAddress: t.site_address || meta.siteAddress || meta.site_address || '',
           siteContact: t.site_contact || meta.siteContact || meta.site_contact || '',
@@ -2743,7 +2751,16 @@ export default function PartyProfilePage({ id, type }: { id: string; type: 'cust
                   createdAt: selectedInvoiceTx.createdAt,
                   paymentMethod: selectedInvoiceTx.paymentMethod || 'cash',
                   paymentStatus: selectedInvoiceTx.dueAmount <= 0 ? 'paid' : (selectedInvoiceTx.paidAmount || 0) > 0 ? 'partial' : 'unpaid',
-                  note: selectedInvoiceTx.note || selectedInvoiceTx.notes || ''
+                  note: selectedInvoiceTx.note || selectedInvoiceTx.notes || '',
+                  notes: selectedInvoiceTx.notes || selectedInvoiceTx.note || '',
+                  shippingCost: selectedInvoiceTx.shippingCost || 0,
+                  laborCost: selectedInvoiceTx.laborCost || 0,
+                  shippingPayer: selectedInvoiceTx.shippingPayer || 'shop',
+                  laborPayer: selectedInvoiceTx.laborPayer || 'shop',
+                  shippingStatus: selectedInvoiceTx.shippingStatus || 'paid',
+                  laborStatus: selectedInvoiceTx.laborStatus || 'paid',
+                  shippingPaidAmount: selectedInvoiceTx.shippingPaidAmount,
+                  laborPaidAmount: selectedInvoiceTx.laborPaidAmount
                 };
 
                 return (

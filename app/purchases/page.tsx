@@ -325,6 +325,11 @@ export default function PurchasesPage() {
           paymentMethod: meta.paymentMethodName || p.payment_method || 'Cash',
           chequeNo: meta.chequeNo || '',
           chequeDate: meta.chequeDate || '',
+          notes: p.notes || '',
+          shippingStatus: meta.shippingStatus || 'paid',
+          laborStatus: meta.laborStatus || 'paid',
+          shippingPaidAmount: Number(meta.shippingPaidAmount !== undefined ? meta.shippingPaidAmount : (meta.shippingStatus === 'paid' || !meta.shippingStatus ? (pAny.shipping_cost || meta.shippingCost || 0) : 0)),
+          laborPaidAmount: Number(meta.laborPaidAmount !== undefined ? meta.laborPaidAmount : (meta.laborStatus === 'paid' || !meta.laborStatus ? (pAny.labor_cost || meta.laborCost || 0) : 0)),
           note: userNote || meta.userNote || ''
         };
       }));
